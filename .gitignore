@@ -1,0 +1,7 @@
+qyc
+qyc.exe
+*.o
+tmp
+tmp.exe
+tmp.qy
+tmp.s
