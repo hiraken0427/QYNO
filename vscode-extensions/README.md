@@ -1,0 +1,98 @@
+# QYNO 0.25.2 VSCode Option
+
+QYNO **0.25.2** 用の VS Code 拡張です。配布ファイルは同じフォルダの
+[`0.25.2_VSCode_option.vsix`](0.25.2_VSCode_option.vsix) です。
+VS Code 1.85 以降に対応します。
+
+## インストール
+
+VS Code の拡張機能画面右上の「…」から **VSIX からのインストール…** を選び、
+`0.25.2_VSCode_option.vsix` を指定してください。CLI でもインストールできます。
+
+```sh
+code --install-extension vscode-extensions/0.25.2_VSCode_option.vsix
+```
+
+`.qy` ファイルを開くと有効になります。別の拡張が `.qy` を担当している場合は、
+画面右下の言語モードを「QYNO」に変更してください。手動の補完表示は Ctrl+Space です。
+Marketplace への公開やコンパイラのインストールは行いません。
+
+## 機能
+
+- 型、関数名、変数名、数値、コメント、文字列、文字列内の `{式}` のハイライト。
+- ユーザー定義関数・引数・変数・定数の補完。インデントと宣言位置を考慮し、別関数や終了したブロックのローカル名を候補から除外します。
+- `import geometry.circle`、`using geometry.circle as circle`、選択的な `using` に対応した名前・メンバー補完。
+- import 不要の `io`、`io.file`、`math`、型変換と従来の `print` / `input` の補完。
+- 配列の `.length` / `.add()` / `.remove_at()` / `.clear()`、文字列の `.length` などの補完。
+- 関数呼び出しの引数ヒントと `ref` を含む呼び出しスニペット、ホバー説明、定義への移動、アウトライン。
+- 関数・ループ・分岐・明示的な close を含むファイル操作のスニペット。
+
+編集中の未保存のソースも補完に反映します。コメントや文字列の通常の本文では候補を出さず、
+文字列内の `{式}` ではコードの候補を表示します。
+QYNO のインデントに合わせてタブ、幅4を既定にします。個人の設定で変更できます。
+
+```text
+using io.file as fs
+
+void increase_all(ref int matrix[][]);
+	for(0 <= i < matrix.length, i++);
+		for(0 <= j < matrix[i].length, j++);
+			matrix[i][j]++
+
+int main();
+	int matrix[2][3]
+	increase_all(ref matrix)
+	io.print(matrix)
+	return 0
+```
+
+`increase_all`、`matrix`、ループ内の `i` / `j`、`fs.open` などを補完できます。
+関数の配列引数は **`ref int matrix[][]`**、呼び出しは **`ref matrix`** です。
+
+## モジュールの探索設定
+
+既定の探索起点は編集中のファイルのディレクトリです。
+エントリ以外のファイルも編集するプロジェクトでは、ワークスペースの `.vscode/settings.json` に
+エントリファイルと `qyc -I` に相当する探索ルートを指定してください。
+
+```json
+{
+  "qyno.entryFile": "app/main.qy",
+  "qyno.moduleRoots": ["modules", "../shared/modules"],
+  "qyno.maxIndexedFiles": 2000
+}
+```
+
+設定の相対パスはワークスペースフォルダが基準です。絶対パスも指定できます。
+エントリのディレクトリ、追加ルートの順に `geometry/circle.qy` を探します。
+`..` による上位階層のルート指定も可能です。
+ワークスペースを開いていない場合、相対設定は編集中のファイルのディレクトリが基準です。
+
+モジュールパス候補の探索は `qyno.maxIndexedFiles` 件の `.qy` を上限とし、
+識別子として有効なディレクトリ・ファイル名を辿ります。シンボリックリンク、
+`node_modules` や隠しディレクトリは辿りません。
+ユーザーモジュールの関数・定数は、そのファイルに `import` したものを提示します。
+
+## 検証と制約
+
+補完は編集支援用の軽量な構文解析です。コンパイラの完全な型検査や診断機能ではありません。
+未完成のコードでも候補を提示します。複雑な式の戻り値の型推論や、式に対するすべてのメンバー補完は行いません。
+ビルド・実行と、close 漏れなどの検査には別途 QYNO 0.25.2 の `qyc` を使用してください。
+拡張はユーザープログラムやコンパイラを自動実行しません。
+
+開発用のパッケージ作成には Node.js 22 以降が必要です。拡張自体に npm 実行時依存はありません。
+
+```sh
+cd vscode-extensions
+npm ci
+npm run check
+npm test
+npm run test:editor
+npm run package
+```
+
+`test:editor` は VS Code 1.85.2 を取得して実際の拡張ホスト上で補完・定義・ホバー・引数ヒント・
+アウトライン・未保存変更を検証します。Linux の GUI のない環境では Xvfb などが必要です。
+取得済みの VS Code を使う場合は `QYNO_VSCODE_EXECUTABLE` に実行ファイルのパスを設定できます。
+`npm run package` はこのフォルダに VSIX を出力します。内部の拡張バージョンは SemVer の `0.25.2`、
+配布ファイル名とコミット名は `0.25.2_VSCode_option` です。

@@ -1,0 +1,230 @@
+{
+  "name": "QYNO",
+  "scopeName": "source.qyno",
+  "fileTypes": [
+    "qy"
+  ],
+  "patterns": [
+    {
+      "match": "//.*$",
+      "name": "comment.line.double-slash.qyno"
+    },
+    {
+      "name": "string.quoted.double.qyno",
+      "begin": "\"",
+      "end": "\"|$",
+      "patterns": [
+        {
+          "match": "\\\\[ntr0\\\\\\x22\\x27{}]",
+          "name": "constant.character.escape.qyno"
+        },
+        {
+          "name": "meta.interpolation.qyno",
+          "contentName": "source.qyno",
+          "begin": "(?<!\\\\)\\{",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.section.interpolation.begin.qyno"
+            }
+          },
+          "end": "\\}|(?=\")|$",
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.section.interpolation.end.qyno"
+            }
+          },
+          "patterns": [
+            {
+              "include": "#numbers"
+            },
+            {
+              "include": "#types"
+            },
+            {
+              "include": "#constants"
+            },
+            {
+              "include": "#calls"
+            },
+            {
+              "include": "#operators"
+            },
+            {
+              "match": "\\b[A-Za-z_]\\w*\\b",
+              "name": "variable.other.qyno"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "string.quoted.single.qyno",
+      "begin": "'",
+      "end": "'|$",
+      "patterns": [
+        {
+          "match": "\\\\[ntr0\\\\\\x22\\x27{}]",
+          "name": "constant.character.escape.qyno"
+        },
+        {
+          "name": "meta.interpolation.qyno",
+          "contentName": "source.qyno",
+          "begin": "(?<!\\\\)\\{",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.section.interpolation.begin.qyno"
+            }
+          },
+          "end": "\\}|(?=')|$",
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.section.interpolation.end.qyno"
+            }
+          },
+          "patterns": [
+            {
+              "include": "#numbers"
+            },
+            {
+              "include": "#types"
+            },
+            {
+              "include": "#constants"
+            },
+            {
+              "include": "#calls"
+            },
+            {
+              "include": "#operators"
+            },
+            {
+              "match": "\\b[A-Za-z_]\\w*\\b",
+              "name": "variable.other.qyno"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "match": "^\\s*(\\b(?:int|float|double|bool|str|char|file|void)\\b)\\s+([A-Za-z_]\\w*)(?=\\s*\\()",
+      "captures": {
+        "1": {
+          "name": "storage.type.qyno"
+        },
+        "2": {
+          "name": "entity.name.function.qyno"
+        }
+      }
+    },
+    {
+      "match": "\\b(const)\\s+(\\b(?:int|float|double|bool|str|char|file|void)\\b)\\s+([A-Za-z_]\\w*)",
+      "captures": {
+        "1": {
+          "name": "storage.modifier.qyno"
+        },
+        "2": {
+          "name": "storage.type.qyno"
+        },
+        "3": {
+          "name": "variable.other.constant.qyno"
+        }
+      }
+    },
+    {
+      "match": "(\\b(?:int|float|double|bool|str|char|file|void)\\b)\\s+([A-Za-z_]\\w*)",
+      "captures": {
+        "1": {
+          "name": "storage.type.qyno"
+        },
+        "2": {
+          "name": "variable.other.qyno"
+        }
+      }
+    },
+    {
+      "match": "\\b(?:return|if|else|for|while|break|continue)\\b",
+      "name": "keyword.control.qyno"
+    },
+    {
+      "match": "\\b(?:import|using|as)\\b",
+      "name": "keyword.control.import.qyno"
+    },
+    {
+      "match": "\\b(?:ref|val|const)\\b",
+      "name": "storage.modifier.qyno"
+    },
+    {
+      "match": "\\b(?:io|math|file)\\b(?=\\s*\\.)",
+      "name": "entity.name.namespace.qyno"
+    },
+    {
+      "include": "#numbers"
+    },
+    {
+      "include": "#types"
+    },
+    {
+      "include": "#constants"
+    },
+    {
+      "include": "#calls"
+    },
+    {
+      "include": "#operators"
+    },
+    {
+      "match": "\\b[A-Za-z_]\\w*\\b",
+      "name": "variable.other.qyno"
+    }
+  ],
+  "repository": {
+    "numbers": {
+      "patterns": [
+        {
+          "match": "\\b[0-9]+(?:\\.[0-9]+)?\\b",
+          "name": "constant.numeric.qyno"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "match": "\\b(?:int|float|double|bool|str|char|file|void)\\b",
+          "name": "storage.type.qyno"
+        }
+      ]
+    },
+    "constants": {
+      "patterns": [
+        {
+          "match": "\\b(?:true|false|none)\\b",
+          "name": "constant.language.qyno"
+        }
+      ]
+    },
+    "calls": {
+      "patterns": [
+        {
+          "match": "\\b(?:print|input|sqrt|abs|round|roundup|rounddown|open|close|is_open|read|readline|write|exists)(?=\\s*\\()",
+          "name": "support.function.qyno"
+        },
+        {
+          "match": "\\b[A-Za-z_]\\w*(?=\\s*\\()",
+          "name": "entity.name.function.qyno"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "match": "\\b(?:and|or|not)\\b|\\+\\+|--|[+*/%=!<>|&^~:-]+",
+          "name": "keyword.operator.qyno"
+        },
+        {
+          "match": "[;,.()\\[\\]]",
+          "name": "punctuation.qyno"
+        }
+      ]
+    }
+  }
+}

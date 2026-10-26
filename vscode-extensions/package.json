@@ -1,0 +1,116 @@
+{
+  "name": "qyno-vscode",
+  "displayName": "QYNO 0.25.2 VSCode Option",
+  "description": "QYNO 0.25.2 language support: highlighting, scope-aware completions, navigation and signatures.",
+  "version": "0.25.2",
+  "publisher": "hiraken0427",
+  "author": "hiraken0427",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hiraken0427/QYNO.git",
+    "directory": "vscode-extensions"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Snippets"
+  ],
+  "keywords": [
+    "QYNO",
+    "qy",
+    "language"
+  ],
+  "main": "./src/extension.js",
+  "activationEvents": [
+    "onLanguage:qyno"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": true
+    },
+    "virtualWorkspaces": {
+      "supported": true
+    }
+  },
+  "contributes": {
+    "languages": [
+      {
+        "id": "qyno",
+        "aliases": [
+          "QYNO",
+          "qyno"
+        ],
+        "extensions": [
+          ".qy"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "qyno",
+        "scopeName": "source.qyno",
+        "path": "./syntaxes/qyno.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "qyno",
+        "path": "./snippets/qyno.json"
+      }
+    ],
+    "configurationDefaults": {
+      "[qyno]": {
+        "editor.insertSpaces": false,
+        "editor.tabSize": 4,
+        "editor.detectIndentation": false,
+        "editor.wordBasedSuggestions": "off",
+        "editor.quickSuggestions": {
+          "other": true,
+          "comments": false,
+          "strings": true
+        }
+      }
+    },
+    "configuration": {
+      "title": "QYNO",
+      "properties": {
+        "qyno.entryFile": {
+          "type": "string",
+          "default": "",
+          "description": "Entry .qy file, relative to the workspace folder or an absolute path. Empty uses the active file's directory as the import root."
+        },
+        "qyno.moduleRoots": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Additional module roots in -I order, relative to the workspace folder or absolute paths."
+        },
+        "qyno.maxIndexedFiles": {
+          "type": "integer",
+          "default": 2000,
+          "minimum": 1,
+          "maximum": 10000,
+          "description": "Maximum .qy files scanned for import suggestions."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "check": "node --check src/extension.js && node --check src/analysis.js && node --check src/language.js",
+    "test:editor": "node test/run-editor.js",
+    "package": "vsce package --skip-license --baseContentUrl https://github.com/hiraken0427/QYNO/blob/dev/vscode-extensions --out 0.25.2_VSCode_option.vsix"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "4.0.0",
+    "@vscode/test-electron": "2.5.2",
+    "vscode-textmate": "9.3.2",
+    "vscode-oniguruma": "2.0.1"
+  }
+}

@@ -1,0 +1,10 @@
+import geometry.circle
+using geometry.circle as circle
+using io.file as fs
+
+int main();
+	int matrix[2][3]
+	str name
+	io.print("Hello, {name}!")
+	circle.area(2.0)
+	return 0
