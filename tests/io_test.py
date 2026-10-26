@@ -100,7 +100,7 @@ class IOTests(QynoTestCase):
 
     def test_prompt_expression(self):
         self.check_forms((
-            '\tstr prompt = "name> "', "\tstr name = $in(prompt)", "\t$out(name)",
+            '\tstr prompt = "name> "', "\tstr name = $in(prompt=prompt)", "\t$out(name)",
         ), "name> Alice\n", stdin="Alice\n")
 
     def test_numeric_printing_is_unchanged(self):
@@ -164,7 +164,7 @@ class IOTests(QynoTestCase):
         for statement, message in (
             ('io.print("a", "b")', "end="),
             ('io.input("a", "b")', "引数は1つ"),
-            ("io.input(42)", "文字列"),
+            ("io.input(prompt=[42])", "プロンプト"),
             ('io.input("{1 + 2}")', "変数"),
             ('io.input("{a}{b}")', "区切り"),
         ):

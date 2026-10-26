@@ -423,36 +423,33 @@ static void check_builtin(Node *node)
 
 /*
  * input の型検査
- *   値の形            プロンプトは str。結果はひとまず str で、代入先があればその型に変わる（coerce）
- *   形に当てはめる形  {} の中は定数でない変数で、型は int・float・double・bool・str。結果は bool
+ *   値の形            プロンプトはスカラー値。結果は str で、代入先があればその型で読む（coerce）
+ *   直接・形式指定    入力先は変更可能なスカラー変数または要素。結果は bool
  */
 static void check_input(Node *node)
 {
     InputField *f;
-    Var *v;
-
     if (node->name != NULL) resolve_module_name(node);
     if (!node->input_pattern) {
         if (node->lhs != NULL) {
+            Type ty;
             check_expr(node->lhs);
-            if (!type_is_text(node->lhs->ty)) {
-                error_tok(node->lhs->tok, "input のプロンプトは文字列にしてください（%s が指定されています）",
-                         type_name(node->lhs->ty));
-            }
+            ty = node->lhs->ty;
+            if (!is_numeric(ty) && ty != TY_BOOL && !type_is_text(ty))
+                error_tok(node->lhs->tok, "input のプロンプトは int・float・double・bool・str・char にしてください");
         }
         node->ty = TY_STR;
         return;
     }
     for (f = node->fields; f != NULL; f = f->next) {
+        Type ty;
         check_expr(f->var);
-        v = f->var->var;
-        if (v->is_const) {
-            error_tok(f->var->tok, "定数 %.*s には読み込めません", v->name_len, v->name);
-        }
-        if (v->ty != TY_INT && v->ty != TY_FLOAT && v->ty != TY_DOUBLE && v->ty != TY_BOOL && !type_is_text(v->ty)) {
-            error_tok(f->var->tok, "%s の変数には読み込めません", type_name(v->ty));
-        }
-        f->temp->ty = v->ty;
+        check_place(f->var);
+        ty = f->var->ty;
+        if (!is_numeric(ty) && ty != TY_BOOL && !type_is_text(ty))
+            error_tok(f->var->tok, "%s には直接入力できません。変数または末端の配列要素を指定してください", type_name(ty));
+        /* 文字列内の1文字への入力も1スカラー値に制限する。 */
+        f->temp->ty = f->var->kind == ND_INDEX && type_is_text(f->var->lhs->ty) ? TY_CHAR : ty;
     }
     node->ty = TY_BOOL;
 }
@@ -492,26 +489,24 @@ static void check_ref_target(Var *v, Node *e, const char *what)
 static void check_ref_arg(Node *arg, Var *param, int index)
 {
     Var *v;
-
-    if (arg->lhs->kind != ND_VAR) {
-        error_tok(arg->lhs->tok, "%d 番目の引数：ref には変数の名前だけを書けます（式は渡せません）", index);
-    }
+    Node *root;
+    int rank = 0;
     check_expr(arg->lhs);
-    v = arg->lhs->var;
-    check_ref_limits(param, v, arg->tok);
-    if (v->is_const) {
-        error_tok(arg->lhs->tok, "%d 番目の引数：定数 %.*s は ref で渡せません", index, v->name_len, v->name);
+    v = check_place(arg->lhs);
+    root = arg->lhs;
+    while (root->kind == ND_INDEX) {
+        if (!type_is_array(root->lhs->ty))
+            error_tok(root->tok, "文字列内の文字は ref で渡せません。char 配列の要素を指定してください");
+        rank++;
+        root = root->lhs;
     }
-    if (v->is_loop) {
-        error_tok(arg->lhs->tok, "%d 番目の引数：for 文の繰り返しの変数 %.*s は ref で渡せません",
-                 index, v->name_len, v->name);
-    }
-    if (v->ty != param->ty) {
-        error_tok(arg->lhs->tok, "%d 番目の引数：ref の引数の型は %s です（%s の変数は渡せません。ref では型を変換しません）",
-                 index, type_name(param->ty), type_name(v->ty));
-    }
+    if (v->is_loop) error_tok(arg->tok, "%d 番目の引数：for 文の繰り返しの変数は ref で渡せません", index);
+    if (arg->lhs->ty != param->ty)
+        error_tok(arg->tok, "%d 番目の引数：ref の引数の型は %s です（%s は渡せません。ref では型を変換しません）",
+                  index, type_name(param->ty), type_name(arg->lhs->ty));
+    if (rank == 0) check_ref_limits(param, v, arg->tok);
     arg->ty = TY_ADDR;
-    arg->cmp_ty = v->ty;
+    arg->cmp_ty = arg->lhs->ty;
 }
 
 /* 関数呼び出し：呼び出し先を探し、引数の数と型を確かめて、引数を引数の型に変換する */
@@ -1441,26 +1436,64 @@ static Node *value_node(Value v, Token *tok)
 
 static void check_stmts(Node *list);
 
-/* for の増分は定数で、0 でなく、範囲の向き（増やす・減らす）と合っていること */
+/* 定数のヘッダーも、実行時の比較・代入と同じ型へ変換して有限性を調べる。 */
+static void check_for_finite_constant(Node *expr, Type ty, const char *part)
+{
+    Value v;
+    if (ty == TY_INT || !is_const_expr(expr)) return;
+    v = convert_value(expr, eval_const(expr), ty);
+    if (!isfinite(v.d)) error_tok(expr->tok, "for の%sは有限の数値にしてください", part);
+}
+
+/* 増分はループ変数の型でも有限・非0の定数で、方向が一致すること。 */
 static void check_for_step(Node *node)
 {
     Value v;
-    double amount;
+    Type ty = node->init->var->ty;
     int direction;
 
     if (!is_const_expr(node->inc)) {
         error_tok(node->inc->tok,
                  "for の増分の量は定数（リテラルや const）にしてください（向きと 0 をコンパイル時に確かめるため）");
     }
-    v = eval_const(node->inc);
-    amount = v.ty == TY_INT ? (double)v.i : v.d;
-    if (amount == 0) {
+    v = convert_value(node->inc, eval_const(node->inc), ty);
+    if (ty != TY_INT && !isfinite(v.d)) {
+        error_tok(node->inc->tok, "for の増分は有限の数値にしてください");
+    }
+    if (ty == TY_INT ? v.i == 0 : v.d == 0) {
         error_tok(node->inc->tok, "for の増分が 0 です（ループが終わりません）");
     }
-    direction = (amount > 0 ? 1 : -1) * node->inc_sign;
+    direction = (ty == TY_INT ? (v.i > 0 ? 1 : -1) : (v.d > 0 ? 1 : -1)) * node->inc_sign;
     if (direction != node->val) {
         error_tok(node->inc->tok, "増分の向きが範囲の向きと逆です（%s範囲なので、ループ変数を%sしてください）",
                  node->val > 0 ? "増やしていく" : "減らしていく", node->val > 0 ? "増や" : "減ら");
+    }
+    node->for_amount = value_node(v, node->inc->tok);
+}
+
+static void check_for_header(Node *node)
+{
+    Type ty = node->init->var->ty;
+    Node *limit = node->cond->lhs->rhs;
+    if (node->for_open && ty == TY_INT && (limit->ty != TY_INT || node->inc->ty != TY_INT)) {
+        error_tok(limit->tok, "開始側が開いた int の for は、境界・増分も int にしてください");
+    }
+    check_for_finite_constant(node->init->lhs, ty, "開始値");
+    check_for_finite_constant(limit, node->cond->lhs->cmp_ty, "終了境界");
+    if (node->for_open && ty != TY_INT && is_const_expr(node->init->lhs)) {
+        Value start = eval_const(node->init->lhs);
+        Value amount = eval_const(node->for_amount);
+        double next;
+        if (ty == TY_FLOAT) {
+            next = node->inc_sign > 0 ? (float)((float)start.d + (float)amount.d) :
+                                        (float)((float)start.d - (float)amount.d);
+        } else {
+            next = node->inc_sign > 0 ? start.d + amount.d : start.d - amount.d;
+        }
+        if (!isfinite(next)) error_tok(node->inc->tok, "for の初回の更新結果が有限ではありません");
+        if (node->val > 0 ? !(next > start.d) : !(next < start.d)) {
+            error_tok(node->inc->tok, "for の増分では値が前進しません（丸め後の値を確認してください）");
+        }
     }
 }
 
@@ -1600,10 +1633,15 @@ static void check_stmt(Node *node)
         check_stmts(node->then);
         return;
     case ND_FOR:
+        if (!is_numeric(node->init->var->ty)) {
+            error_tok(node->init->var->tok, "for のループ変数は int・float・double にしてください（%s は使えません）",
+                      type_name(node->init->var->ty));
+        }
         check_stmt(node->init);
         check_expr(node->cond);
         check_stmt(node->step);
         check_for_step(node);
+        check_for_header(node);
         check_stmts(node->then);
         return;
     case ND_BREAK:

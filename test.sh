@@ -164,7 +164,7 @@ printf 'int main();\n\tint a = 3\n\ta = a * 5\n\treturn a\n' > tmp.qy
 ./qyc tmp.qy && ./tmp
 if [ "$?" = "15" ]; then echo "OK  代入と return"; pass=$((pass + 1)); else echo "NG  代入と return"; exit 1; fi
 
-expected_version=$'QYNO version 0.25.0 (PROTOTYPE)\nPlease note that this product is a prototype. No warranties of any kind exist,\nincluding implied warranties of merchantability or fitness for a particular purpose.'
+expected_version=$'QYNO version 0.25.1 (PROTOTYPE)\nPlease note that this product is a prototype. No warranties of any kind exist,\nincluding implied warranties of merchantability or fitness for a particular purpose.'
 if [ "$(./qyc --version)" = "$expected_version" ]; then echo "OK  --version"; pass=$((pass + 1)); else echo "NG  --version"; exit 1; fi
 
 echo "--- 比較・論理演算・if・const ---"
@@ -449,7 +449,7 @@ assert_error 'if の括弧なし' 'int main();\n\tif true;\n\t\treturn 1\n'
 assert_error 'if の ; なし' 'int main();\n\tif(true)\n\t\treturn 1\n'
 assert_error 'ファイル先頭に文' 'print("x")\nint main();\n\treturn 0\n'
 
-assert_error 'for の開区間' 'int main();\n\tfor(0 < i < 5, i++);\n\t\tprint("x")\n'
+assert_output $'1\n2\n3\n4\n' 'for の開始側の開区間' 'int main();\n\tfor(0 < i < 5, i++);\n\t\tprint(i)\n'
 assert_error 'for の向きの混在' 'int main();\n\tfor(0 <= i > 5, i++);\n\t\tprint("x")\n'
 assert_error 'for の増分の向き違い' 'int main();\n\tfor(0 <= i < 5, i--);\n\t\tprint("x")\n'
 assert_error 'for の減らす範囲で増やす' 'int main();\n\tfor(10 >= i > 0, i += 1);\n\t\tprint("x")\n'
@@ -512,7 +512,7 @@ assert_error 'ブロックの外で using' 'int main();\n\tif(true);\n\t\tusing 
 assert_error 'input の {} が隣り合う' 'int main();\n\tint a\n\tint b\n\tinput("> {a}{b}")\n'
 assert_error 'input の {} に式' 'int main();\n\tint a\n\tinput("> {a + 1}")\n'
 assert_error 'input で定数に読み込む' 'const int C = 1\nint main();\n\tinput("> {C}")\n'
-assert_error 'input のプロンプトが数値' 'int main();\n\tstr s = input(1)\n'
+assert_error 'input のプロンプトが配列' 'int main();\n\tstr s = input(prompt=[1])\n'
 assert_error 'input の引数が2つ' 'int main();\n\tstr s = input("a", "b")\n'
 assert_error '形の input の結果を int に' 'int main();\n\tint a\n\tint x = input("> {a}")\n'
 assert_error '関数の外の input' 'const int K = input()\nint main();\n\treturn 0\n'

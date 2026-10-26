@@ -1,4 +1,4 @@
-# QYNO
+# QYNO 0.25.1
 
 C99 で実装した、Linux x64 / Windows x64 向けのコンパイラ。
 UTF-8 の `.qy` ソースから実行ファイルを直接生成する。
@@ -65,6 +65,36 @@ int main();
 `using io` を書けば `print` / `input` に省略できる。
 従来の裸の呼び出しも互換性のため維持する。
 使用例は [examples/io/greeting.qy](examples/io/greeting.qy)、詳細は [io の仕様](docs/io.md) を参照。
+
+## 配列と参照渡し
+
+配列全体は `change(ref matrix)` と `void change(ref int matrix[][]);` で渡す。
+1要素は `increase(ref matrix[i][j])` と `void increase(ref int value);` で渡せる。
+int・float・double・bool・str・char の配列で同じ規則を使う。
+
+`matrix.add()` は初期値を持つ要素を1個追加する。上限を指定しない2次元配列なら空の行を追加する。
+直接入力は `io.input(matrix[i][j])`、表示付きの入力は `io.input("入力> {matrix[i][j]}")` と書ける。
+変数を表示用のプロンプトにする場合は `io.input(prompt=message)` と明示する。
+
+詳細は [配列と参照の仕様](docs/arrays.md)、使用例は
+[examples/arrays/references.qy](examples/arrays/references.qy) を参照。
+
+## 範囲 for
+
+開始側を含まない `<` / `>` も使用できる。開いた開始側ではヘッダーの更新を 1 回適用してから始める。
+
+```text
+int main();
+	int values[] = [0, 1, 2, 3]
+	for(values.length > i >= 0, i--);
+		io.print(values[i])
+	for(0.0 < double x <= 1.0, x += 0.25);
+		io.print(x)
+	return 0
+```
+
+整数の範囲外への更新は折り返さず終了する。小数の非有限値・前進できない更新は診断する。
+bool は数値範囲のループ変数にしない。詳細は [for の仕様](docs/for-open-start-design.md) を参照。
 
 ## 開発ブランチ
 

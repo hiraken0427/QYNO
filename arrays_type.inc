@@ -139,7 +139,7 @@ static Var *check_place(Node *place)
     }
     check_expr(root);
     if (root->var->is_const) {
-        error_tok(root->tok, "const の配列・文字列とその要素は変更できません");
+        error_tok(root->tok, "const の定数・配列・文字列とその要素は変更できません");
     }
     return root->var;
 }
@@ -157,6 +157,7 @@ static void check_method(Node *node)
     if (node->val == AM_ADD && expression_max_length(node->lhs) == 0) {
         const_error(node, "上限0の配列には追加できません");
     }
+    if (node->val == AM_ADD && node->nargs == 0) expected = 0;
     if (node->nargs != expected) {
         error_tok(node->tok, "この配列操作の引数は %d 個です", expected);
     }

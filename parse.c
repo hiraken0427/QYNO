@@ -43,7 +43,7 @@
  *          | ("int" | "float" | "double" | "char" | "str") "(" args ")"   （型変換）
  *          | input
  *          | ident "(" args? ")" | ident | "(" expr ")"
- * input    = "input" "(" (str（{変数} を含む） | expr)? ")"
+ * input    = "input" "(" (str（{入力先} を含む） | ("prompt" "=")? expr)? ")"
  * args     = expr ("," expr)*
  * print_arg = str（{式} の埋め込み可） | expr
  * 標準 io の修飾名・別名も print/input の構文で解析し、参照先を型検査で確認する。
@@ -407,7 +407,8 @@ static void append_text(char **buf, int *len, const char *s, int n)
  * input(...)
  *   値の形            input() ・ input(プロンプト)     読んだ1行を、代入先の型で読む（型検査で決まる）
  *   形に当てはめる形  input("表示する文字{a}区切り{b}")  最初の { より前を表示し、後ろの形に当てはめて変数に入れる
- * 形に当てはめる形では、{} の中は変数の名前だけで、{} と {} の間には区切りの文字が必要。最後の {} の後には何も書けない。
+ * 入力先は変数または添字。{} と {} の間には区切りが必要で、最後の {} の後ろは右側の表示枠。
+ * input(x) も直接入力。値をプロンプトとして渡すには input(prompt=x) を使う。
  */
 static Node *input_expr(Token *start)
 {
@@ -422,7 +423,10 @@ static Node *input_expr(Token *start)
 
     node = new_node(ND_INPUT, start);
     expect("(");
-    if (tok->kind == TK_STR && equal(tok->next, ")") && has_placeholder(tok)) {
+    if (equal(tok, "prompt") && equal(tok->next, "=")) {
+        tok = tok->next->next;
+        node->lhs = expr();
+    } else if (tok->kind == TK_STR && equal(tok->next, ")") && has_placeholder(tok)) {
         lit = tok;
         parts = string_literal(lit);
         tok = tok->next;
@@ -442,8 +446,8 @@ static Node *input_expr(Token *start)
                 }
                 continue;
             }
-            if (part->kind != ND_VAR) {
-                error_tok(part->tok, "input の {} の中には、読み込む先の変数の名前だけを書いてください");
+            if (part->kind != ND_VAR && part->kind != ND_INDEX) {
+                error_tok(part->tok, "input の {} の中には、読み込む先の変数または配列要素を書いてください");
             }
             if (cur != NULL && cur->sep_len == 0) {
                 error_tok(part->tok, "{} と {} の間には、区切りの文字が必要です（例：{a}, {b}）");
@@ -471,6 +475,14 @@ static Node *input_expr(Token *start)
         }
     } else if (!equal(tok, ")")) {
         node->lhs = expr();
+        if (node->lhs->kind == ND_VAR || node->lhs->kind == ND_INDEX) {
+            node->input_pattern = 1;
+            node->fields = calloc(1, sizeof(InputField));
+            if (node->fields == NULL) fatal("入力先を確保できません");
+            node->fields->var = node->lhs;
+            node->fields->temp = hidden_var(TY_INT, start);
+            node->lhs = NULL;
+        }
     }
     if (!equal(tok, ")")) {
         error_tok(tok, "input の引数は1つです（複数の値は input(\"表示{a}, {b}\") のように形で書きます）");
@@ -1351,10 +1363,10 @@ static Node *while_stmt(Token *start)
 }
 
 /*
- * "for" "(" 開始値 ("<=" | ">=") 型? 変数 比較 終了値 "," 増分 ")" ";" block
+ * "for" "(" 開始値 比較 型? 変数 比較 終了値 "," 増分 ")" ";" block
  *
- * 左が開始値、右が終了値。開始側は <= か >=（開区間は不可）。
- * 開始側が <= なら終了側は < か <=（増やす）、>= なら > か >=（減らす）。
+ * 開始側が < / > なら、開始値をヘッダーの更新で1回進めてから判定する。
+ * 左右の比較と更新は同じ方向でなければならない。
  * ループ変数は for の中で新しく宣言し、型を省略すると int になる。
  * 条件「変数 比較 終了値」は毎周評価する（終了値も毎周評価される）。
  */
@@ -1380,13 +1392,11 @@ static Node *for_stmt(Token *start)
 
     /* 開始側の比較 */
     op1 = tok;
-    if (equal(op1, "<") || equal(op1, ">")) {
-        error_tok(op1, "for の開始側に %.*s は使えません（開区間は不可）。<= か >= を使ってください", op1->len, op1->loc);
-    }
-    if (!equal(op1, "<=") && !equal(op1, ">=")) {
+    if (!equal(op1, "<") && !equal(op1, "<=") && !equal(op1, ">") && !equal(op1, ">=")) {
         error_tok(op1, "for の範囲は「開始値 <= 変数 < 終了値」の形で書いてください");
     }
-    increasing = equal(op1, "<=");
+    increasing = equal(op1, "<") || equal(op1, "<=");
+    node->for_open = equal(op1, "<") || equal(op1, ">");
     tok = tok->next;
 
     /* ループ変数（型を省略すると int） */
@@ -1408,7 +1418,7 @@ static Node *for_stmt(Token *start)
         error_tok(op2, "for の終了側には <、<=、>、>= のいずれかを書いてください");
     }
     if (increasing != (equal(op2, "<") || equal(op2, "<="))) {
-        error_tok(op2, "範囲の向きが合っていません（開始側が <= なら終了側は < か <=、>= なら > か >=）");
+        error_tok(op2, "範囲の向きが合っていません（左右とも <・<=、または左右とも >・>= にしてください）");
     }
     tok = tok->next;
 

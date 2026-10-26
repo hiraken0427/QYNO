@@ -111,7 +111,7 @@ class ArrayTests(QynoTestCase):
             ("\tint a[1] = [1, 2]", "上限"),
             ('\tint a[] = [1, "x"]', "変換"),
             ("\tint a[] = [1]\n\ta.length = 2", "読み取り専用"),
-            ("\tint a[] = [1]\n\ta.add()", "引数"),
+            ("\tint a[] = [1]\n\ta.add(1, 2)", "引数"),
             ("\tint a[] = [1]\n\ta.clear(0)", "引数"),
             ("\tint a[] = [1]\n\ta.remove_at(-1)", "範囲外"),
             ("\tint a[0]\n\ta.add(1)", "上限0"),

@@ -35,7 +35,7 @@ static PlacePlan place_capture(Node *target)
         root = root->lhs;
     }
     plan.bytes = ((plan.count + 4) * 8 + 15) / 16 * 16;
-    plan.base = emitting_function->stack_size + plan.bytes;
+    plan.base = emitting_function->stack_size + depth * 8 + plan.bytes;
     x64_sub_imm(RSP, plan.bytes);
     depth += plan.bytes / 8;
     gen_var_addr(root->var, root->tok, 1);
@@ -76,6 +76,26 @@ static void place_read(PlacePlan *plan)
     }
 }
 
+/* 添字は一度評価し、後続の引数と関数本体の実行中、祖先配列を固定する。 */
+static void gen_element_ref(Node *node)
+{
+    PlacePlan plan = place_capture(node->lhs);
+    int i;
+    collection_context(node->tok);
+    for (i = 0; i < plan.count; i++) {
+        place_resolve(&plan, i);
+        x64_load(RAX, RAX, 0);
+        x64_store(RBP, -(int)node->val + i * 8, RAX);
+        x64_load(RCX, RAX, 32);
+        x64_add_imm(RCX, 1);
+        x64_store(RAX, 32, RCX);
+        place_load(&plan, RDI, i + 1);
+        x64_call(array_slot_label); /* 範囲検査を後続の引数より先に行う */
+    }
+    place_resolve(&plan, plan.count);
+    place_release(&plan);
+}
+
 static void gen_index_store(Node *node)
 {
     PlacePlan plan = place_capture(node->lhs);
@@ -102,7 +122,9 @@ static void gen_index_store(Node *node)
     } else {
         place_resolve(&plan, plan.count);
         if (type_is_array(node->lhs->ty)) {
-            x64_load(RDI, RAX, 0);
+            x64_load(RAX, RAX, 0);
+            array_require_unborrowed();
+            x64_mov(RDI, RAX);
             x64_load(RDI, RDI, 16);
             place_load(&plan, RAX, value);
             x64_xor(RSI, RSI);
@@ -129,6 +151,12 @@ static void gen_array_method(Node *node)
     place_resolve(&plan, plan.count);
     x64_load(RAX, RAX, 0);
     if (node->rhs != NULL) place_load(&plan, RDI, plan.count + 1);
+    else if (node->val == AM_ADD) {
+        Type element = array_element(node->lhs->ty);
+        if (element == TY_STR) x64_lea_data(RDI, empty_str_offset);
+        else if (element == TY_CHAR) x64_lea_data(RDI, zero_char_offset);
+        else x64_xor(RDI, RDI); /* 0 / false / 初期子配列 */
+    }
     x64_call(node->val == AM_ADD ? array_add_label : node->val == AM_REMOVE_AT ? array_remove_label : array_clear_label);
     place_release(&plan);
 }

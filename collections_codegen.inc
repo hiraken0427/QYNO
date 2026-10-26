@@ -1,4 +1,4 @@
-/* 配列 [length, capacity, shape, data]。shape は各次元について
+/* 配列 [length, capacity, shape, data, active_element_refs]。shape は各次元について
  * [残りの次元数, 末端要素型, 上限(-1なら無制限)] を並べた読み取り専用データ。
  * 全要素は8バイト。配列の要素は独立した子配列、文字列のバッファは不変。
  */
@@ -24,6 +24,17 @@ static void collection_fail(const char *reason)
     x64_mov_imm(RDX, (long long)strlen(reason));
     x64_mov_imm(R8, EX_SOFTWARE);
     x64_jmp(runtime_error_label);
+}
+
+/* rax=配列。要素参照が生存する間は構造・所有元を変更しない。 */
+static void array_require_unborrowed(void)
+{
+    int ok = rt_label("array.unborrowed");
+    x64_load(RCX, RAX, 32);
+    x64_test(RCX, RCX);
+    x64_jcc(CC_Z, ok);
+    collection_fail("要素を ref で参照している配列は追加・削除・再代入できません\n");
+    x64_bind(ok);
 }
 
 static void collection_shape(Type type, ArrayDim *dims, Reg to)
@@ -114,9 +125,11 @@ static void gen_array_copy_runtime(void)
     collection_fail("配列に必要な領域が int の範囲を超えます\n");
     x64_bind(allocate);
     rt_save(3, RCX);
-    x64_mov_imm(RDI, 32);
+    x64_mov_imm(RDI, 40);
     x64_call(alloc_label);
     rt_save(4, RAX);
+    x64_store_imm(RAX, 24, 0);
+    x64_store_imm(RAX, 32, 0);
     rt_load(RCX, 3);
     x64_store(RAX, 0, RCX);
     x64_store(RAX, 8, RCX);
@@ -194,6 +207,7 @@ static void gen_array_add_runtime(void)
     int allocate = rt_label("add.allocate");
     int append = rt_label("add.append");
     rt_enter(array_add_label, 6);
+    array_require_unborrowed();
     rt_save(1, RAX); rt_save(2, RDI);
     x64_load(RCX, RAX, 0);
     x64_load(RDX, RAX, 16);
@@ -274,6 +288,7 @@ static void gen_array_delete_runtime(void)
     int clear_loop = rt_label("clear.loop");
     int clear_done = rt_label("clear.done");
     x64_bind(array_remove_label);
+    array_require_unborrowed();
     array_bounds();
     x64_load(RDX, RAX, 24);
     x64_shl_imm(RDI, 3);
@@ -297,6 +312,7 @@ static void gen_array_delete_runtime(void)
     x64_xor(RAX, RAX);
     x64_ret();
     x64_bind(array_clear_label);
+    array_require_unborrowed();
     x64_load(RCX, RAX, 0);
     x64_load(RDX, RAX, 24);
     x64_store_imm(RAX, 0, 0);
