@@ -70,6 +70,15 @@ static void gen_print_value(Node *expr);
 #define EX_SOFTWARE 70      /* sysexits.h：プログラムの内部の誤り */
 #define EX_IOERR    74      /* sysexits.h：入出力の失敗 */
 
+#define OUTPUT_SINK 288
+static int file_labels[7];
+static int file_error_label, file_validate_label, file_path_label, file_raw_close_label;
+static int file_finalize_label, file_cleanup_label, file_kind_label, file_raw_open_label;
+static int file_check_label, file_append_label, file_string_label, file_capture_label;
+static int file_getc_label, file_text_label;
+static void gen_file_builtin(Node *node);
+static void gen_file_context(Node *node);
+
 static int depth;
 static int main_label;
 static int write_label;
@@ -170,6 +179,7 @@ static void gen_entry_windows(void)
     x64_bind(exit_label);
     x64_mov(RSP, R15);
     x64_mov(RBX, RAX);
+    x64_call(file_cleanup_label);
 
     /* コンソールの設定を戻し、main の戻り値で終了する */
     x64_load(RCX, RSP, 32);
@@ -189,7 +199,9 @@ static void gen_entry_linux(void)
     x64_call(main_label);
     x64_bind(exit_label);
     x64_mov(RSP, R15);
-    x64_mov(RDI, RAX);
+    x64_mov(RBX, RAX);
+    x64_call(file_cleanup_label);
+    x64_mov(RDI, RBX);
     x64_mov_imm(RAX, 60);       /* exit */
     x64_syscall();
 }
@@ -200,6 +212,11 @@ static void gen_entry_linux(void)
 static void gen_write(int label, int to_err)
 {
     x64_bind(label);
+    if (!to_err) {
+        int normal = x64_new_label(".L.qy_write.stdout");
+        x64_load(R11, R14, OUTPUT_SINK); x64_test(R11, R11);
+        x64_jcc(CC_Z, normal); x64_jmp(file_capture_label); x64_bind(normal);
+    }
     if (target == TARGET_LINUX) {
         x64_mov_imm(RDI, to_err ? 2 : 1);   /* 標準エラー出力・標準出力 */
         x64_mov_imm(RAX, 1);    /* write */
@@ -1279,6 +1296,7 @@ static void gen_char_check(Token *tok, int code)
 }
 
 #include "collections_codegen.inc"
+#include "file_runtime.inc"
 
 static void gen_cast(Node *node)
 {
@@ -1560,6 +1578,7 @@ static void gen_compare(Node *cmp)
     switch (ty) {
     case TY_INT:
     case TY_BOOL:
+    case TY_FILE:
     case TY_ADDR:
         x64_cmp(RDI, RAX);
         x64_setcc(int_cond(kind), RAX);
@@ -1850,7 +1869,7 @@ static void gen_builtin(Node *node)
 #define ST_WWIDTH     (ST_RAW + 16)     /* 画面の幅 */
 #define ST_HOUT       (ST_RAW + 24)     /* 標準出力のハンドル */
 #define ST_WOLDEND    (ST_RAW + 32)     /* 前回描いた行の終わりの位置（行 × 幅 + 列） */
-#define STATE_SIZE    272
+#define STATE_SIZE    304
 
 #define STD_INPUT_HANDLE (-10)
 
@@ -1891,6 +1910,7 @@ static void gen_input_state_init(void)
     x64_mov_imm(RDI, STATE_SIZE);
     x64_call(alloc_label);
     x64_mov(R14, RAX);
+    x64_store_imm(R14, OUTPUT_SINK, 0);
     if (target == TARGET_LINUX) {
         gen_lineedit_init();
         return;
@@ -5332,6 +5352,7 @@ static void gen_call(Node *node)
             gen_expr(arg);
             push();
         }
+        if (node->kind == ND_BUILTIN && node->val >= BI_FILE_OPEN) gen_file_context(node);
         x64_call(node->func->label);
         if (node->nargs) {
             x64_add_imm(RSP, 8 * node->nargs);
@@ -5356,6 +5377,7 @@ static void gen_call(Node *node)
         x64_load(RAX, RBP, -base + i * 8);
         push();
     }
+    if (node->kind == ND_BUILTIN && node->val >= BI_FILE_OPEN) gen_file_context(node);
     x64_call(node->func->label);
     if (node->nargs) {
         x64_add_imm(RSP, 8 * node->nargs);
@@ -5421,7 +5443,8 @@ static void gen_expr(Node *node)
         gen_call(node);
         return;
     case ND_BUILTIN:
-        gen_builtin(node);
+        if (node->val >= BI_FILE_OPEN) gen_file_builtin(node);
+        else gen_builtin(node);
         return;
     case ND_ABS:
         gen_expr(node->lhs);
@@ -5535,6 +5558,52 @@ static void gen_print_value(Node *expr)
  *   literal：文字列リテラル直書き（固定部分 ND_STR と {式} の並び）なら 1、任意の型の式1つなら 0
  *   add_newline：最後に改行を出すなら 1（最後の固定部分とまとめて1回で書く）
  */
+static void gen_file_context(Node *node)
+{
+    char prefix[1200];
+    int n = snprintf(prefix, sizeof(prefix), "QYNO 実行時エラー: %s:%d:%d: io.file.%s: ",
+                     node->tok->source->filename, node->tok->line, node->tok->col,
+                     builtin_name((Builtin)node->val));
+    if (n < 0) fatal("ファイルの診断を作成できません");
+    if ((size_t)n >= sizeof(prefix)) n = (int)sizeof(prefix) - 1;
+    x64_lea_data(R11, prog_add_str(prog, prefix, (size_t)n));
+    x64_store(R14, FILE_CONTEXT, R11);
+    x64_store_imm(R14, FILE_PATH, 0); x64_store_imm(R14, FILE_OS_ERROR, 0);
+}
+
+static void gen_file_builtin(Node *node)
+{
+    if (node->val == BI_FILE_WRITE) {
+        Node *value = node->lhs->next;
+        Node *part;
+        gen_expr(node->lhs); push();
+        x64_mov_imm(RDI, 24); x64_call(alloc_label); push();
+        for (part = value->kind == ND_FORMAT ? value->lhs : value; part != NULL; part = part->next) {
+            if (part->kind == ND_STR) {
+                x64_load(RAX, RSP, 0);
+                x64_lea_data(RSI, prog_add_data(prog, part->str, (size_t)part->str_len));
+                x64_mov_imm(RDX, part->str_len); x64_call(file_append_label);
+            } else {
+                Node saved = *part;
+                gen_expr(part); push();
+                saved.kind = ND_SAVED; saved.val = emitting_function->stack_size + depth * 8;
+                x64_load(R10, RSP, 8); x64_store(R14, OUTPUT_SINK, R10);
+                gen_print_value(&saved);
+                x64_store_imm(R14, OUTPUT_SINK, 0); pop(RAX);
+            }
+        }
+        gen_file_context(node);
+        x64_load(RAX, RSP, 8); x64_mov_imm(RDI, 2); x64_call(file_check_label);
+        x64_load(RAX, RSP, 0); x64_call(file_string_label); x64_mov(RDI, RAX);
+        pop(RDX); pop(RAX); x64_call(file_labels[BI_FILE_WRITE - BI_FILE_OPEN]);
+    } else {
+        Function function = {0};
+        Node call = *node;
+        function.label = file_labels[node->val - BI_FILE_OPEN]; call.func = &function;
+        gen_call(&call);
+    }
+}
+
 static void gen_print_parts(Node *list, int literal, int add_newline)
 {
     Node *part;
@@ -5949,6 +6018,27 @@ void codegen(Ast *ast, Program *out_prog, FILE *out_text, Target out_target)
     round_integer_labels[0] = x64_new_label(".L.qy_round_integer.round");
     round_integer_labels[1] = x64_new_label(".L.qy_round_integer.roundup");
     round_integer_labels[2] = x64_new_label(".L.qy_round_integer.rounddown");
+    {
+        int b;
+        for (b = BI_FILE_OPEN; b < BI_COUNT; b++) {
+            snprintf(label_name, sizeof(label_name), ".L.qy_file_%s", builtin_name((Builtin)b));
+            file_labels[b - BI_FILE_OPEN] = x64_new_label(label_name);
+        }
+    }
+    file_error_label = x64_new_label(".L.qy_file_error");
+    file_validate_label = x64_new_label(".L.qy_file_validate");
+    file_path_label = x64_new_label(".L.qy_file_path");
+    file_raw_close_label = x64_new_label(".L.qy_file_raw_close");
+    file_finalize_label = x64_new_label(".L.qy_file_finalize");
+    file_cleanup_label = x64_new_label(".L.qy_file_cleanup");
+    file_kind_label = x64_new_label(".L.qy_file_kind");
+    file_raw_open_label = x64_new_label(".L.qy_file_raw_open");
+    file_check_label = x64_new_label(".L.qy_file_check");
+    file_append_label = x64_new_label(".L.qy_file_append");
+    file_string_label = x64_new_label(".L.qy_file_string");
+    file_capture_label = x64_new_label(".L.qy_file_capture");
+    file_getc_label = x64_new_label(".L.qy_file_getc");
+    file_text_label = x64_new_label(".L.qy_file_text");
     input_labels();
 
     x64_directive(".intel_syntax noprefix");
@@ -6003,6 +6093,7 @@ void codegen(Ast *ast, Program *out_prog, FILE *out_text, Target out_target)
     gen_round_integer(BI_ROUNDUP);
     gen_round_integer(BI_ROUNDDOWN);
     gen_input_routines();
+    gen_file_runtime();
 
     /* ユーザーのプログラム */
     for (fn = ast->funcs; fn != NULL; fn = fn->next) {

@@ -144,19 +144,19 @@ int main();
 - 修飾された print / input は実際に io の公開名を参照することを確認する。
   `math.print(...)` やスコープ外の別名は io の呼び出しとして扱わず、コンパイルエラーにする。
 
-## 今後の io.file
+## io.file
 
-今回の実装はコンソール入出力と標準モジュールの整備まで。io.file は未実装。
-次のファイル API の方針を記録する。
+0.25.2 では、import 不要の標準サブモジュール io.file を利用できる。
 
 - モジュール名は `io.file`。
-- `open` / `close` と file ハンドルを用意する。open には r モードを用意する。
+- `open` / `close` と file ハンドルを用意する。モードは r / w / a。
 - `read` は現在位置から末尾までの UTF-8 テキストを読む。
-- 追加の `readline` は現在位置から改行コードまでを UTF-8 で読み出す。
-- `write` / `exists`、読み書き失敗や閉じたハンドルの診断も扱う。
+- `readline(f, ref line)` は改行を除いた1行を読み、行があれば true、EOF なら false。
+- `write` / `exists` / `is_open`、読み書き失敗や閉じたハンドルの診断も扱う。
+- 正常終了する全経路で明示的な close を確認できないコードはコンパイルエラー。
 
-API、モード、改行・EOF、ハンドル共有、パス、エラーの推奨仕様は
-[io.file 設計案](io-file-design.md) を参照。これは実装前の案であり、現在のコンパイラでは利用できない。
+API、モード、改行・EOF、ハンドル共有、パス、close の検査は
+[io.file の仕様](io-file-design.md) を参照。
 
 ## 検証
 

@@ -182,6 +182,7 @@ static int is_keyword(Token *t)
 /* 型名なら型を、そうでなければ TY_NONE を返す */
 static Type type_keyword(Token *t)
 {
+    if (equal(t, "file")) return TY_FILE;
     if (equal(t, "int")) {
         return TY_INT;
     }
@@ -503,7 +504,7 @@ static char *name_path(void)
         size_t length;
         char *grown;
         if (tok->kind != TK_IDENT ||
-            (is_keyword(tok) && !(size != 0 && (equal(tok, "print") || equal(tok, "input"))))) {
+            (is_keyword(tok) && !(equal(tok, "file") && (size != 0 || equal(tok->next, "."))) && !(size != 0 && (equal(tok, "print") || equal(tok, "input") || equal(tok, "file"))))) {
             error_tok(tok, "モジュール名または識別子が必要です");
         }
         length = (size_t)tok->len;
@@ -553,6 +554,11 @@ static void call_args(Node *node)
             } else if (consume("val")) {
                 cur = cur->next = expr();
                 cur->arg_val = 1;
+            } else if (tok->kind == TK_STR && has_placeholder(tok)) {
+                Node *format = new_node(ND_FORMAT, tok);
+                format->lhs = string_literal(tok);
+                tok = tok->next;
+                cur = cur->next = format;
             } else {
                 cur = cur->next = expr();
             }
@@ -652,7 +658,7 @@ static Node *primary(void)
         call_args(node);
         return node;
     }
-    if (tok->kind == TK_IDENT && !is_keyword(tok)) {
+    if (tok->kind == TK_IDENT && (!is_keyword(tok) || (equal(tok, "file") && equal(tok->next, ".")))) {
         start = tok;
         v = find_var(start);
         if (v != NULL && !equal(start->next, "(")) {
@@ -1569,7 +1575,7 @@ static Node *stmt(void)
         return node;
     }
     ty = type_keyword(tok);
-    if (ty != TY_NONE) {
+    if (ty != TY_NONE && !(ty == TY_FILE && equal(tok->next, "."))) {
         return declaration(start, 0);
     }
     if (tok->kind == TK_IDENT && !is_keyword(tok) && is_update_op(tok->next)) {
@@ -1585,7 +1591,7 @@ static Node *stmt(void)
         expect_kind(TK_NEWLINE, "文の終わりには改行が必要です");
         return node;
     }
-    if ((tok->kind == TK_IDENT && !is_keyword(tok)) || equal(tok, "(")) {
+    if ((tok->kind == TK_IDENT && (!is_keyword(tok) || (equal(tok, "file") && equal(tok->next, ".")))) || equal(tok, "(")) {
         Node *target = expr();
         if (is_update_op(tok)) {
             node = new_node(ND_STORE, tok);

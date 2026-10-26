@@ -8,8 +8,8 @@ qyc: $(OBJS)
 	$(CC) -o $@ $(OBJS) -lm
 
 $(OBJS): qyc.h
-codegen.o: collections_codegen.inc memory_codegen.inc places_codegen.inc
-type.o: arrays_type.inc
+codegen.o: collections_codegen.inc memory_codegen.inc places_codegen.inc file_runtime.inc
+type.o: arrays_type.inc file_close_analysis.inc
 
 test: qyc
 	PYTHON="$(PYTHON)" bash ./test.sh
@@ -21,6 +21,10 @@ test: qyc
 	$(PYTHON) tests/io_test.py ./qyc
 	$(PYTHON) tests/for_test.py ./qyc
 	$(PYTHON) tests/input_refs_test.py ./qyc
+	$(PYTHON) tests/file_test.py ./qyc
+
+test-file: qyc
+	$(PYTHON) tests/file_test.py ./qyc
 
 test-input-refs: qyc
 	$(PYTHON) tests/input_refs_test.py ./qyc
@@ -52,4 +56,4 @@ test-arrays: qyc
 clean:
 	rm -f qyc qyc.exe *.o tmp tmp.exe tmp.qy tmp.s
 
-.PHONY: test test-input-refs test-for test-io test-modules test-lineedit test-rounding test-semantics test-text test-arrays clean
+.PHONY: test test-file test-input-refs test-for test-io test-modules test-lineedit test-rounding test-semantics test-text test-arrays clean

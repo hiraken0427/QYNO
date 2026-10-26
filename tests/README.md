@@ -8,7 +8,7 @@ make test
 
 Linux x86_64、GCC、Make、Bash、Python 3 の標準ライブラリを使用する。
 追加の Python パッケージは不要。`make test` は必要なら `qyc` をビルドし、
-既存の `test.sh`、行編集、統合プログラム、8 つの専用スイートを実行する。
+既存の `test.sh`、行編集、統合プログラム、9 つの専用スイートを実行する。
 `test.sh` は実行権限に依存しないよう Bash で起動する。
 Python を指定する場合は `make test PYTHON=/path/to/python3` とする。
 
@@ -22,6 +22,7 @@ Python を指定する場合は `make test PYTHON=/path/to/python3` とする。
 | `make test-io` | print / input の互換性、io 修飾名、using・別名、型の文脈、形式指定入力 |
 | `make test-for` | 範囲の開閉、評価回数、整数の範囲外、小数の有限性・停滞、bool の拒否 |
 | `make test-input-refs` | 全スカラー型の直接入力・要素参照、評価順、参照中の変更、引数なしの add、GC・出力形式 |
+| `make test-file` | ファイルの各モード、UTF-8・改行・EOF、共有ハンドル、書式、明示 close の関数間解析、OS失敗 |
 | `make test-lineedit` | 擬似端末でのカーソル移動・編集、Unicode、EOF・割り込み、端末設定の復元 |
 | `bash test.sh` | 既存チェック、行編集、`all_features.qy`、CLI の出力指定・アセンブリ出力 |
 
@@ -70,6 +71,15 @@ Linux のアセンブリ出力をアセンブルし、Windows は PE ヘッダ�
 配列全体の引数宣言は従来の `ref int matrix[][]` を維持する。
 変数を表示用プロンプトに使うテストは `input(prompt=message)` に移行する。
 
+0.25.2 では io.file と明示 close の検査に52メソッドを追加し、専用スイートは合計283メソッド。
+ファイル内容の実バイト、バッファ境界、部分書き込み、割り込みと close 失敗も検証する。
+Linux の fault injection には strace があれば利用し、なければ該当ケースだけ skip する。
+Windows 用のファイルテストは、Wine の初期設定を済ませてから次のように実行できる。
+
+```bash
+QYNO_FILE_TARGET=windows QYNO_FILE_WINE=/absolute/path/to/wine64 python3 tests/file_test.py ./qyc
+```
+
 必要な個別検証の後、最終の全体テストは `make test` を 1 回だけ実行する。
 ZIP 展開後の再ビルド・再テストは行わない。
 
@@ -77,6 +87,6 @@ Python の失敗・例外・タイムアウトはコマンドの失敗として�
 シェルの出力比較でも生成プログラムの終了コードを検証し、
 コンパイルエラーの検証ではクラッシュを正常なエラーとして数えない。
 
-現時点の動作確認は Linux x86_64。Wine があれば既存スクリプトの Windows 実行チェックも走るが、
-今回 Wine は未導入であり Windows の実行互換性は未検証。
+全体テストは Linux x86_64 で実行する。Windows 向けのファイル専用スイートは Wine でも実行し、
+実際に書いたバイト列と戻り値・終了コードを確認する。Windows 実機での実行は別途必要。
 行編集の専用テストは Linux 以外では明示的に skip する。

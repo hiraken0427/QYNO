@@ -111,9 +111,10 @@ static void gen_gc_mark(void)
     x64_cmp(RAX, RCX);
     x64_jcc(CC_AE, next);
     x64_load(RCX, RDX, 16);
-    x64_test(RCX, RCX);
+    x64_mov(RDI, RCX); x64_and_imm(RDI, 1);
+    x64_test(RDI, RDI);
     x64_jcc(CC_NZ, done);
-    x64_store_imm(RDX, 16, 1);
+    x64_mov_imm(RDI, 1); x64_or(RCX, RDI); x64_store(RDX, 16, RCX);
     rt_save(2, RDX);
     rt_set(3, 0);
     x64_bind(scan);
@@ -157,7 +158,7 @@ static void gen_gc_collect(void)
     x64_bind(reset);
     x64_test(RDX, RDX);
     x64_jcc(CC_Z, roots);
-    x64_store_imm(RDX, 16, 0);
+    x64_load(RCX, RDX, 16); x64_and_imm(RCX, -2); x64_store(RDX, 16, RCX);
     x64_lea(RAX, RDX, 24);
     x64_cmp(RAX, RBX);
     x64_jcc(CC_AE, min_done);
@@ -191,7 +192,7 @@ static void gen_gc_collect(void)
     x64_jcc(CC_Z, done);
     x64_load(RAX, RDX, 0);
     rt_save(4, RAX);
-    x64_load(RCX, RDX, 16);
+    x64_load(RCX, RDX, 16); x64_and_imm(RCX, 1);
     x64_test(RCX, RCX);
     x64_jcc(CC_NZ, keep);
     rt_load(RCX, 2);
@@ -202,6 +203,13 @@ static void gen_gc_collect(void)
     x64_bind(head);
     x64_mov(R12, RAX);
     x64_bind(free_block);
+    {
+        int ordinary = rt_label("gc.free.ordinary");
+        rt_load(RAX, 3); x64_load(RCX, RAX, 16); x64_and_imm(RCX, 2);
+        x64_test(RCX, RCX); x64_jcc(CC_Z, ordinary);
+        x64_add_imm(RAX, 24); x64_call(file_finalize_label);
+        x64_bind(ordinary);
+    }
     rt_load(RDI, 3);
     x64_load(RSI, RDI, 8);
     x64_add_imm(RSI, 24);

@@ -5,7 +5,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#define QYC_VERSION "0.25.1"
+#define QYC_VERSION "0.25.2"
 
 typedef struct SourceFile SourceFile;
 typedef struct Module Module;
@@ -54,6 +54,12 @@ typedef enum {
     IMP_GET_CONSOLE_SCREEN_BUFFER_INFO,
     IMP_SET_CONSOLE_CURSOR_POSITION,
     IMP_HEAP_FREE,
+    IMP_CREATE_FILE_W,
+    IMP_CLOSE_HANDLE,
+    IMP_GET_LAST_ERROR,
+    IMP_GET_FILE_TYPE,
+    IMP_GET_FILE_INFORMATION_BY_HANDLE,
+    IMP_MULTI_BYTE_TO_WIDE_CHAR,
     IMP_COUNT
 } Import;
 
@@ -115,6 +121,7 @@ typedef enum {
     TY_BOOL,    /* 真偽値（0 または 1） */
     TY_STR,     /* 文字列（[長さ 8バイト][本体] の先頭を指すポインタ） */
     TY_CHAR,    /* Unicode スカラー値をちょうど1つ含む文字列。表現は str と同じ */
+    TY_FILE,    /* 共有されるファイル管理領域。0 は未オープン */
     TY_VOID,    /* 戻り値なし（関数の戻り値の型のみ） */
     TY_ADDR,    /* 変数の場所（x.addr・none。指す先の型は cmp_ty） */
     TY_ARRAY    /* この値以降は types.c で管理する配列型のID */
@@ -153,6 +160,13 @@ typedef enum {
     BI_STR,         /* str(x)：char/str を str にする */
     BI_IO_PRINT,    /* io.print(...)：出力文として解析する */
     BI_IO_INPUT,    /* io.input(...)：入力先と形式を保持する */
+    BI_FILE_OPEN,
+    BI_FILE_CLOSE,
+    BI_FILE_IS_OPEN,
+    BI_FILE_READ,
+    BI_FILE_READLINE,
+    BI_FILE_WRITE,
+    BI_FILE_EXISTS,
     BI_COUNT
 } Builtin;
 
@@ -220,6 +234,7 @@ typedef enum {
     ND_STORE,         /* lhs は添字の更新先、rhs は値。val=更新演算子 */
     ND_SAVED,         /* 複合添字更新の評価済みの値。val は rbp からの距離 */
     ND_VAR,     /* 変数の参照（var が NULL ならファイル先頭の const を型検査で探す） */
+    ND_FORMAT,  /* write の補間文字列（lhs は print と同じ部分列） */
     ND_CALL,    /* 関数呼び出し（func、引数は lhs から next でつながる） */
     ND_BUILTIN, /* 組み込み関数（val に Builtin、引数は lhs から next でつながる） */
     ND_ABS,     /* |x|（lhs） */

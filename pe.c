@@ -45,7 +45,13 @@ static const char *import_names[IMP_COUNT] = {
     "SetConsoleMode",
     "GetConsoleScreenBufferInfo",
     "SetConsoleCursorPosition",
-    "HeapFree"
+    "HeapFree",
+    "CreateFileW",
+    "CloseHandle",
+    "GetLastError",
+    "GetFileType",
+    "GetFileInformationByHandle",
+    "MultiByteToWideChar"
 };
 
 const char *import_name(Import imp)
