@@ -1,0 +1,98 @@
+// 自己検証する統合テスト。失敗数を終了コードとして返す。
+using math.sqrt, math.round
+const int BASE = LATER + 1
+const int LATER = 6
+const str TITLE = "QYNO"
+const int TABLE[3] = [2, 4, 6]
+
+void check(bool ok, str label, ref int failures);
+	if(ok);
+		print("OK  {label}")
+	else;
+		print("NG  {label}")
+		failures++
+
+int factorial(int n);
+	if(n <= 1);
+		return 1
+	return n * factorial(n - 1)
+
+double hypotenuse(double a, double b) = sqrt(a^2 + b^2)
+
+void increment(ref int n);
+	n++
+
+void change_value(int values[]);
+	values[0] = 99
+
+void change_reference(ref int values[]);
+	values.add(8)
+
+int pair(int n)[];
+	return [n, n + 1]
+
+int main();
+	int failures = 0
+	check(BASE == 7 and TABLE[1] == 4, "constants", ref failures)
+	check(5 + 6 * 7 == 47 and 2^3^2 == 512, "precedence", ref failures)
+	check(-2^2 == -4 and (-2)^2 == 4, "unary power", ref failures)
+	check(17 % 5 == 2 and -7 / 3 == -2, "integer operations", ref failures)
+	check(1 < 2 < 3 and not false, "comparison and logic", ref failures)
+	int zero = 0
+	check(false and 1 / zero == 0 or true, "short circuit", ref failures)
+	float f = 1.5
+	double d = f + 2
+	check(d == 3.5, "numeric promotion", ref failures)
+	check(hypotenuse(3, 4) == 5.0, "functions and using", ref failures)
+	check(factorial(6) == 720, "recursion", ref failures)
+	check(round(-2.5) == -3.0 and math.roundup(-2.5) == -2.0, "rounding", ref failures)
+	check(int(2.9) == 2 and | -7 | == 7, "conversion and absolute value", ref failures)
+	int total = 0
+	for(1 <= i <= 5, i++);
+		if(i == 3);
+			continue
+		total += i
+	check(total == 12, "for and continue", ref failures)
+	while(total < 20);
+		total++
+		if(total == 15);
+			break
+	check(total == 15, "while and break", ref failures)
+	int number = 4
+	increment(ref number)
+	ref int pointer = number.addr
+	pointer += 2
+	check(number == 7 and pointer.value == 7, "references", ref failures)
+	int other = 10
+	pointer.addr = other.addr
+	pointer++
+	check(number == 7 and other == 11, "reference rebinding", ref failures)
+	str text = "日😀a"
+	check(text.length == 3 and text[1] == "😀", "unicode scalars", ref failures)
+	char letter = char("界")
+	check(str(letter) == "界" and letter.length == 1, "char", ref failures)
+	str copy = text
+	text[0] = "本"
+	check(copy == "日😀a" and text == "本😀a", "text value semantics", ref failures)
+	check(TITLE + "!" == "QYNO!", "concatenation", ref failures)
+	int values[] = [1, 2]
+	values.add(3)
+	values[0] += 4
+	values.remove_at(1)
+	check(values.length == 2 and values[0] == 5 and values[1] == 3, "array mutation", ref failures)
+	change_value(values)
+	check(values[0] == 5, "array value parameter", ref failures)
+	change_reference(ref values)
+	check(values.length == 3 and values[2] == 8, "array ref parameter", ref failures)
+	int matrix[2][2]
+	matrix[0][0] = 9
+	check(matrix[1][0] == 0 and matrix[0][0] == 9, "independent rows", ref failures)
+	int twins[][] = matrix
+	twins[0][0] = 8
+	check(matrix[0][0] == 9 and twins[0][0] == 8, "deep copy", ref failures)
+	int returned[] = pair(20)
+	check(returned[0] == 20 and returned[1] == 21, "array return", ref failures)
+	values.clear()
+	check(values.length == 0, "array clear", ref failures)
+	print("統合テスト終了: {failures} 件失敗")
+	return failures

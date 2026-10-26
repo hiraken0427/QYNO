@@ -1,5 +1,5 @@
 #!/bin/bash
-# 使い方: ./test.sh
+# 使い方: bash ./test.sh（全スイートは make test）
 # qyc が直接書き出した実行ファイルを動かして結果を確かめます（gcc などは使いません）
 # Linux 上で wine がある場合は、Windows 向け（.exe）の出力も wine で確認します
 
@@ -76,8 +76,10 @@ assert_error() {
     program="$2"
 
     printf '%b' "$program" > tmp.qy
-    if ./qyc tmp.qy 2> /dev/null; then
-        echo "NG  $title => エラーになりませんでした"
+    ./qyc tmp.qy 2> /dev/null
+    code="$?"
+    if [ "$code" != "1" ]; then
+        echo "NG  $title => コンパイルエラーの終了コード 1 を期待しました（実際 $code）"
         exit 1
     fi
     echo "OK  $title => コンパイルエラー"
@@ -92,14 +94,15 @@ assert_output() {
 
     printf '%b' "$program" > tmp.qy
     ./qyc tmp.qy || exit 1
-    actual="$(./tmp; printf x)"
+    actual="$(./tmp; code=$?; printf x; exit "$code")"
+    code="$?"
     actual="${actual%x}"
 
-    if [ "$actual" = "$expected" ]; then
+    if [ "$actual" = "$expected" ] && [ "$code" = "0" ]; then
         echo "OK  $title"
         pass=$((pass + 1))
     else
-        echo "NG  $title"
+        echo "NG  $title（終了コード $code）"
         echo "    期待値: $(printf '%s' "$expected" | od -c | head -3)"
         echo "    実際  : $(printf '%s' "$actual" | od -c | head -3)"
         exit 1
@@ -291,8 +294,8 @@ assert_input $'a 山田\nb 山田\nc 平林\nd 高橋\n' 0 '値渡し・val・re
 assert_input '' 70 '何も指していない ref の読み書きは終了コード 70' 'int main();\n\tref int p\n\tp = 3\n' ''
 
 echo "--- 行の編集（00.23.0。Linux で python3 があるときだけ） ---"
-if [ "$(uname)" = "Linux" ] && command -v python3 > /dev/null 2>&1; then
-    le_out="$(python3 tests/lineedit_test.py)" || { printf '%s\n' "$le_out"; exit 1; }
+if [ "$(uname)" = "Linux" ] && command -v "${PYTHON:-python3}" > /dev/null 2>&1; then
+    le_out="$("${PYTHON:-python3}" tests/lineedit_test.py ./qyc)" || { printf '%s\n' "$le_out"; exit 1; }
     printf '%s\n' "$le_out" | grep -v "行の編集のテスト"
     pass=$((pass + $(printf '%s\n' "$le_out" | grep -c '^OK')))
 fi

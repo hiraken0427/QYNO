@@ -1,8 +1,10 @@
 /*
  * 文法（現時点）
  *
- * program  = (const_decl | using | function)* EOF   （順番は自由。main が1つ必要）
- * using    = "using" ident ("." ident)? ("," ident ("." ident)?)* NEWLINE
+ * program  = (import | const_decl | using | function)* EOF
+ * import   = "import" path ("," path)* NEWLINE
+ * using    = "using" path ("as" ident)? ("," path ("as" ident)?)* NEWLINE
+ * path     = ident ("." ident)*
  * function = rtype ident "(" params? ")" dimensions (";" block | "=" expr NEWLINE)
  * rtype    = type | "void"
  * params   = ("ref" | "val")? type ident dimensions ("," params)?
@@ -68,7 +70,7 @@ static const char *keywords[] = {
     "int", "float", "double", "bool", "str", "char", "void", "file", "const",
     "true", "false", "return", "print", "if", "else", "for", "while",
     "break", "continue", "and", "or", "not", "struct", "enum", "import", "of", "using", "input",
-    "ref", "val", "none",
+    "ref", "val", "none", "as",
     NULL
 };
 
@@ -82,6 +84,7 @@ static Node *new_node(NodeKind kind, Token *t)
     }
     node->kind = kind;
     node->tok = t;
+    node->usings = local_usings;
     return node;
 }
 
@@ -138,16 +141,16 @@ static void check_stray_bar(void)
         return;
     }
     if (equal(tok->next, "|") && tok->next->loc == tok->loc + 1) {
-        error_at(tok->line, tok->col, "|| は廃止されました。論理和には or を使ってください");
+        error_tok(tok, "|| は廃止されました。論理和には or を使ってください");
     }
-    error_at(tok->line, tok->col, "この | に対応する開きの | がありません（絶対値は |x| と書きます）");
+    error_tok(tok, "この | に対応する開きの | がありません（絶対値は |x| と書きます）");
 }
 
 static void expect(const char *s)
 {
     if (!equal(tok, s)) {
         check_stray_bar();
-        error_at(tok->line, tok->col, "'%s' が必要です", s);
+        error_tok(tok, "'%s' が必要です", s);
     }
     tok = tok->next;
 }
@@ -156,7 +159,7 @@ static void expect_kind(TokenKind kind, const char *msg)
 {
     if (tok->kind != kind) {
         check_stray_bar();
-        error_at(tok->line, tok->col, "%s", msg);
+        error_tok(tok, "%s", msg);
     }
     tok = tok->next;
 }
@@ -219,10 +222,10 @@ static ArrayDim *dimensions(Type *ty)
         expect("]");
         tail = tail->next = dim;
         if (++rank > MAX_ARRAY_RANK) {
-            error_at(dim->tok->line, dim->tok->col, "配列の次元数は %d 以下にしてください", MAX_ARRAY_RANK);
+            error_tok(dim->tok, "配列の次元数は %d 以下にしてください", MAX_ARRAY_RANK);
         }
         if (*ty == TY_VOID) {
-            error_at(dim->tok->line, dim->tok->col, "void の配列は作れません");
+            error_tok(dim->tok, "void の配列は作れません");
         }
         *ty = array_type(*ty);
     }
@@ -246,7 +249,7 @@ static Var *new_var(Token *t, Type ty)
     Var *v;
 
     if (is_keyword(t)) {
-        error_at(t->line, t->col, "予約語は名前に使えません");
+        error_tok(t, "予約語は名前に使えません");
     }
     v = calloc(1, sizeof(Var));
     if (v == NULL) {
@@ -256,6 +259,7 @@ static Var *new_var(Token *t, Type ty)
     v->name_len = t->len;
     v->ty = ty;
     v->tok = t;
+    v->usings = local_usings;
     return v;
 }
 
@@ -279,7 +283,7 @@ static Var *declare_var(Token *t, Type ty, int is_const)
     if (cur_fn == NULL) {
         for (prev = ast->global_vars; prev != NULL; prev = prev->next) {
             if (same_name(prev, t)) {
-                error_at(t->line, t->col, "%.*s はすでに %d 行目で宣言されています", t->len, t->loc, prev->tok->line);
+                error_tok(t, "%.*s はすでに %d 行目で宣言されています", t->len, t->loc, prev->tok->line);
             }
         }
         v = new_var(t, ty);
@@ -292,7 +296,7 @@ static Var *declare_var(Token *t, Type ty, int is_const)
 
     prev = find_var(t);
     if (prev != NULL) {
-        error_at(t->line, t->col, "%.*s はすでに %d 行目で宣言されています", t->len, t->loc, prev->tok->line);
+        error_tok(t, "%.*s はすでに %d 行目で宣言されています", t->len, t->loc, prev->tok->line);
     }
     v = new_var(t, ty);
     v->is_const = is_const;
@@ -324,7 +328,7 @@ static Node *string_expr(Token *t)
     parts = string_literal(t);
     for (node = parts; node != NULL; node = node->next) {
         if (node->kind != ND_STR) {
-            error_at(t->line, t->col, "{式} の埋め込みは現在 print の中でのみ使えます");
+            error_tok(t, "{式} の埋め込みは現在 print の中でのみ使えます");
         }
     }
     node = new_node(ND_STRLIT, t);
@@ -343,7 +347,7 @@ static Var *hidden_var(Type ty, Token *where)
     int count;
 
     if (cur_fn == NULL) {
-        error_at(where->line, where->col, "input は関数の中でだけ使えます");
+        error_tok(where, "input は関数の中でだけ使えます");
     }
     v = calloc(1, sizeof(Var));
     if (v == NULL) {
@@ -438,10 +442,10 @@ static Node *input_expr(Token *start)
                 continue;
             }
             if (part->kind != ND_VAR) {
-                error_at(part->tok->line, part->tok->col, "input の {} の中には、読み込む先の変数の名前だけを書いてください");
+                error_tok(part->tok, "input の {} の中には、読み込む先の変数の名前だけを書いてください");
             }
             if (cur != NULL && cur->sep_len == 0) {
-                error_at(part->tok->line, part->tok->col, "{} と {} の間には、区切りの文字が必要です（例：{a}, {b}）");
+                error_tok(part->tok, "{} と {} の間には、区切りの文字が必要です（例：{a}, {b}）");
             }
             cur = calloc(1, sizeof(InputField));
             if (cur == NULL) {
@@ -468,7 +472,7 @@ static Node *input_expr(Token *start)
         node->lhs = expr();
     }
     if (!equal(tok, ")")) {
-        error_at(tok->line, tok->col, "input の引数は1つです（複数の値は input(\"表示{a}, {b}\") のように形で書きます）");
+        error_tok(tok, "input の引数は1つです（複数の値は input(\"表示{a}, {b}\") のように形で書きます）");
     }
     expect(")");
     node->in_line = hidden_var(TY_STR, start);
@@ -477,17 +481,29 @@ static Node *input_expr(Token *start)
     return node;
 }
 
-/* 関数の中の using で name を省略して使えるなら、その using */
-static Using *find_local_using(Token *name)
+/* ドット区切りの名前。元 Token は診断のために保持する。 */
+static char *name_path(void)
 {
-    Using *u;
-
-    for (u = local_usings; u != NULL; u = u->vnext) {
-        if (using_covers(u, name->loc, name->len) >= 0) {
-            return u;
+    char *name = NULL;
+    size_t size = 0;
+    for (;;) {
+        size_t length;
+        char *grown;
+        if (tok->kind != TK_IDENT || is_keyword(tok)) {
+            error_tok(tok, "モジュール名または識別子が必要です");
         }
+        length = (size_t)tok->len;
+        grown = realloc(name, size + length + 2);
+        if (grown == NULL) fatal("名前の領域を確保できません");
+        name = grown;
+        if (size != 0) name[size++] = '.';
+        memcpy(name + size, tok->loc, length);
+        size += length;
+        name[size] = '\0';
+        tok = tok->next;
+        if (!consume(".")) break;
     }
-    return NULL;
+    return name;
 }
 
 /* "(" の後の引数を読み、")" まで進める */
@@ -527,45 +543,6 @@ static int is_member(Token *t)
 {
     return t->kind == TK_IDENT && !is_keyword(t) && equal(t->next, ".") &&
            (equal(t->next->next, "value") || equal(t->next->next, "addr")) && !equal(t->next->next->next, "(");
-}
-
-/* ident "." ident "(" args? ")"：名前空間付きの組み込み関数 */
-static Node *qualified_call(Token *ns)
-{
-    Node *node;
-    Token *name;
-    int b;
-
-    if (!builtin_namespace_exists(ns)) {
-        error_at(ns->line, ns->col, "名前空間 %.*s はありません", ns->len, ns->loc);
-    }
-    tok = ns->next->next;
-    if (tok->kind != TK_IDENT) {
-        error_at(tok->line, tok->col, "%.*s. の後に関数名が必要です", ns->len, ns->loc);
-    }
-    name = tok;
-    b = builtin_find(ns, name);
-    if (b < 0) {
-        error_at(name->line, name->col, "%.*s に %.*s はありません", ns->len, ns->loc, name->len, name->loc);
-    }
-    tok = tok->next;
-    node = new_node(ND_BUILTIN, name);
-    node->val = b;
-    expect("(");
-    call_args(node);
-    return node;
-}
-
-/* ident "(" args? ")"：呼び出し先は型検査で探す（定義の順番は問わない） */
-static Node *call(Token *name)
-{
-    Node *node;
-
-    node = new_node(ND_CALL, name);
-    node->using_ref = find_local_using(name);
-    tok = name->next->next;
-    call_args(node);
-    return node;
 }
 
 /* primary = num | fnum | "true" | "false" | str | ident "(" args? ")" | ident | "(" expr ")" */
@@ -632,7 +609,7 @@ static Node *primary(void)
         start = tok;
         node = new_unary(ND_ABS, expr(), start);
         if (!consume("|")) {
-            error_at(tok->line, tok->col, "絶対値を閉じる | が必要です");
+            error_tok(tok, "絶対値を閉じる | が必要です");
         }
         return node;
     }
@@ -645,23 +622,24 @@ static Node *primary(void)
         call_args(node);
         return node;
     }
-    if (tok->kind == TK_IDENT && builtin_namespace_exists(tok) && equal(tok->next, ".") &&
-        tok->next->next->kind == TK_IDENT && equal(tok->next->next->next, "(") &&
-        (find_var(tok) == NULL || builtin_find(tok, tok->next->next) >= 0)) {
-        return qualified_call(tok);
-    }
-    if (tok->kind == TK_IDENT && !is_keyword(tok) && equal(tok->next, "(")) {
-        return call(tok);
-    }
     if (tok->kind == TK_IDENT && !is_keyword(tok)) {
-        /* 見つからなければファイル先頭の const として、型検査で探す */
-        v = find_var(tok);
-        node = new_node(ND_VAR, tok);
-        node->var = v;
-        tok = tok->next;
+        start = tok;
+        v = find_var(start);
+        if (v != NULL && !equal(start->next, "(")) {
+            node = new_node(ND_VAR, start);
+            node->var = v;
+            tok = tok->next;
+            return node;
+        }
+        node = new_node(ND_VAR, start);
+        node->name = name_path();
+        if (consume("(")) {
+            node->kind = ND_CALL;
+            call_args(node);
+        }
         return node;
     }
-    error_at(tok->line, tok->col, "値（数値・文字列・true・false・変数）または '(' が必要です");
+    error_tok(tok, "値（数値・文字列・true・false・変数）または '(' が必要です");
     return NULL;
 }
 
@@ -693,7 +671,7 @@ static Node *postfix(void)
                 } else if (equal(field, "clear")) {
                     method->val = AM_CLEAR;
                 } else {
-                    error_at(field->line, field->col, "配列の操作は add・remove_at・clear です");
+                    error_tok(field, "配列の操作は add・remove_at・clear です");
                 }
                 tok = field->next->next;
                 call_args(method);
@@ -706,7 +684,7 @@ static Node *postfix(void)
                 variable_member = 0;
             } else if (equal(field, "value") || equal(field, "addr")) {
                 if (node->kind != ND_VAR || variable_member) {
-                    error_at(field->line, field->col, ".value と .addr は変数名の直後に1回だけ書けます");
+                    error_tok(field, ".value と .addr は変数名の直後に1回だけ書けます");
                 }
                 tok = tok->next;
                 if (equal(field, "addr")) {
@@ -714,7 +692,7 @@ static Node *postfix(void)
                 }
                 variable_member = 1;
             } else {
-                error_at(field->line, field->col, "使える要素は length・value・addr です");
+                error_tok(field, "使える要素は length・value・addr です");
             }
         } else {
             return node;
@@ -768,7 +746,7 @@ static Node *mul(void)
         if (consume("/")) {
             rhs = unary();
             if (rhs->kind == ND_NUM && rhs->val == 0) {
-                error_at(start->line, start->col, "0で割ることはできません");
+                error_tok(start, "0で割ることはできません");
             }
             node = new_binary(ND_DIV, node, rhs, start);
             continue;
@@ -776,7 +754,7 @@ static Node *mul(void)
         if (consume("%")) {
             rhs = unary();
             if (rhs->kind == ND_NUM && rhs->val == 0) {
-                error_at(start->line, start->col, "0で割った余りは求められません");
+                error_tok(start, "0で割った余りは求められません");
             }
             node = new_binary(ND_MOD, node, rhs, start);
             continue;
@@ -990,7 +968,7 @@ static Node *embedded_expr(Token *t, const char *open, const char *close)
     }
     node = expr();
     if (tok->kind != TK_EOF) {
-        error_at(tok->line, tok->col, "埋め込みの式が正しくありません");
+        error_tok(tok, "埋め込みの式が正しくありません");
     }
     tok = saved;
     return node;
@@ -1084,7 +1062,7 @@ static Node *print_stmt(Token *start)
         if (!equal(tok, ")")) {
             expect(",");
             if (!is_end_arg(tok)) {
-                error_at(tok->line, tok->col, "print の2つ目には end=値 を書いてください（例：print(x, end=\"\")）");
+                error_tok(tok, "print の2つ目には end=値 を書いてください（例：print(x, end=\"\")）");
             }
         }
     }
@@ -1117,11 +1095,11 @@ static Node *declaration_ref(Token *start, int is_const, int is_ref)
 
     ty = type_keyword(tok);
     if (ty == TY_NONE) {
-        error_at(tok->line, tok->col, "型（int・float・double・bool・str・char）が必要です");
+        error_tok(tok, "型（int・float・double・bool・str・char）が必要です");
     }
     tok = tok->next;
     if (tok->kind != TK_IDENT) {
-        error_at(tok->line, tok->col, "%sが必要です", is_const ? "定数名" : "変数名");
+        error_tok(tok, "%sが必要です", is_const ? "定数名" : "変数名");
     }
     name = tok;
     tok = tok->next;
@@ -1131,7 +1109,7 @@ static Node *declaration_ref(Token *start, int is_const, int is_ref)
     if (consume("=")) {
         node->lhs = expr();
     } else if (is_const) {
-        error_at(tok->line, tok->col, "const には初期値が必要です（例：const float PI = 3.141592）");
+        error_tok(tok, "const には初期値が必要です（例：const float PI = 3.141592）");
     }
     /* 初期値の式の後で登録する（int a = a のような自己参照を防ぐ） */
     node->var = declare_var(name, ty, is_const);
@@ -1164,10 +1142,10 @@ static Node *update(Token *name, Node **inc, int *inc_sign)
 
     v = find_var(name);
     if (v == NULL) {
-        error_at(name->line, name->col, "変数 %.*s は宣言されていません", name->len, name->loc);
+        error_tok(name, "変数 %.*s は宣言されていません", name->len, name->loc);
     }
     if (v->is_const) {
-        error_at(name->line, name->col, "定数 %.*s には代入できません", name->len, name->loc);
+        error_tok(name, "定数 %.*s には代入できません", name->len, name->loc);
     }
     node = new_node(ND_ASSIGN, name);
     node->var = v;
@@ -1196,7 +1174,7 @@ static Node *update(Token *name, Node **inc, int *inc_sign)
         sign = -1;
         node->lhs = new_binary(ND_SUB, read, amount, op);
     } else {
-        error_at(tok->line, tok->col, "=、+=、-=、++、-- のいずれかが必要です");
+        error_tok(tok, "=、+=、-=、++、-- のいずれかが必要です");
     }
     if (inc != NULL) {
         *inc = amount;
@@ -1220,53 +1198,56 @@ static Node *assignment(void)
     return node;
 }
 
-/*
- * using = "using" ident ("." ident)? ("," ident ("." ident)?)* NEWLINE
- * "using" の後から読み、項目の並びを返す。
- */
+/* using path [as alias]：対象の解決は全モジュールの解析後に行う。 */
 static Using *using_list(Token *start)
 {
-    Using head;
-    Using *cur;
-    Using *u;
-
-    memset(&head, 0, sizeof(head));
-    cur = &head;
+    Using head = {0};
+    Using *tail = &head;
+    Using *scope = local_usings;
     for (;;) {
-        if (tok->kind != TK_IDENT) {
-            error_at(tok->line, tok->col, "using の後に名前空間が必要です（例：using math.sqrt）");
-        }
-        u = calloc(1, sizeof(Using));
-        if (u == NULL) {
-            fatal("メモリを確保できません");
-        }
-        u->ns = tok;
+        Using *u = calloc(1, sizeof(Using));
+        if (u == NULL) fatal("using の領域を確保できません");
+        u->path_tok = tok;
         u->tok = start;
-        if (!builtin_namespace_exists(tok)) {
-            error_at(tok->line, tok->col, "名前空間 %.*s はありません", tok->len, tok->loc);
-        }
-        tok = tok->next;
-        if (consume(".")) {
-            if (tok->kind != TK_IDENT) {
-                error_at(tok->line, tok->col, "%.*s. の後に名前が必要です", u->ns->len, u->ns->loc);
+        u->path = name_path();
+        u->target_builtin = -1;
+        u->scope = scope;
+        u->locals = visible;
+        if (consume("as")) {
+            if (tok->kind != TK_IDENT || is_keyword(tok)) {
+                error_tok(tok, "as の後に別名が必要です");
             }
-            if (builtin_find(u->ns, tok) < 0) {
-                error_at(tok->line, tok->col, "%.*s に %.*s はありません", u->ns->len, u->ns->loc, tok->len, tok->loc);
-            }
-            if (equal(tok->next, "(")) {
-                error_at(tok->next->line, tok->next->col, "using には括弧を付けません（using %.*s.%.*s と書きます）",
-                         u->ns->len, u->ns->loc, tok->len, tok->loc);
-            }
-            u->name = tok;
+            u->alias = tok;
             tok = tok->next;
         }
-        cur = cur->next = u;
-        if (!consume(",")) {
-            break;
+        if (equal(tok, "(")) {
+            error_tok(tok, "using には括弧を付けません");
         }
+        u->all_next = ast->all_usings;
+        ast->all_usings = u;
+        tail = tail->next = u;
+        u->vnext = scope;
+        scope = u;
+        if (!consume(",")) break;
     }
     expect_kind(TK_NEWLINE, "文の終わりには改行が必要です");
     return head.next;
+}
+
+static void import_list(Token *start)
+{
+    ModuleImport **tail = &ast->imports;
+    while (*tail != NULL) tail = &(*tail)->next;
+    for (;;) {
+        ModuleImport *item = calloc(1, sizeof(ModuleImport));
+        if (item == NULL) fatal("import の領域を確保できません");
+        item->tok = start;
+        item->name = name_path();
+        *tail = item;
+        tail = &item->next;
+        if (!consume(",")) break;
+    }
+    expect_kind(TK_NEWLINE, "文の終わりには改行が必要です");
 }
 
 /*
@@ -1371,10 +1352,10 @@ static Node *for_stmt(Token *start)
     /* 開始側の比較 */
     op1 = tok;
     if (equal(op1, "<") || equal(op1, ">")) {
-        error_at(op1->line, op1->col, "for の開始側に %.*s は使えません（開区間は不可）。<= か >= を使ってください", op1->len, op1->loc);
+        error_tok(op1, "for の開始側に %.*s は使えません（開区間は不可）。<= か >= を使ってください", op1->len, op1->loc);
     }
     if (!equal(op1, "<=") && !equal(op1, ">=")) {
-        error_at(op1->line, op1->col, "for の範囲は「開始値 <= 変数 < 終了値」の形で書いてください");
+        error_tok(op1, "for の範囲は「開始値 <= 変数 < 終了値」の形で書いてください");
     }
     increasing = equal(op1, "<=");
     tok = tok->next;
@@ -1387,7 +1368,7 @@ static Node *for_stmt(Token *start)
         ty = TY_INT;
     }
     if (tok->kind != TK_IDENT) {
-        error_at(tok->line, tok->col, "ループ変数の名前が必要です");
+        error_tok(tok, "ループ変数の名前が必要です");
     }
     name = tok;
     tok = tok->next;
@@ -1395,10 +1376,10 @@ static Node *for_stmt(Token *start)
     /* 終了側の比較 */
     op2 = tok;
     if (!equal(op2, "<") && !equal(op2, "<=") && !equal(op2, ">") && !equal(op2, ">=")) {
-        error_at(op2->line, op2->col, "for の終了側には <、<=、>、>= のいずれかを書いてください");
+        error_tok(op2, "for の終了側には <、<=、>、>= のいずれかを書いてください");
     }
     if (increasing != (equal(op2, "<") || equal(op2, "<="))) {
-        error_at(op2->line, op2->col, "範囲の向きが合っていません（開始側が <= なら終了側は < か <=、>= なら > か >=）");
+        error_tok(op2, "範囲の向きが合っていません（開始側が <= なら終了側は < か <=、>= なら > か >=）");
     }
     tok = tok->next;
 
@@ -1426,7 +1407,7 @@ static Node *for_stmt(Token *start)
     expect(",");
     if (tok->kind != TK_IDENT || tok->len != name->len || strncmp(tok->loc, name->loc, (size_t)name->len) != 0 ||
         !(equal(tok->next, "++") || equal(tok->next, "--") || equal(tok->next, "+=") || equal(tok->next, "-="))) {
-        error_at(tok->line, tok->col, "for の増分はループ変数 %.*s の ++、--、+= 式、-= 式 のいずれかで書いてください",
+        error_tok(tok, "for の増分はループ変数 %.*s の ++、--、+= 式、-= 式 のいずれかで書いてください",
                  name->len, name->loc);
     }
     tok = tok->next;
@@ -1452,10 +1433,10 @@ static Node *loop_jump(NodeKind kind, Token *start)
 
     name = kind == ND_BREAK ? "break" : "continue";
     if (loop_depth == 0) {
-        error_at(start->line, start->col, "%s はループ（for・while）の中でのみ使えます", name);
+        error_tok(start, "%s はループ（for・while）の中でのみ使えます", name);
     }
     if (equal(tok, "(")) {
-        error_at(tok->line, tok->col, "%s には括弧を付けません（00.21 から %s() ではなく %s と書きます）", name, name, name);
+        error_tok(tok, "%s には括弧を付けません（00.21 から %s() ではなく %s と書きます）", name, name, name);
     }
     expect_kind(TK_NEWLINE, "文の終わりには改行が必要です");
     return new_node(kind, start);
@@ -1471,7 +1452,7 @@ static Node *stmt(void)
 
     start = tok;
     if (tok->kind == TK_INDENT) {
-        error_at(tok->line, tok->col, "余分なインデントがあります");
+        error_tok(tok, "余分なインデントがあります");
     }
     if (consume("print")) {
         return print_stmt(start);
@@ -1500,7 +1481,7 @@ static Node *stmt(void)
         return loop_jump(ND_CONTINUE, start);
     }
     if (equal(tok, "else")) {
-        error_at(tok->line, tok->col, "else に対応する if がありません");
+        error_tok(tok, "else に対応する if がありません");
     }
     if (consume("const")) {
         return declaration(start, 1);
@@ -1515,7 +1496,7 @@ static Node *stmt(void)
         node = new_node(ND_ADDR_ASSIGN, name);
         node->var = find_var(name);
         if (node->var == NULL) {
-            error_at(name->line, name->col, "変数 %.*s は宣言されていません", name->len, name->loc);
+            error_tok(name, "変数 %.*s は宣言されていません", name->len, name->loc);
         }
         tok = tok->next->next->next->next;
         node->lhs = expr();
@@ -1551,7 +1532,7 @@ static Node *stmt(void)
         node = new_node(ND_EXPR_STMT, start);
         node->lhs = expr();
         if (node->lhs->kind != ND_INPUT) {
-            error_at(start->line, start->col, "文が必要です（input の結果を使う式は、変数への代入や if の条件に書いてください）");
+            error_tok(start, "文が必要です（input の結果を使う式は、変数への代入や if の条件に書いてください）");
         }
         node->lhs->input_stmt = 1;
         expect_kind(TK_NEWLINE, "文の終わりには改行が必要です");
@@ -1570,14 +1551,14 @@ static Node *stmt(void)
             node->rhs = node->val == UPDATE_INC || node->val == UPDATE_DEC ? new_num(1, node->tok) : expr();
         } else {
             if (target->kind != ND_CALL && target->kind != ND_METHOD) {
-                error_at(target->tok->line, target->tok->col, "この式は代入・print・条件などで使ってください");
+                error_tok(target->tok, "この式は代入・print・条件などで使ってください");
             }
             node = new_unary(ND_EXPR_STMT, target, start);
         }
         expect_kind(TK_NEWLINE, "文の終わりには改行が必要です");
         return node;
     }
-    error_at(tok->line, tok->col, "文が必要です（return・print・if・while・for・break・continue・const・using・変数の宣言と更新・関数呼び出しに対応しています）");
+    error_tok(tok, "文が必要です（return・print・if・while・for・break・continue・const・using・変数の宣言と更新・関数呼び出しに対応しています）");
     return NULL;
 }
 
@@ -1614,11 +1595,11 @@ static Function *function_def(void)
     }
     fn->ret = return_type(tok);
     if (fn->ret == TY_NONE) {
-        error_at(tok->line, tok->col, "ファイルの先頭に書けるのは const 定数と関数の定義だけです（関数は 戻り値の型 名前(引数); の形で書きます）");
+        error_tok(tok, "ファイルの先頭に書けるのは const 定数と関数の定義だけです（関数は 戻り値の型 名前(引数); の形で書きます）");
     }
     tok = tok->next;
     if (tok->kind != TK_IDENT || is_keyword(tok)) {
-        error_at(tok->line, tok->col, "関数名が必要です");
+        error_tok(tok, "関数名が必要です");
     }
     name = tok;
     fn->name = name->loc;
@@ -1646,15 +1627,15 @@ static Function *function_def(void)
             }
             ty = type_keyword(tok);
             if (ty == TY_NONE) {
-                error_at(tok->line, tok->col, "引数の型（int・float・double・bool・str・char）が必要です");
+                error_tok(tok, "引数の型（int・float・double・bool・str・char）が必要です");
             }
             tok = tok->next;
             if (tok->kind != TK_IDENT) {
-                error_at(tok->line, tok->col, "引数の名前が必要です");
+                error_tok(tok, "引数の名前が必要です");
             }
             for (p = head.next; p != NULL; p = p->next) {
                 if (same_name(p, tok)) {
-                    error_at(tok->line, tok->col, "引数 %.*s が重複しています", tok->len, tok->loc);
+                    error_tok(tok, "引数 %.*s が重複しています", tok->len, tok->loc);
                 }
             }
             v = new_var(tok, ty);
@@ -1684,7 +1665,7 @@ static Function *function_def(void)
     start = tok;
     if (consume("=")) {
         if (fn->ret == TY_VOID) {
-            error_at(start->line, start->col, "void の関数は数式の形（= 式）では書けません");
+            error_tok(start, "void の関数は数式の形（= 式）では書けません");
         }
         fn->is_math_form = 1;
         fn->body = new_node(ND_RETURN, start);
@@ -1692,7 +1673,7 @@ static Function *function_def(void)
         expect_kind(TK_NEWLINE, "数式の形の関数定義は1行で書いてください");
     } else {
         if (!equal(tok, ";")) {
-            error_at(tok->line, tok->col, "関数の本体は「;」の後の行に書くか、「= 式」の形で書いてください");
+            error_tok(tok, "関数の本体は「;」の後の行に書くか、「= 式」の形で書いてください");
         }
         tok = tok->next;
         fn->body = block("関数の本体はタブで1段インデントしてください");
@@ -1740,7 +1721,13 @@ Ast *parse(Token *t)
     local_usings = NULL;
     while (tok->kind != TK_EOF) {
         if (tok->kind == TK_INDENT) {
-            error_at(tok->line, tok->col, "余分なインデントがあります");
+            error_tok(tok, "余分なインデントがあります");
+        }
+        if (equal(tok, "import")) {
+            start = tok;
+            tok = tok->next;
+            import_list(start);
+            continue;
         }
         if (equal(tok, "const")) {
             start = tok;

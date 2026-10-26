@@ -7,7 +7,7 @@
 static void collection_context(Token *tok)
 {
     char prefix[1024];
-    int n = snprintf(prefix, sizeof(prefix), "QYNO 実行時エラー: %s:%d:%d: ", current_filename, tok->line, tok->col);
+    int n = snprintf(prefix, sizeof(prefix), "QYNO 実行時エラー: %s:%d:%d: ", tok->source->filename, tok->line, tok->col);
     if (n < 0) fatal("配列の診断を作成できません");
     if (n >= (int)sizeof(prefix)) n = (int)sizeof(prefix) - 1;
     x64_lea_data(R11, prog_add_str(prog, prefix, (size_t)n));

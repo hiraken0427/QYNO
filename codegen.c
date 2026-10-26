@@ -1717,7 +1717,7 @@ static void gen_double_to_int_checked(Token *tok)
 
     x64_bind(err);
     len = snprintf(msg, sizeof(msg), "QYNO 実行時エラー: %s:%d:%d: int() に int の範囲外の値（または NaN）が渡されました\n",
-                   current_filename, tok->line, tok->col);
+                   tok->source->filename, tok->line, tok->col);
     if (len < 0 || len >= (int)sizeof(msg)) {
         len = (int)strlen(msg);
     }
@@ -4730,7 +4730,7 @@ static void source_line(Token *tok, const char **start, int *len)
     const char *q;
 
     p = tok->loc;
-    while (p > current_source && p[-1] != '\n') {
+    while (p > tok->source->input && p[-1] != '\n') {
         p--;
     }
     q = tok->loc;
@@ -4748,7 +4748,7 @@ static void gen_fail(Token *tok, const char *text, int code)
     int len;
     size_t offset;
 
-    len = snprintf(msg, sizeof(msg), "QYNO 実行時エラー: %s:%d:%d: %s\n", current_filename, tok ? tok->line : 0, tok ? tok->col : 0, text);
+    len = snprintf(msg, sizeof(msg), "QYNO 実行時エラー: %s:%d:%d: %s\n", tok ? tok->source->filename : "<runtime>", tok ? tok->line : 0, tok ? tok->col : 0, text);
     if (len < 0 || len >= (int)sizeof(msg)) {
         len = (int)strlen(msg);
     }
@@ -4776,7 +4776,7 @@ static size_t input_head(Token *tok, int *len_out)
         fatal("メモリを確保できません");
     }
     len = snprintf(msg, (size_t)cap, "QYNO 実行時エラー: %s:%d:%d: 入力を読み取れませんでした\n\t%d | %.*s\n",
-                   current_filename, tok->line, tok->col, tok->line, line_len, line);
+                   tok->source->filename, tok->line, tok->col, tok->line, line_len, line);
     if (len < 0 || len >= cap) {
         len = (int)strlen(msg);
     }
@@ -5672,7 +5672,7 @@ static void gen_function(Function *fn)
     char label_name[128];
     emitting_function = fn;
 
-    snprintf(label_name, sizeof(label_name), ".L.return.%.*s", fn->name_len, fn->name);
+    snprintf(label_name, sizeof(label_name), ".L.return.%d", fn->label);
     return_label = x64_new_label(label_name);
 
     x64_bind(fn->label);
@@ -5730,6 +5730,7 @@ void codegen(Ast *ast, Program *out_prog, FILE *out_text, Target out_target)
 {
     char label_name[128];
     Function *fn;
+    int function_index = 0;
 
     prog = out_prog;
     text = out_text;
@@ -5746,7 +5747,7 @@ void codegen(Ast *ast, Program *out_prog, FILE *out_text, Target out_target)
     /* 関数のラベルは先に作っておく（後ろで定義された関数も呼べるように） */
     main_label = -1;
     for (fn = ast->funcs; fn != NULL; fn = fn->next) {
-        snprintf(label_name, sizeof(label_name), "%.*s", fn->name_len, fn->name);
+        snprintf(label_name, sizeof(label_name), ".L.module.%d.function.%d.%.*s", fn->tok->source->module->id, function_index++, fn->name_len, fn->name);
         fn->label = x64_new_label(label_name);
         if (fn->name_len == 4 && strncmp(fn->name, "main", 4) == 0) {
             main_label = fn->label;

@@ -130,7 +130,6 @@ static void ensure_const(Var *v);
 static void check_stmt(Node *node);
 static void check_builtin(Node *node);
 static void check_input(Node *node);
-static void check_using_names(Using *list);
 
 /* 名前が同じか */
 static int same_name(const char *a, int alen, const char *b, int blen)
@@ -138,24 +137,12 @@ static int same_name(const char *a, int alen, const char *b, int blen)
     return alen == blen && strncmp(a, b, (size_t)alen) == 0;
 }
 
-static Function *find_func(Token *t)
-{
-    Function *fn;
-
-    for (fn = cur_ast->funcs; fn != NULL; fn = fn->next) {
-        if (same_name(fn->name, fn->name_len, t->loc, t->len)) {
-            return fn;
-        }
-    }
-    return NULL;
-}
-
-static Var *find_global(const char *name, int len)
+static Var *find_global(Module *module, const char *name, int len)
 {
     Var *v;
 
     for (v = cur_ast->global_vars; v != NULL; v = v->next) {
-        if (same_name(v->name, v->name_len, name, len)) {
+        if (v->tok->source->module == module && same_name(v->name, v->name_len, name, len)) {
             return v;
         }
     }
@@ -219,9 +206,9 @@ static Node *coerce(Node *expr, Type to, Token *where, const char *what)
     result = convert(expr, to);
     if (result == NULL) {
         if (expr->ty == TY_DOUBLE && to == TY_FLOAT) {
-            error_at(where->line, where->col, "%s：double の値は float に自動変換できません（リテラルだけでできた式なら変換できます）", what);
+            error_tok(where, "%s：double の値は float に自動変換できません（リテラルだけでできた式なら変換できます）", what);
         }
-        error_at(where->line, where->col, "%s：%s の値は %s に変換できません", what, type_name(expr->ty), type_name(to));
+        error_tok(where, "%s：%s の値は %s に変換できません", what, type_name(expr->ty), type_name(to));
     }
     return result;
 }
@@ -293,7 +280,7 @@ static void check_cmp(Node *cmp)
     cmp->ty = TY_BOOL;
     if (type_is_array(l) || type_is_array(r)) {
         if (l != r || (kind != CMP_EQ && kind != CMP_NE)) {
-            error_at(cmp->tok->line, cmp->tok->col, "配列は同じ要素型・次元数で == または != を使って比較してください");
+            error_tok(cmp->tok, "配列は同じ要素型・次元数で == または != を使って比較してください");
         }
         cmp->cmp_ty = l;
         return;
@@ -305,10 +292,10 @@ static void check_cmp(Node *cmp)
     }
     if (l == TY_ADDR && r == TY_ADDR) {
         if (kind != CMP_EQ && kind != CMP_NE) {
-            error_at(cmp->tok->line, cmp->tok->col, "場所は == と != でしか比べられません（%s は使えません）", cmp_name(kind));
+            error_tok(cmp->tok, "場所は == と != でしか比べられません（%s は使えません）", cmp_name(kind));
         }
         if (cmp->lhs->cmp_ty != TY_NONE && cmp->rhs->cmp_ty != TY_NONE && cmp->lhs->cmp_ty != cmp->rhs->cmp_ty) {
-            error_at(cmp->tok->line, cmp->tok->col, "%s の変数の場所と %s の変数の場所は比べられません",
+            error_tok(cmp->tok, "%s の変数の場所と %s の変数の場所は比べられません",
                      type_name(cmp->lhs->cmp_ty), type_name(cmp->rhs->cmp_ty));
         }
         cmp->cmp_ty = TY_ADDR;
@@ -316,19 +303,19 @@ static void check_cmp(Node *cmp)
     }
     if ((l == r && l == TY_BOOL) || (type_is_text(l) && type_is_text(r))) {
         if (kind != CMP_EQ && kind != CMP_NE) {
-            error_at(cmp->tok->line, cmp->tok->col, "%s は == と != でしか比べられません（%s は使えません）",
+            error_tok(cmp->tok, "%s は == と != でしか比べられません（%s は使えません）",
                      type_name(l), cmp_name(kind));
         }
         cmp->cmp_ty = type_is_text(l) ? TY_STR : l;
         return;
     }
-    error_at(cmp->tok->line, cmp->tok->col, "%s と %s は比べられません", type_name(l), type_name(r));
+    error_tok(cmp->tok, "%s と %s は比べられません", type_name(l), type_name(r));
 }
 
 static void require_bool(Node *node, const char *what)
 {
     if (node->ty != TY_BOOL) {
-        error_at(node->tok->line, node->tok->col, "%sは bool にしてください（%s が指定されています）",
+        error_tok(node->tok, "%sは bool にしてください（%s が指定されています）",
                  what, type_name(node->ty));
     }
 }
@@ -365,17 +352,17 @@ static void check_builtin(Node *node)
     max_args = (b == BI_ROUND || b == BI_ROUNDUP || b == BI_ROUNDDOWN) ? 2 : 1;
     if (node->nargs < min_args || node->nargs > max_args) {
         if (max_args == 2) {
-            error_at(node->tok->line, node->tok->col, "%s の引数は 1 個か 2 個（値, 桁数）です（%d 個渡しています）",
+            error_tok(node->tok, "%s の引数は 1 個か 2 個（値, 桁数）です（%d 個渡しています）",
                      builtin_name(b), node->nargs);
         }
-        error_at(node->tok->line, node->tok->col, "%s の引数は 1 個です（%d 個渡しています）", builtin_name(b), node->nargs);
+        error_tok(node->tok, "%s の引数は 1 個です（%d 個渡しています）", builtin_name(b), node->nargs);
     }
     x = node->lhs;
     digits = x->next;
     check_expr(x);
     if (b == BI_CHAR || b == BI_STR) {
         if (!type_is_text(x->ty)) {
-            error_at(x->tok->line, x->tok->col, "%s() に渡せるのは str・char です", builtin_name(b));
+            error_tok(x->tok, "%s() に渡せるのは str・char です", builtin_name(b));
         }
         node->ty = b == BI_CHAR ? TY_CHAR : TY_STR;
         if (b == BI_CHAR && is_const_expr(x)) {
@@ -384,13 +371,13 @@ static void check_builtin(Node *node)
         return;
     }
     if (!is_numeric(x->ty)) {
-        error_at(x->tok->line, x->tok->col, "%s に渡せるのは数値（int・float・double）です（%s が渡されています）",
+        error_tok(x->tok, "%s に渡せるのは数値（int・float・double）です（%s が渡されています）",
                  builtin_name(b), type_name(x->ty));
     }
     if (digits != NULL) {
         check_expr(digits);
         if (digits->ty != TY_INT) {
-            error_at(digits->tok->line, digits->tok->col, "%s の桁数は int にしてください（%s が渡されています）",
+            error_tok(digits->tok, "%s の桁数は int にしてください（%s が渡されています）",
                      builtin_name(b), type_name(digits->ty));
         }
     }
@@ -408,7 +395,7 @@ static void check_builtin(Node *node)
         if (x->ty != TY_INT && is_const_expr(x)) {
             v = eval_const(x);
             if (!fits_int(v.d)) {
-                error_at(node->tok->line, node->tok->col, "int() に int の範囲外の値（または NaN）が渡されています");
+                error_tok(node->tok, "int() に int の範囲外の値（または NaN）が渡されています");
             }
         }
         return;
@@ -448,7 +435,7 @@ static void check_input(Node *node)
         if (node->lhs != NULL) {
             check_expr(node->lhs);
             if (!type_is_text(node->lhs->ty)) {
-                error_at(node->lhs->tok->line, node->lhs->tok->col, "input のプロンプトは文字列にしてください（%s が指定されています）",
+                error_tok(node->lhs->tok, "input のプロンプトは文字列にしてください（%s が指定されています）",
                          type_name(node->lhs->ty));
             }
         }
@@ -459,10 +446,10 @@ static void check_input(Node *node)
         check_expr(f->var);
         v = f->var->var;
         if (v->is_const) {
-            error_at(f->var->tok->line, f->var->tok->col, "定数 %.*s には読み込めません", v->name_len, v->name);
+            error_tok(f->var->tok, "定数 %.*s には読み込めません", v->name_len, v->name);
         }
         if (v->ty != TY_INT && v->ty != TY_FLOAT && v->ty != TY_DOUBLE && v->ty != TY_BOOL && !type_is_text(v->ty)) {
-            error_at(f->var->tok->line, f->var->tok->col, "%s の変数には読み込めません", type_name(v->ty));
+            error_tok(f->var->tok, "%s の変数には読み込めません", type_name(v->ty));
         }
         f->temp->ty = v->ty;
     }
@@ -480,21 +467,21 @@ static void check_ref_target(Var *v, Node *e, const char *what)
 
     check_expr(e);
     if (e->ty != TY_ADDR) {
-        error_at(e->tok->line, e->tok->col, "%s：ref の変数には場所（x.addr か none）を入れてください（%s が指定されています）",
+        error_tok(e->tok, "%s：ref の変数には場所（x.addr か none）を入れてください（%s が指定されています）",
                  what, type_name(e->ty));
     }
     if (e->kind == ND_NONE) {
         return;
     }
     if (e->cmp_ty != v->ty) {
-        error_at(e->tok->line, e->tok->col, "%s：%s の ref の変数には、%s の変数の場所を入れてください（%s の変数の場所が指定されています）",
+        error_tok(e->tok, "%s：%s の ref の変数には、%s の変数の場所を入れてください（%s の変数の場所が指定されています）",
                  what, type_name(v->ty), type_name(v->ty), type_name(e->cmp_ty));
     }
     if (e->kind == ND_ADDR) {
         target = e->lhs->var;
         check_ref_limits(v, target, e->tok);
         if (target->depth > v->depth) {
-            error_at(e->tok->line, e->tok->col, "%s：内側のブロックの変数 %.*s は指せません（ブロックを抜けると消えるため）",
+            error_tok(e->tok, "%s：内側のブロックの変数 %.*s は指せません（ブロックを抜けると消えるため）",
                      what, target->name_len, target->name);
         }
     }
@@ -506,20 +493,20 @@ static void check_ref_arg(Node *arg, Var *param, int index)
     Var *v;
 
     if (arg->lhs->kind != ND_VAR) {
-        error_at(arg->lhs->tok->line, arg->lhs->tok->col, "%d 番目の引数：ref には変数の名前だけを書けます（式は渡せません）", index);
+        error_tok(arg->lhs->tok, "%d 番目の引数：ref には変数の名前だけを書けます（式は渡せません）", index);
     }
     check_expr(arg->lhs);
     v = arg->lhs->var;
     check_ref_limits(param, v, arg->tok);
     if (v->is_const) {
-        error_at(arg->lhs->tok->line, arg->lhs->tok->col, "%d 番目の引数：定数 %.*s は ref で渡せません", index, v->name_len, v->name);
+        error_tok(arg->lhs->tok, "%d 番目の引数：定数 %.*s は ref で渡せません", index, v->name_len, v->name);
     }
     if (v->is_loop) {
-        error_at(arg->lhs->tok->line, arg->lhs->tok->col, "%d 番目の引数：for 文の繰り返しの変数 %.*s は ref で渡せません",
+        error_tok(arg->lhs->tok, "%d 番目の引数：for 文の繰り返しの変数 %.*s は ref で渡せません",
                  index, v->name_len, v->name);
     }
     if (v->ty != param->ty) {
-        error_at(arg->lhs->tok->line, arg->lhs->tok->col, "%d 番目の引数：ref の引数の型は %s です（%s の変数は渡せません。ref では型を変換しません）",
+        error_tok(arg->lhs->tok, "%d 番目の引数：ref の引数の型は %s です（%s の変数は渡せません。ref では型を変換しません）",
                  index, type_name(param->ty), type_name(v->ty));
     }
     arg->ty = TY_ADDR;
@@ -530,9 +517,6 @@ static void check_ref_arg(Node *arg, Var *param, int index)
 static void check_call(Node *node)
 {
     Function *fn;
-    Using *u;
-    int b;
-    const char *ns;
     Var *param;
     Node head;
     Node *cur;
@@ -545,34 +529,17 @@ static void check_call(Node *node)
     allow = allow_void;
     allow_void = 0;
 
-    fn = find_func(node->tok);
-    if (fn == NULL) {
-        /* using で省略した組み込み関数か（関数の中の using、関数の外の using の順に探す） */
-        b = -1;
-        if (node->using_ref != NULL) {
-            b = using_covers(node->using_ref, node->tok->loc, node->tok->len);
-        }
-        for (u = cur_ast->usings; b < 0 && u != NULL; u = u->next) {
-            b = using_covers(u, node->tok->loc, node->tok->len);
-        }
-        if (b < 0) {
-            ns = builtin_namespace_of(node->tok->loc, node->tok->len);
-            if (ns != NULL) {
-                error_at(node->tok->line, node->tok->col, "関数 %.*s は定義されていません（%s.%.*s と書くか、using %s.%.*s を宣言してください）",
-                         node->tok->len, node->tok->loc, ns, node->tok->len, node->tok->loc, ns, node->tok->len, node->tok->loc);
-            }
-            error_at(node->tok->line, node->tok->col, "関数 %.*s は定義されていません", node->tok->len, node->tok->loc);
-        }
-        node->kind = ND_BUILTIN;
-        node->val = b;
+    resolve_module_name(node);
+    if (node->kind == ND_BUILTIN) {
         check_builtin(node);
         return;
     }
+    fn = node->func;
     if (same_name(fn->name, fn->name_len, "main", 4)) {
-        error_at(node->tok->line, node->tok->col, "main は呼び出せません");
+        error_tok(node->tok, "main は呼び出せません");
     }
     if (node->nargs != fn->param_count) {
-        error_at(node->tok->line, node->tok->col, "関数 %.*s の引数は %d 個です（%d 個渡しています）",
+        error_tok(node->tok, "関数 %.*s の引数は %d 個です（%d 個渡しています）",
                  fn->name_len, fn->name, fn->param_count, node->nargs);
     }
 
@@ -585,13 +552,13 @@ static void check_call(Node *node)
         arg->next = NULL;
         if (param->is_ref) {
             if (arg->kind != ND_REFARG) {
-                error_at(arg->tok->line, arg->tok->col, "%d 番目の引数は ref の引数です。呼び出し側にも ref を書いてください（例：f(ref x)）", i);
+                error_tok(arg->tok, "%d 番目の引数は ref の引数です。呼び出し側にも ref を書いてください（例：f(ref x)）", i);
             }
             check_ref_arg(arg, param, i);
             cur = cur->next = arg;
         } else {
             if (arg->kind == ND_REFARG) {
-                error_at(arg->tok->line, arg->tok->col, "%d 番目の引数は値渡しの引数なので、ref は付けられません", i);
+                error_tok(arg->tok, "%d 番目の引数は値渡しの引数なので、ref は付けられません", i);
             }
             check_expected(arg, param->ty);
             snprintf(what, sizeof(what), "%d 番目の引数", i);
@@ -614,7 +581,7 @@ static void check_call(Node *node)
     node->func = fn;
     node->ty = fn->ret;
     if (fn->ret == TY_VOID && !allow) {
-        error_at(node->tok->line, node->tok->col, "関数 %.*s は戻り値がない（void）ので、値として使えません",
+        error_tok(node->tok, "関数 %.*s は戻り値がない（void）ので、値として使えません",
                  fn->name_len, fn->name);
     }
 }
@@ -629,6 +596,7 @@ static void check_expr(Node *node)
         return;
     }
 
+    if (node->kind == ND_VAR && node->var == NULL) resolve_module_name(node);
     switch (node->kind) {
     case ND_NUM:
         node->ty = TY_INT;
@@ -652,20 +620,20 @@ static void check_expr(Node *node)
     case ND_INDEX:
         check_expr(node->lhs);
         if (!type_is_text(node->lhs->ty) && !type_is_array(node->lhs->ty)) {
-            error_at(node->tok->line, node->tok->col, "添字と length は str・char に使えます（%s が指定されています）", type_name(node->lhs->ty));
+            error_tok(node->tok, "添字と length は str・char に使えます（%s が指定されています）", type_name(node->lhs->ty));
         }
         node->ty = node->kind == ND_LENGTH ? TY_INT :
             type_is_array(node->lhs->ty) ? array_element(node->lhs->ty) : TY_STR;
         if (node->kind == ND_INDEX) {
             check_expr(node->rhs);
             if (node->rhs->ty != TY_INT) {
-                error_at(node->rhs->tok->line, node->rhs->tok->col, "添字は int にしてください");
+                error_tok(node->rhs->tok, "添字は int にしてください");
             }
             if (is_const_expr(node->rhs)) {
                 long long index = eval_const(node->rhs).i;
                 long long maximum = expression_max_length(node->lhs);
                 if (index < 0 || (maximum >= 0 && index >= maximum)) {
-                    error_at(node->rhs->tok->line, node->rhs->tok->col, "%sの添字が範囲外です", type_is_array(node->lhs->ty) ? "配列" : "文字列");
+                    error_tok(node->rhs->tok, "%sの添字が範囲外です", type_is_array(node->lhs->ty) ? "配列" : "文字列");
                 }
             }
         }
@@ -674,12 +642,6 @@ static void check_expr(Node *node)
         }
         return;
     case ND_VAR:
-        if (node->var == NULL) {
-            node->var = find_global(node->tok->loc, node->tok->len);
-            if (node->var == NULL) {
-                error_at(node->tok->line, node->tok->col, "変数 %.*s は宣言されていません", node->tok->len, node->tok->loc);
-            }
-        }
         node->ty = node->var->ty;
         return;
     case ND_CALL:
@@ -694,7 +656,7 @@ static void check_expr(Node *node)
     case ND_ADDR:
         check_expr(node->lhs);
         if (node->lhs->var->is_const) {
-            error_at(node->tok->line, node->tok->col, "定数 %.*s は場所（addr）を持ちません",
+            error_tok(node->tok, "定数 %.*s は場所（addr）を持ちません",
                      node->lhs->var->name_len, node->lhs->var->name);
         }
         node->ty = TY_ADDR;
@@ -705,12 +667,12 @@ static void check_expr(Node *node)
         node->cmp_ty = TY_NONE;
         return;
     case ND_REFARG:
-        error_at(node->tok->line, node->tok->col, "ref は、自分で定義した関数の引数にだけ書けます");
+        error_tok(node->tok, "ref は、自分で定義した関数の引数にだけ書けます");
         return;
     case ND_ABS:
         check_expr(node->lhs);
         if (!is_numeric(node->lhs->ty)) {
-            error_at(node->tok->line, node->tok->col, "絶対値 |x| の中は数値（int・float・double）にしてください（%s が指定されています）",
+            error_tok(node->tok, "絶対値 |x| の中は数値（int・float・double）にしてください（%s が指定されています）",
                      type_name(node->lhs->ty));
         }
         node->ty = node->lhs->ty;
@@ -740,7 +702,7 @@ static void check_expr(Node *node)
         check_expr(node->lhs);
         check_expr(node->rhs);
         if (node->lhs->ty != TY_INT || node->rhs->ty != TY_INT) {
-            error_at(node->tok->line, node->tok->col, "%% は int 同士でのみ使えます（%s と %s）",
+            error_tok(node->tok, "%% は int 同士でのみ使えます（%s と %s）",
                      type_name(node->lhs->ty), type_name(node->rhs->ty));
         }
         node->ty = TY_INT;
@@ -749,11 +711,11 @@ static void check_expr(Node *node)
         check_expr(node->lhs);
         check_expr(node->rhs);
         if (!is_numeric(node->lhs->ty)) {
-            error_at(node->tok->line, node->tok->col, "^ の底は数値（int・float・double）にしてください（%s が指定されています）",
+            error_tok(node->tok, "^ の底は数値（int・float・double）にしてください（%s が指定されています）",
                      type_name(node->lhs->ty));
         }
         if (node->rhs->ty != TY_INT) {
-            error_at(node->tok->line, node->tok->col, "^ の指数は int にしてください（%s の指数は未対応です）",
+            error_tok(node->tok, "^ の指数は int にしてください（%s の指数は未対応です）",
                      type_name(node->rhs->ty));
         }
         node->ty = node->lhs->ty;
@@ -762,7 +724,7 @@ static void check_expr(Node *node)
     case ND_NEG:
         check_expr(node->lhs);
         if (!is_numeric(node->lhs->ty)) {
-            error_at(node->tok->line, node->tok->col, "単項 - は数値（int・float・double）にしか使えません（%s には使えません）",
+            error_tok(node->tok, "単項 - は数値（int・float・double）にしか使えません（%s には使えません）",
                      type_name(node->lhs->ty));
         }
         node->ty = node->lhs->ty;
@@ -778,11 +740,11 @@ static void check_expr(Node *node)
                 node->ty = TY_STR;
                 return;
             }
-            error_at(node->tok->line, node->tok->col, "文字列は + で str 同士を連結することしかできません（%s と %s）",
+            error_tok(node->tok, "文字列は + で str 同士を連結することしかできません（%s と %s）",
                      type_name(node->lhs->ty), type_name(node->rhs->ty));
         }
         if (!is_numeric(node->lhs->ty) || !is_numeric(node->rhs->ty)) {
-            error_at(node->tok->line, node->tok->col, "%s と %s は計算できません",
+            error_tok(node->tok, "%s と %s は計算できません",
                      type_name(node->lhs->ty), type_name(node->rhs->ty));
         }
         ty = binary_type(node->lhs, node->rhs);
@@ -799,7 +761,7 @@ static void check_expr(Node *node)
 
 static void const_error(Node *node, const char *msg)
 {
-    error_at(node->tok->line, node->tok->col, "%s", msg);
+    error_tok(node->tok, "%s", msg);
 }
 
 /* 全体を検証し、文字数と指定添字のバイト範囲を得る。index < 0 は文字数だけ。 */
@@ -1486,17 +1448,17 @@ static void check_for_step(Node *node)
     int direction;
 
     if (!is_const_expr(node->inc)) {
-        error_at(node->inc->tok->line, node->inc->tok->col,
+        error_tok(node->inc->tok,
                  "for の増分の量は定数（リテラルや const）にしてください（向きと 0 をコンパイル時に確かめるため）");
     }
     v = eval_const(node->inc);
     amount = v.ty == TY_INT ? (double)v.i : v.d;
     if (amount == 0) {
-        error_at(node->inc->tok->line, node->inc->tok->col, "for の増分が 0 です（ループが終わりません）");
+        error_tok(node->inc->tok, "for の増分が 0 です（ループが終わりません）");
     }
     direction = (amount > 0 ? 1 : -1) * node->inc_sign;
     if (direction != node->val) {
-        error_at(node->inc->tok->line, node->inc->tok->col, "増分の向きが範囲の向きと逆です（%s範囲なので、ループ変数を%sしてください）",
+        error_tok(node->inc->tok, "増分の向きが範囲の向きと逆です（%s範囲なので、ループ変数を%sしてください）",
                  node->val > 0 ? "増やしていく" : "減らしていく", node->val > 0 ? "増や" : "減ら");
     }
 }
@@ -1583,7 +1545,7 @@ static void check_stmt(Node *node)
                 return;         /* ほかの const から参照されて計算済み */
             }
             if (node->var->const_state == 1) {
-                error_at(node->var->tok->line, node->var->tok->col, "const %.*s の定義が循環しています",
+                error_tok(node->var->tok, "const %.*s の定義が循環しています",
                          node->var->name_len, node->var->name);
             }
             node->var->const_state = 1;
@@ -1607,15 +1569,14 @@ static void check_stmt(Node *node)
         }
         return;
     case ND_USING:
-        check_using_names(node->using_ref);
-        return;
+        return; /* 読み込み後に全スコープを検証済み */
     case ND_ADDR_ASSIGN:
         if (!node->var->is_ref) {
-            error_at(node->tok->line, node->tok->col, "%.*s は ref の変数ではないので、場所（addr）は変えられません",
+            error_tok(node->tok, "%.*s は ref の変数ではないので、場所（addr）は変えられません",
                      node->var->name_len, node->var->name);
         }
         if (node->var->is_param) {
-            error_at(node->tok->line, node->tok->col, "ref の引数 %.*s の指す先は変えられません（呼び出し側の変数に固定されます）",
+            error_tok(node->tok, "ref の引数 %.*s の指す先は変えられません（呼び出し側の変数に固定されます）",
                      node->var->name_len, node->var->name);
         }
         check_ref_target(node->var, node->lhs, "場所の代入");
@@ -1659,13 +1620,13 @@ static void check_stmt(Node *node)
     case ND_RETURN:
         if (cur_func->ret == TY_VOID) {
             if (node->lhs != NULL) {
-                error_at(node->lhs->tok->line, node->lhs->tok->col, "void の関数 %.*s は値を返せません",
+                error_tok(node->lhs->tok, "void の関数 %.*s は値を返せません",
                          cur_func->name_len, cur_func->name);
             }
             return;
         }
         if (node->lhs == NULL) {
-            error_at(node->tok->line, node->tok->col, "return に値が必要です（関数 %.*s の戻り値の型は %s）",
+            error_tok(node->tok, "return に値が必要です（関数 %.*s の戻り値の型は %s）",
                      cur_func->name_len, cur_func->name, type_name(cur_func->ret));
         }
         check_expected(node->lhs, cur_func->ret);
@@ -1694,29 +1655,6 @@ static void ensure_const(Var *v)
     check_stmt(v->decl);
 }
 
-/* using で省略できるようになる名前が、自分で定義した関数や const と重ならないか */
-static void check_using_names(Using *list)
-{
-    Using *u;
-    Function *fn;
-    Var *g;
-
-    for (u = list; u != NULL; u = u->next) {
-        for (fn = cur_ast->funcs; fn != NULL; fn = fn->next) {
-            if (using_covers(u, fn->name, fn->name_len) >= 0) {
-                error_at(u->ns->line, u->ns->col, "using で省略できる %.*s が、%d 行目で定義した関数と同じ名前です",
-                         fn->name_len, fn->name, fn->tok->line);
-            }
-        }
-        for (g = cur_ast->global_vars; g != NULL; g = g->next) {
-            if (using_covers(u, g->name, g->name_len) >= 0) {
-                error_at(u->ns->line, u->ns->col, "using で省略できる %.*s が、%d 行目の const と同じ名前です",
-                         g->name_len, g->name, g->tok->line);
-            }
-        }
-    }
-}
-
 /* 名前の重なりと main を確かめる */
 static void check_names(Ast *ast)
 {
@@ -1726,36 +1664,37 @@ static void check_names(Ast *ast)
     Var *g;
     Function *main_fn;
 
-    check_using_names(ast->usings);
+    validate_module_names(ast);
 
     main_fn = NULL;
     for (fn = ast->funcs; fn != NULL; fn = fn->next) {
         for (other = ast->funcs; other != fn; other = other->next) {
-            if (same_name(fn->name, fn->name_len, other->name, other->name_len)) {
-                error_at(fn->tok->line, fn->tok->col, "関数 %.*s は %d 行目ですでに定義されています",
+            if (fn->tok->source->module == other->tok->source->module &&
+                same_name(fn->name, fn->name_len, other->name, other->name_len)) {
+                error_tok(fn->tok, "関数 %.*s は %d 行目ですでに定義されています",
                          fn->name_len, fn->name, other->tok->line);
             }
         }
-        g = find_global(fn->name, fn->name_len);
+        g = find_global(fn->tok->source->module, fn->name, fn->name_len);
         if (g != NULL) {
-            error_at(fn->tok->line, fn->tok->col, "関数 %.*s は %d 行目の const と同じ名前です",
+            error_tok(fn->tok, "関数 %.*s は %d 行目の const と同じ名前です",
                      fn->name_len, fn->name, g->tok->line);
         }
         for (v = fn->params; v != NULL; v = v->next) {
-            g = find_global(v->name, v->name_len);
+            g = find_global(fn->tok->source->module, v->name, v->name_len);
             if (g != NULL) {
-                error_at(v->tok->line, v->tok->col, "引数 %.*s は %d 行目の const と同じ名前です",
+                error_tok(v->tok, "引数 %.*s は %d 行目の const と同じ名前です",
                          v->name_len, v->name, g->tok->line);
             }
         }
         for (v = fn->locals; v != NULL; v = v->next) {
-            g = find_global(v->name, v->name_len);
+            g = find_global(fn->tok->source->module, v->name, v->name_len);
             if (g != NULL) {
-                error_at(v->tok->line, v->tok->col, "%.*s は %d 行目の const と同じ名前です",
+                error_tok(v->tok, "%.*s は %d 行目の const と同じ名前です",
                          v->name_len, v->name, g->tok->line);
             }
         }
-        if (same_name(fn->name, fn->name_len, "main", 4)) {
+        if (fn->tok->source->module == ast->entry && same_name(fn->name, fn->name_len, "main", 4)) {
             main_fn = fn;
         }
     }
@@ -1763,7 +1702,7 @@ static void check_names(Ast *ast)
         fatal("main 関数がありません（int main(); が必要です）");
     }
     if (main_fn->ret != TY_INT || main_fn->param_count != 0) {
-        error_at(main_fn->tok->line, main_fn->tok->col, "main 関数は int main(); の形（戻り値 int、引数なし）で定義してください");
+        error_tok(main_fn->tok, "main 関数は int main(); の形（戻り値 int、引数なし）で定義してください");
     }
 }
 
@@ -1789,7 +1728,7 @@ void typecheck(Ast *ast)
         cur_func = fn;
         check_stmts(fn->body);
         if (fn->ret != TY_VOID && !same_name(fn->name, fn->name_len, "main", 4) && !stmts_return(fn->body)) {
-            error_at(fn->tok->line, fn->tok->col, "関数 %.*s には、最後まで進んだときの return がありません（すべての道筋で値を返してください）",
+            error_tok(fn->tok, "関数 %.*s には、最後まで進んだときの return がありません（すべての道筋で値を返してください）",
                      fn->name_len, fn->name);
         }
     }

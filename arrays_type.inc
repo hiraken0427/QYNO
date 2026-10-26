@@ -7,11 +7,11 @@ static void check_dims(ArrayDim *dims)
             Value v;
             check_expr(dims->bound);
             if (dims->bound->ty != TY_INT || !is_const_expr(dims->bound)) {
-                error_at(dims->tok->line, dims->tok->col, "配列の上限はコンパイル時に確定する非負の int にしてください");
+                error_tok(dims->tok, "配列の上限はコンパイル時に確定する非負の int にしてください");
             }
             v = eval_const(dims->bound);
             if (v.i < 0 || v.i > (LLONG_MAX - 64) / 8) {
-                error_at(dims->tok->line, dims->tok->col, "配列の上限が負か、必要な領域が int の範囲を超えます");
+                error_tok(dims->tok, "配列の上限が負か、必要な領域が int の範囲を超えます");
             }
             dims->limit = v.i;
         }
@@ -35,11 +35,11 @@ static void check_array_literal(Node *node, Type expected)
                     if (element == TY_DOUBLE || item->ty == TY_DOUBLE) element = TY_DOUBLE;
                     else if (element == TY_FLOAT || item->ty == TY_FLOAT) element = TY_FLOAT;
                 } else if (type_is_text(element) && type_is_text(item->ty)) element = TY_STR;
-                else error_at(item->tok->line, item->tok->col, "配列の要素型と次元数をそろえてください");
+                else error_tok(item->tok, "配列の要素型と次元数をそろえてください");
             }
         }
         if (element == TY_NONE) {
-            error_at(node->tok->line, node->tok->col, "空の配列リテラルには、宣言や引数などの要素型の文脈が必要です");
+            error_tok(node->tok, "空の配列リテラルには、宣言や引数などの要素型の文脈が必要です");
         }
     }
     for (item = node->lhs; item != NULL; item = next) {
@@ -51,7 +51,7 @@ static void check_array_literal(Node *node, Type expected)
     node->lhs = head.next;
     node->ty = array_type(element);
     if (array_rank(node->ty) > MAX_ARRAY_RANK) {
-        error_at(node->tok->line, node->tok->col, "配列の次元数が上限を超えています");
+        error_tok(node->tok, "配列の次元数が上限を超えています");
     }
 }
 
@@ -91,7 +91,7 @@ static void check_ref_limits(Var *view, Var *target, Token *where)
     while (required != NULL && actual != NULL) {
         if (required->checked && actual->checked && required->limit >= 0 &&
             (actual->limit < 0 || actual->limit > required->limit)) {
-            error_at(where->line, where->col, "ref 配列の上限が宣言された条件を満たしません");
+            error_tok(where, "ref 配列の上限が宣言された条件を満たしません");
         }
         required = required->next;
         actual = actual->next;
@@ -130,16 +130,16 @@ static Var *check_place(Node *place)
     Node *root = place;
     while (root->kind == ND_INDEX) {
         if (root != place && type_is_text(root->lhs->ty)) {
-            error_at(root->tok->line, root->tok->col, "文字列の添字は更新先の最後に1回だけ書けます");
+            error_tok(root->tok, "文字列の添字は更新先の最後に1回だけ書けます");
         }
         root = root->lhs;
     }
     if (root->kind != ND_VAR) {
-        error_at(root->tok->line, root->tok->col, "更新先は変数、または変数から始まる添字にしてください");
+        error_tok(root->tok, "更新先は変数、または変数から始まる添字にしてください");
     }
     check_expr(root);
     if (root->var->is_const) {
-        error_at(root->tok->line, root->tok->col, "const の配列・文字列とその要素は変更できません");
+        error_tok(root->tok, "const の配列・文字列とその要素は変更できません");
     }
     return root->var;
 }
@@ -151,14 +151,14 @@ static void check_method(Node *node)
     allow_void = 0;
     check_expr(node->lhs);
     if (!type_is_array(node->lhs->ty)) {
-        error_at(node->tok->line, node->tok->col, "add・remove_at・clear は配列に使ってください");
+        error_tok(node->tok, "add・remove_at・clear は配列に使ってください");
     }
     check_place(node->lhs);
     if (node->val == AM_ADD && expression_max_length(node->lhs) == 0) {
         const_error(node, "上限0の配列には追加できません");
     }
     if (node->nargs != expected) {
-        error_at(node->tok->line, node->tok->col, "この配列操作の引数は %d 個です", expected);
+        error_tok(node->tok, "この配列操作の引数は %d 個です", expected);
     }
     if (expected) {
         Type to = node->val == AM_ADD ? array_element(node->lhs->ty) : TY_INT;
@@ -173,7 +173,7 @@ static void check_method(Node *node)
         }
     }
     node->ty = TY_VOID;
-    if (!allow) error_at(node->tok->line, node->tok->col, "配列の追加・削除は値を返しません");
+    if (!allow) error_tok(node->tok, "配列の追加・削除は値を返しません");
 }
 
 static void check_store(Node *node)
@@ -181,11 +181,11 @@ static void check_store(Node *node)
     Type destination;
     check_expr(node->lhs);
     if (node->lhs->kind == ND_LENGTH) {
-        error_at(node->tok->line, node->tok->col, "length は読み取り専用です");
+        error_tok(node->tok, "length は読み取り専用です");
     }
     check_place(node->lhs);
     if (node->lhs->kind != ND_INDEX) {
-        error_at(node->tok->line, node->tok->col, "length は読み取り専用です。代入できる添字を指定してください");
+        error_tok(node->tok, "length は読み取り専用です。代入できる添字を指定してください");
     }
     destination = type_is_text(node->lhs->lhs->ty) ? TY_CHAR : node->lhs->ty;
     if (node->val == UPDATE_SET) {
