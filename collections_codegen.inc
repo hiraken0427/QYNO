@@ -182,6 +182,15 @@ static void gen_array_copy_runtime(void)
     x64_call(array_copy_label);
     x64_jmp(store);
     x64_bind(scalar);
+    x64_load(RCX, RDI, 8);
+    { Model *m;
+      for (m = emitting_models; m; m = m->next) {
+          int next_model = rt_label("copy.not.model");
+          rt_cmp(RCX, m->ty); x64_jcc(CC_NZ, next_model);
+          x64_call(m->copy_label); x64_jmp(store);
+          x64_bind(next_model);
+      }
+    }
     x64_bind(store);
     rt_load(RDX, 6); rt_load(RCX, 5);
     x64_shl_imm(RCX, 3);
@@ -227,6 +236,16 @@ static void gen_array_add_runtime(void)
     x64_call(array_copy_label);
     rt_save(2, RAX);
     x64_bind(scalar);
+    rt_load(RAX, 1); x64_load(RDX, RAX, 16); x64_load(RCX, RDX, 8);
+    { Model *m;
+      for (m = emitting_models; m; m = m->next) {
+          int next_model = rt_label("add.not.model");
+          rt_cmp(RCX, m->ty); x64_jcc(CC_NZ, next_model);
+          rt_load(RAX, 2); x64_call(m->copy_label); rt_save(2, RAX);
+          x64_bind(next_model);
+          rt_load(RAX, 1); x64_load(RDX, RAX, 16); x64_load(RCX, RDX, 8);
+      }
+    }
     rt_load(RAX, 1);
     x64_load(RCX, RAX, 0);
     x64_load(RDX, RAX, 8);
@@ -363,6 +382,14 @@ static void gen_array_equal_runtime(void)
     x64_test(RAX, RAX); x64_jcc(CC_Z, no); x64_jmp(next);
     x64_bind(scalar);
     rt_load(RCX, 6);
+    { Model *m;
+      for (m = emitting_models; m; m = m->next) {
+          int next_model = rt_label("equal.not.model");
+          rt_cmp(RCX, m->ty); x64_jcc(CC_NZ, next_model);
+          x64_call(m->equal_label); x64_test(RAX, RAX); x64_jcc(CC_Z, no); x64_jmp(next);
+          x64_bind(next_model);
+      }
+    }
     rt_cmp(RCX, TY_STR); x64_jcc(CC_Z, text_value);
     rt_cmp(RCX, TY_CHAR); x64_jcc(CC_Z, text_value);
     rt_cmp(RCX, TY_FLOAT); x64_jcc(CC_Z, float_value);
@@ -521,6 +548,14 @@ static void gen_array_print_runtime(void)
     rt_load(RCX, 3); rt_cmp(RCX, 1); x64_jcc(CC_Z, scalar);
     x64_call(array_print_label); x64_jmp(next);
     x64_bind(scalar); rt_load(RCX, 4);
+    { Model *m;
+      for (m = emitting_models; m; m = m->next) {
+          int next_model = rt_label("print.not.model");
+          rt_cmp(RCX, m->ty); x64_jcc(CC_NZ, next_model);
+          x64_call(m->print_label); x64_jmp(next);
+          x64_bind(next_model);
+      }
+    }
     for (i = TY_INT; i <= TY_CHAR; i++) { rt_cmp(RCX, i); x64_jcc(CC_Z, primitive[i]); }
     x64_jmp(next);
     for (i = TY_INT; i <= TY_CHAR; i++) {

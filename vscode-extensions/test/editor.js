@@ -44,6 +44,19 @@ async function run() {
     items = await completion('\tgri'); assert.ok(items.some(i=>i.label==='grid')); checks++;
     items = await completion('\tmat'); assert.ok(!items.some(i=>i.label==='matrix')); checks++;
     items = await completion('\t// fs.'); assert.ok(!items.some(i=>i.label==='readline')); checks++;
+    const modelDoc = await vscode.workspace.openTextDocument({ language: 'qyno', content:
+        'model Point;\n\tdouble x = 0.0\n\tdouble y = 0.0\n\tvoid move(double dx, double dy);\n\t\tthis.x += dx\n\t\tthis.y += dy\nint main();\n\tPoint p = {x=3.0, y=4.0}\n\tp.move(1.0, 2.0)\n\treturn 0\n' });
+    await vscode.window.showTextDocument(modelDoc);
+    const members = await vscode.commands.executeCommand('vscode.executeCompletionItemProvider', modelDoc.uri, new vscode.Position(8,3));
+    assert.ok(members.items.some(i=>i.label==='x')); assert.ok(members.items.some(i=>i.label==='move')); checks++;
+    const thisMembers = await vscode.commands.executeCommand('vscode.executeCompletionItemProvider', modelDoc.uri, new vscode.Position(4,7));
+    assert.ok(thisMembers.items.some(i=>i.label==='y')); checks++;
+    const methodDefinitions = await vscode.commands.executeCommand('vscode.executeDefinitionProvider',modelDoc.uri,new vscode.Position(8,5));
+    assert.ok(methodDefinitions.some(d=>(d.range || d.targetSelectionRange).start.line===3)); checks++;
+    const methodHelp = await vscode.commands.executeCommand('vscode.executeSignatureHelpProvider',modelDoc.uri,new vscode.Position(8,14));
+    assert.equal(methodHelp.activeParameter,1); assert.equal(methodHelp.signatures[0].label,'void p.move(double dx, double dy)'); checks++;
+    const modelOutline = await vscode.commands.executeCommand('vscode.executeDocumentSymbolProvider',modelDoc.uri);
+    assert.ok(modelOutline.find(s=>s.name==='Point').children.some(s=>s.name==='move')); checks++;
     console.log(`QYNO VS Code integration: ${checks} checks passed`);
 }
 module.exports={run};

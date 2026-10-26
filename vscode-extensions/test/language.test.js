@@ -113,3 +113,42 @@ test('stdlib catalog matches 0.25.2 functions and close requirements', () => {
 test('incomplete source remains usable without parser errors', () => {
     for (const text of ['void fn(ref int ma¦','int main();\n\tio.¦','int main();\n\tprint("{ma¦','using ¦','import geometry.¦']) assert.doesNotThrow(()=>items(text));
 });
+
+const modelSource = 'model Point;\n\tdouble x = 0.0\n\tdouble y = 0.0\n\tvoid move(double dx, double dy);\n\t\tthis.x += dx\n\t\tthis.y += dy';
+test('model types, instance fields and methods are completed', () => {
+    const source = modelSource+'\nint main();\n\tPoint p = {x=3.0}\n\tp.¦';
+    const result = items(source);
+    for (const name of ['x','y','move']) assert.ok(result.some(i=>i.label===name),name);
+    assert.equal(result.find(i=>i.label==='move').insertText,'move(${1:dx}, ${2:dy})');
+    assert.ok(!labels(modelSource+'\nint main();\n\t¦').includes('move'));
+    assert.ok(labels(modelSource+'\nint main();\n\t¦').includes('Point'));
+});
+test('this is scoped to model methods and fields require a receiver', () => {
+    assert.ok(labels(modelSource+'\n\tvoid other();\n\t\tthis.¦').includes('x'));
+    assert.ok(!labels(modelSource+'\nint main();\n\t¦').includes('this'));
+    assert.ok(!labels(modelSource+'\n\tvoid other();\n\t\t¦').includes('x'));
+});
+test('nested model and array element member completion', () => {
+    const prefix=modelSource+'\nmodel Box;\n\tPoint point\n\tPoint points[]\nint main();\n\tBox box\n\t';
+    assert.ok(labels(prefix+'box.point.¦').includes('move'));
+    assert.ok(labels(prefix+'box.points.¦').includes('add'));
+    assert.ok(labels(prefix+'box.points[0].¦').includes('x'));
+});
+test('model methods provide definitions and signatures', () => {
+    const prefix=modelSource+'\nint main();\n\tPoint p\n\t';
+    assert.equal(at(prefix+'p.mo¦ve(1.0, 2.0)').line,3);
+    assert.equal(hint(prefix+'p.move(1.0, ¦').activeParameter,1);
+    assert.equal(hint(prefix+'p.move(1.0, ¦').label,'void p.move(double dx, double dy)');
+    assert.equal(at(prefix+'p.x¦').type,'double');
+});
+test('imported model types and model parameters are supported', () => {
+    const modules={'geometry.circle':modelSource};
+    assert.ok(labels('import geometry.circle\nusing geometry.circle as geo\nint main();\n\tgeo.Point p\n\tp.¦',modules).includes('move'));
+    assert.ok(labels('import geometry.circle\nvoid change(ref geometry.circle.Point p);\n\tp.¦',modules).includes('x'));
+});
+test('nested imported model fields resolve types in their defining module', () => {
+    const f=fixture('import geometry.circle\nusing geometry.circle as geo\nint main();\n\tgeo.Box box\n\tbox.point.¦');
+    f.project.modules.set('geometry.circle', require('../src/analysis').analyze('import points\nusing points\nmodel Box;\n\tPoint point','file:///geometry.circle.qy'));
+    f.project.modules.set('points', require('../src/analysis').analyze(modelSource,'file:///points.qy'));
+    assert.ok(complete(f.project,f.line,f.character).some(i=>i.label==='move'));
+});

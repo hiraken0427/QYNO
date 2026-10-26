@@ -6,6 +6,17 @@
   ],
   "patterns": [
     {
+      "match": "^\\s*(model)\\s+([A-Za-z_]\\w*)",
+      "captures": {
+        "1": {
+          "name": "storage.type.qyno"
+        },
+        "2": {
+          "name": "entity.name.type.qyno"
+        }
+      }
+    },
+    {
       "match": "//.*$",
       "name": "comment.line.double-slash.qyno"
     },
@@ -158,6 +169,21 @@
       "name": "entity.name.namespace.qyno"
     },
     {
+      "match": "\\bthis\\b",
+      "name": "variable.language.this.qyno"
+    },
+    {
+      "match": "\\b([A-Za-z_]\\w*(?:\\.[A-Za-z_]\\w*)*)\\s+([A-Za-z_]\\w*)",
+      "captures": {
+        "1": {
+          "name": "storage.type.qyno"
+        },
+        "2": {
+          "name": "variable.other.qyno"
+        }
+      }
+    },
+    {
       "include": "#numbers"
     },
     {
@@ -221,7 +247,7 @@
           "name": "keyword.operator.qyno"
         },
         {
-          "match": "[;,.()\\[\\]]",
+          "match": "[;,.()\\[\\]{}]",
           "name": "punctuation.qyno"
         }
       ]

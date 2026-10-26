@@ -58,7 +58,15 @@ function environment(project, line, character) {
         else if (target) names.set(u.path.split('.').at(-1), target);
     }
     for (const symbol of visibleSymbols(model, line, character)) names.set(symbol.name, symbol);
-    return { names, resolve, members };
+    const modelType = symbol => {
+        if (!symbol || symbol.rank) return undefined;
+        const source = symbol.uri && symbol.uri !== model.uri ? [...project.modules.values()].find(m => m.uri === symbol.uri) : model;
+        const local = source?.symbols.find(s => s.kind === 'model' && s.scopeId === 0 && s.name === symbol.type);
+        if (local) return local;
+        const found = source && source !== model ? environment({ ...project, model: source }, symbol.line || 0, source.lines[symbol.line || 0]?.length || 0).resolve(symbol.type || '') : resolve(symbol.type || '');
+        return found?.kind === 'model' ? found : undefined;
+    };
+    return { names, resolve, members, modelType };
 }
 
 function snippetCall(symbol, name = symbol.name) {
@@ -66,20 +74,33 @@ function snippetCall(symbol, name = symbol.name) {
     return `${name}(${symbol.params.map((p, i) => `${p.ref ? 'ref ' : ''}\${${i + 1}:${p.placeholder || p.default || p.name}}`).join(', ')})`;
 }
 function completion(symbol, label = symbol.name) {
-    return { label, kind: symbol.kind, detail: symbol.kind === 'function' ? functionLabel(symbol, label) : symbol.type ? typeLabel({ ...symbol, name: label }) : symbol.path,
+    return { label, kind: symbol.kind, detail: symbol.kind === 'model' ? `model ${label}` : symbol.kind === 'function' ? functionLabel(symbol, label) : symbol.type ? typeLabel({ ...symbol, name: label }) : symbol.path,
         documentation: symbol.documentation || (symbol.kind === 'function' ? 'ユーザー定義関数' : symbol.kind === 'constant' ? '定数' : 'ユーザー定義の変数'),
         insertText: symbol.kind === 'function' ? snippetCall(symbol, label) : label,
         snippet: symbol.kind === 'function', symbol };
 }
+function receiverSymbol(env, text) {
+    const match = /([A-Za-z_]\w*(?:(?:\[[^\]\n]*\])|(?:\.[A-Za-z_]\w*))*)\.?$/.exec(text);
+    if (!match) return undefined;
+    const parts = match[1].match(/[A-Za-z_]\w*|\[[^\]]*\]/g);
+    let symbol = env.names.get(parts.shift());
+    for (const part of parts) {
+        if (!symbol) return undefined;
+        if (part.startsWith('[')) {
+            if (!symbol.rank) return undefined;
+            symbol = { ...symbol, rank: symbol.rank - 1 };
+        } else if (part === 'value') { /* same value type */ }
+        else symbol = env.modelType(symbol)?.members.find(m => m.name === part);
+    }
+    return symbol;
+}
 function receiverMembers(project, env, text) {
-    const match = /([A-Za-z_]\w*)((?:\[[^\]\n]*\])*)(?:\.value)?\.$/.exec(text);
-    if (!match) return [];
-    const symbol = env.names.get(match[1]);
-    if (!symbol || !['variable', 'constant', 'parameter'].includes(symbol.kind)) return [];
-    const indexed = (match[2].match(/\[/g) || []).length;
-    const rank = Math.max(0, (symbol.rank || 0) - indexed);
-    const result = [];
-    if (!indexed && !text.endsWith('.value.')) result.push(properties.addr, { ...properties.value, type: symbol.type });
+    const symbol = receiverSymbol(env, text.slice(0, -1));
+    if (!symbol || !['variable', 'constant', 'parameter', 'field'].includes(symbol.kind)) return [];
+    const rank = symbol.rank || 0, result = [];
+    if (/^[A-Za-z_]\w*\.$/.test(text)) result.push(properties.addr, { ...properties.value, type: symbol.type });
+    const model = env.modelType(symbol);
+    if (model) result.push(...model.members);
     if (rank || ['str', 'char'].includes(symbol.type)) result.push(properties.length);
     if (rank && symbol.kind !== 'constant') result.push(properties.add, properties.remove_at, properties.clear);
     return result;
@@ -111,7 +132,7 @@ function complete(project, line, character) {
         if (!items.length) items = receiverMembers(project, env, before).map(s => completion(s));
     } else {
         items = [...env.names].map(([label, s]) => completion(s, label));
-        for (const keyword of KEYWORD_COMPLETIONS) if (!env.names.has(keyword)) items.push({ label: keyword, kind: TYPES.has(keyword) ? 'type' : 'keyword', insertText: keyword, detail: 'QYNO 0.25.2' });
+        for (const keyword of KEYWORD_COMPLETIONS) if (!env.names.has(keyword)) items.push({ label: keyword, kind: TYPES.has(keyword) ? 'type' : 'keyword', insertText: keyword, detail: 'QYNO 0.26.0' });
     }
     // A completion immediately before '(' must not insert a second argument list.
     const next = project.model.lines[line].slice(character).match(/^\s*\(/);
@@ -132,7 +153,8 @@ function symbolAt(project, line, character) {
     const after = full.slice(before.length), stop = after.indexOf('.');
     const path = stop < 0 ? full : full.slice(0, before.length + stop);
     const env = environment(project, line, character);
-    return env.resolve(path) || env.names.get(path);
+    const qualified = /([A-Za-z_]\w*(?:(?:\[[^\]\n]*\])|(?:\.[A-Za-z_]\w*))*)$/.exec(text.slice(context.start, start + path.length))?.[1] || path;
+    return env.resolve(path) || env.names.get(path) || receiverSymbol(env, qualified);
 }
 
 /** Find the innermost unmatched call; strings, interpolations and arrays are lexical. */
@@ -146,6 +168,8 @@ function callAt(model, line, character) {
         if (value === '(') {
             let j = i - 1, path = '';
             while (j >= 0 && (ts[j].kind === 'id' || ts[j].value === '.')) path = ts[j--].value + path;
+            const prefix = model.lines[line].slice(context.start, ts[i].start);
+            path = /([A-Za-z_]\w*(?:(?:\[[^\]\n]*\])|(?:\.[A-Za-z_]\w*))*)$/.exec(prefix)?.[1] || path;
             stack.push({ kind: '(', path, argument: 0 });
         } else if (value === '[') stack.push({ kind: '[' });
         else if (value === ')' || value === ']') stack.pop();
@@ -157,7 +181,7 @@ function signature(project, line, character) {
     const call = callAt(project.model, line, character);
     if (!call) return undefined;
     const env = environment(project, line, character);
-    let symbol = env.resolve(call.path) || env.names.get(call.path);
+    let symbol = env.resolve(call.path) || env.names.get(call.path) || receiverSymbol(env, call.path);
     if (!symbol && call.path.includes('.')) {
         const last = call.path.split('.').at(-1);
         const candidate = properties[last];

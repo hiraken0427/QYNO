@@ -146,7 +146,7 @@ static const char *lex_basic(const char *p, int line, const char *line_start, To
     }
 
     /* 1文字の記号 */
-    if (*p != '\0' && strchr("+-*/%^();=<>!,|.[]", *p) != NULL) {
+    if (*p != '\0' && strchr("+-*/%^();=<>!,|.[]{}", *p) != NULL) {
         *cur = (*cur)->next = new_token(TK_PUNCT, p, 1, line, col_of(p, line_start));
         return p + 1;
     }
@@ -300,8 +300,8 @@ Token *tokenize(const char *src)
         /* 整数・識別子・記号 */
         next = lex_basic(p, line, line_start, &cur);
         if (next != NULL) {
-            if (*p == '[') brackets++;
-            if (*p == ']' && brackets > 0) brackets--;
+            if (*p == '[' || *p == '{') brackets++;
+            if ((*p == ']' || *p == '}') && brackets > 0) brackets--;
             p = next;
             continue;
         }

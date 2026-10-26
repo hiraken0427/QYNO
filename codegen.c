@@ -98,6 +98,7 @@ static int array_add_label, array_remove_label, array_clear_label;
 static int array_equal_label, array_print_label, quoted_string_label;
 static int array_ref_label, string_get_label, string_replace_label;
 static Function *emitting_function;
+static Model *emitting_models;
 static int concat_label;
 static int str_eq_label;
 static int utf8_next_checked_label;
@@ -1556,6 +1557,12 @@ static void gen_compare(Node *cmp)
 
     kind = (CmpKind)cmp->val;
     ty = cmp->cmp_ty;
+    if (type_is_model(ty)) {
+        x64_mov(RCX, RAX); x64_mov(RAX, RDI); x64_mov(RDI, RCX);
+        x64_call(type_model(ty)->equal_label);
+        if (kind == CMP_NE) x64_xor_imm(RAX, 1);
+        return;
+    }
     if (type_is_array(ty)) {
         x64_mov(RCX, RAX); x64_mov(RAX, RDI); x64_mov(RDI, RCX);
         x64_call(array_equal_label);
@@ -1646,12 +1653,14 @@ static void gen_chain(Node *node)
     end = chained ? new_label("cmp.end") : -1;
 
     gen_expr(node->lhs->lhs);
+    if (type_is_model(node->lhs->lhs->ty)) x64_call(type_model(node->lhs->lhs->ty)->copy_label);
     if (type_is_array(node->lhs->lhs->ty)) {
         x64_load(RDI, RAX, 16); x64_xor(RSI, RSI); x64_call(array_copy_label);
     }
     push();
     for (cmp = node->lhs; cmp != NULL; cmp = cmp->next) {
         gen_expr(cmp->rhs);
+        if (cmp->next != NULL && type_is_model(cmp->rhs->ty)) x64_call(type_model(cmp->rhs->ty)->copy_label);
         if (cmp->next != NULL && type_is_array(cmp->rhs->ty)) {
             x64_load(RDI, RAX, 16); x64_xor(RSI, RSI); x64_call(array_copy_label);
         }
@@ -4886,6 +4895,7 @@ static void gen_real_to_float(int range)
     x64_jcc(CC_AE, range);
 }
 
+#include "models_codegen.inc"
 #include "places_codegen.inc"
 
 /*
@@ -5302,7 +5312,7 @@ static void gen_load_var(Var *v, Token *tok)
 /* rax を変数に書く（ref の変数は、使う場所を通して書く。r11 を使う） */
 static void gen_store_var(Var *v, Token *tok)
 {
-    if (type_is_array(v->ty)) {
+    if (type_is_array(v->ty) || type_is_model(v->ty)) {
         push();
         gen_load_var(v, tok);
         collection_context(tok);
@@ -5396,6 +5406,12 @@ static void gen_call(Node *node)
 static void gen_expr(Node *node)
 {
     switch (node->kind) {
+    case ND_MODEL_NEW:
+        x64_xor(RAX, RAX); x64_call(type_model(node->ty)->copy_label); return;
+    case ND_MODEL_INIT:
+        gen_model_init(node); return;
+    case ND_MODEL_COPY:
+        gen_expr(node->lhs); x64_call(type_model(node->ty)->copy_label); return;
     case ND_ARRAY_LITERAL:
         gen_array_literal(node);
         return;
@@ -5430,7 +5446,7 @@ static void gen_expr(Node *node)
         return;
     case ND_INDEX:
     case ND_LENGTH:
-        if (type_is_array(node->lhs->ty)) {
+        if (type_is_array(node->lhs->ty) || type_is_model(node->lhs->ty)) {
             gen_expr(node->lhs);
             if (node->kind == ND_LENGTH) x64_load(RAX, RAX, 0);
             else {
@@ -5467,6 +5483,10 @@ static void gen_expr(Node *node)
         x64_xor(RAX, RAX);
         return;
     case ND_REFARG:
+        if (node->rhs) {
+            gen_expr(node->rhs);
+            x64_store(RBP, -node->lhs->var->offset, RAX);
+        }
         if (node->lhs->kind == ND_INDEX) gen_element_ref(node);
         else gen_var_addr(node->lhs->var, node->tok, 1);
         if (type_is_array(node->lhs->ty)) {
@@ -5527,6 +5547,7 @@ static void gen_print_value(Node *expr)
 {
     gen_expr(expr);
     if (type_is_array(expr->ty)) { x64_call(array_print_label); return; }
+    if (type_is_model(expr->ty)) { x64_call(type_model(expr->ty)->print_label); return; }
     switch (expr->ty) {
     case TY_INT:
         x64_call(print_int_label);
@@ -5853,6 +5874,7 @@ static void gen_stmt(Node *node)
         return;
     case ND_ASSIGN:
         gen_expr(node->lhs);
+        if (type_is_model(node->var->ty)) x64_call(type_model(node->var->ty)->copy_label);
         if (type_is_array(node->var->ty)) {
             push(); gen_load_var(node->var, node->tok); x64_load(RDI, RAX, 16); pop(RAX);
             collection_context(node->tok); x64_xor(RSI, RSI); x64_call(array_copy_label);
@@ -5964,7 +5986,18 @@ void codegen(Ast *ast, Program *out_prog, FILE *out_text, Target out_target)
     label_seq = 0;
     loop_depth = 0;
 
+    emitting_models = ast->models;
     x64_begin(prog, text);
+    { Model *m;
+      for (m = ast->models; m; m = m->next) {
+          snprintf(label_name, sizeof(label_name), ".L.model.%d.copy", m->ty);
+          m->copy_label = x64_new_label(label_name);
+          snprintf(label_name, sizeof(label_name), ".L.model.%d.equal", m->ty);
+          m->equal_label = x64_new_label(label_name);
+          snprintf(label_name, sizeof(label_name), ".L.model.%d.print", m->ty);
+          m->print_label = x64_new_label(label_name);
+      }
+    }
     newline_offset = prog_add_data(prog, "\n", 1);
     empty_str_offset = prog_add_str(prog, "", 0);
     zero_char_offset = prog_add_str(prog, "\0", 1);
@@ -5974,7 +6007,7 @@ void codegen(Ast *ast, Program *out_prog, FILE *out_text, Target out_target)
     for (fn = ast->funcs; fn != NULL; fn = fn->next) {
         snprintf(label_name, sizeof(label_name), ".L.module.%d.function.%d.%.*s", fn->tok->source->module->id, function_index++, fn->name_len, fn->name);
         fn->label = x64_new_label(label_name);
-        if (fn->name_len == 4 && strncmp(fn->name, "main", 4) == 0) {
+        if (!fn->model && fn->name_len == 4 && strncmp(fn->name, "main", 4) == 0) {
             main_label = fn->label;
         }
     }
@@ -6094,6 +6127,7 @@ void codegen(Ast *ast, Program *out_prog, FILE *out_text, Target out_target)
     gen_round_integer(BI_ROUNDDOWN);
     gen_input_routines();
     gen_file_runtime();
+    gen_model_runtime();
 
     /* ユーザーのプログラム */
     for (fn = ast->funcs; fn != NULL; fn = fn->next) {
