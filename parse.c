@@ -46,6 +46,7 @@
  * input    = "input" "(" (str（{変数} を含む） | expr)? ")"
  * args     = expr ("," expr)*
  * print_arg = str（{式} の埋め込み可） | expr
+ * 標準 io の修飾名・別名も print/input の構文で解析し、参照先を型検査で確認する。
  */
 
 #include "qyc.h"
@@ -489,7 +490,8 @@ static char *name_path(void)
     for (;;) {
         size_t length;
         char *grown;
-        if (tok->kind != TK_IDENT || is_keyword(tok)) {
+        if (tok->kind != TK_IDENT ||
+            (is_keyword(tok) && !(size != 0 && (equal(tok, "print") || equal(tok, "input"))))) {
             error_tok(tok, "モジュール名または識別子が必要です");
         }
         length = (size_t)tok->len;
@@ -504,6 +506,20 @@ static char *name_path(void)
         if (!consume(".")) break;
     }
     return name;
+}
+
+/* 名前空間付き I/O の構文を選ぶ。参照先そのものは型検査で確認する。 */
+static Token *qualified_io_call(Token *start)
+{
+    Token *last = start;
+    int qualified = 0;
+    if (last->kind != TK_IDENT || is_keyword(last)) return NULL;
+    while (equal(last->next, ".") && last->next->next->kind == TK_IDENT) {
+        last = last->next->next;
+        qualified = 1;
+    }
+    if (qualified && equal(last->next, "(") && (equal(last, "print") || equal(last, "input"))) return last;
+    return NULL;
 }
 
 /* "(" の後の引数を読み、")" まで進める */
@@ -551,6 +567,8 @@ static Node *primary(void)
     Node *node;
     Var *v;
     Token *start;
+    char *name;
+    const char *member;
 
     if (consume("(")) {
         node = expr();
@@ -631,8 +649,19 @@ static Node *primary(void)
             tok = tok->next;
             return node;
         }
+        name = name_path();
+        member = strrchr(name, '.');
+        member = member != NULL ? member + 1 : name;
+        if (equal(tok, "(") && strcmp(member, "input") == 0) {
+            node = input_expr(start);
+            node->name = name;
+            return node;
+        }
+        if (equal(tok, "(") && strcmp(member, "print") == 0) {
+            error_tok(start, "print は文として使ってください（戻り値はありません）");
+        }
         node = new_node(ND_VAR, start);
-        node->name = name_path();
+        node->name = name;
         if (consume("(")) {
             node->kind = ND_CALL;
             call_args(node);
@@ -1449,10 +1478,18 @@ static Node *stmt(void)
     Token *start;
     Type ty;
     Using *u;
+    Token *io_call;
 
     start = tok;
     if (tok->kind == TK_INDENT) {
         error_tok(tok, "余分なインデントがあります");
+    }
+    io_call = qualified_io_call(tok);
+    if (io_call != NULL && equal(io_call, "print")) {
+        char *name = name_path();
+        node = print_stmt(start);
+        node->name = name;
+        return node;
     }
     if (consume("print")) {
         return print_stmt(start);
@@ -1550,9 +1587,10 @@ static Node *stmt(void)
             else { expect("--"); node->val = UPDATE_DEC; }
             node->rhs = node->val == UPDATE_INC || node->val == UPDATE_DEC ? new_num(1, node->tok) : expr();
         } else {
-            if (target->kind != ND_CALL && target->kind != ND_METHOD) {
+            if (target->kind != ND_CALL && target->kind != ND_METHOD && target->kind != ND_INPUT) {
                 error_tok(target->tok, "この式は代入・print・条件などで使ってください");
             }
+            if (target->kind == ND_INPUT) target->input_stmt = 1;
             node = new_unary(ND_EXPR_STMT, target, start);
         }
         expect_kind(TK_NEWLINE, "文の終わりには改行が必要です");

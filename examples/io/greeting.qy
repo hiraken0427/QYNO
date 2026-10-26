@@ -1,0 +1,8 @@
+using io
+
+int main();
+	str name
+	print("Hello, World!")
+	input("What your name? > {name}")
+	print("Hello, {name}!")
+	return 0

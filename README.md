@@ -16,6 +16,8 @@ make test
 ## 実行
 
 ```text
+using io
+
 int main();
 	print("Hello, QYNO!")
 	return 0
@@ -46,3 +48,25 @@ int main();
 `-I` は複数指定でき、親ディレクトリにあるモジュールも明示的に追加できる。
 
 詳しくは [モジュールの仕様](docs/modules.md) と [テストの説明](tests/README.md) を参照。
+
+## 標準モジュール
+
+よく使う機能は標準モジュールとして用意し、import なしで利用できる。
+現在は `io`（コンソール入出力）と `math`（数学関数）が該当する。
+
+```text
+int main();
+	str name
+	io.input("name> {name}")
+	io.print("Hello, {name}!")
+	return 0
+```
+
+`using io` を書けば `print` / `input` に省略できる。
+従来の裸の呼び出しも互換性のため維持する。
+使用例は [examples/io/greeting.qy](examples/io/greeting.qy)、詳細は [io の仕様](docs/io.md) を参照。
+
+## 開発ブランチ
+
+通常の開発は `dev` で行い、検証した変更を `main` へ反映する。
+Git の運用方針は [AGENTS.md](AGENTS.md) を参照。

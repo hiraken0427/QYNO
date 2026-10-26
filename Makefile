@@ -18,6 +18,10 @@ test: qyc
 	$(PYTHON) tests/text_test.py ./qyc
 	$(PYTHON) tests/arrays_test.py ./qyc
 	$(PYTHON) tests/modules_test.py ./qyc
+	$(PYTHON) tests/io_test.py ./qyc
+
+test-io: qyc
+	$(PYTHON) tests/io_test.py ./qyc
 
 test-modules: qyc
 	$(PYTHON) tests/modules_test.py ./qyc
@@ -40,4 +44,4 @@ test-arrays: qyc
 clean:
 	rm -f qyc qyc.exe *.o tmp tmp.exe tmp.qy tmp.s
 
-.PHONY: test test-modules test-lineedit test-rounding test-semantics test-text test-arrays clean
+.PHONY: test test-io test-modules test-lineedit test-rounding test-semantics test-text test-arrays clean

@@ -17,8 +17,12 @@ from support import QynoTestCase, program, run_suite
 
 @unittest.skipUnless(sys.platform == "linux", "Linux terminal runtime tests")
 class LineEditTests(QynoTestCase):
+    input_name = "input"
+    output_name = "print"
+    preamble = ""
+
     def exchange(self, source, *, steps, status=0):
-        binary = self.compile_source(source)
+        binary = self.compile_source(self.preamble + source)
         master, slave = pty.openpty()
         original = termios.tcgetattr(slave)
         child = None
@@ -65,7 +69,8 @@ class LineEditTests(QynoTestCase):
             os.close(slave)
 
     def edit(self, keys, expected):
-        source = program("int main();", '\tstr s = input("prompt> ")', '\tprint("RESULT=[{s}]")')
+        source = program("int main();", f'\tstr s = {self.input_name}("prompt> ")',
+                         f'\t{self.output_name}("RESULT=[{{s}}]")')
         transcript = self.exchange(source, steps=[(b"prompt> ", keys)])
         self.assertIn(f"RESULT=[{expected}]\n", transcript)
 
@@ -117,31 +122,43 @@ class LineEditTests(QynoTestCase):
 
     def test_control_d_eof_restores_terminal(self):
         transcript = self.exchange(program(
-            "int main();", '\tstr s = input("prompt> ")', '\tprint("UNREACHABLE")',
+            "int main();", f'\tstr s = {self.input_name}("prompt> ")', f'\t{self.output_name}("UNREACHABLE")',
         ), steps=[(b"prompt> ", b"\x04")], status=65)
         self.assertIn("入力が終わって", transcript)
         self.assertNotIn("UNREACHABLE\n", transcript)
 
     def test_control_c_restores_terminal(self):
         transcript = self.exchange(program(
-            "int main();", '\tstr s = input("prompt> ")', '\tprint("UNREACHABLE")',
+            "int main();", f'\tstr s = {self.input_name}("prompt> ")', f'\t{self.output_name}("UNREACHABLE")',
         ), steps=[(b"prompt> ", b"abc\x03")], status=130)
         self.assertIn("^C", transcript)
         self.assertNotIn("UNREACHABLE\n", transcript)
 
     def test_multiple_input_calls(self):
         transcript = self.exchange(program(
-            "int main();", '\tstr a = input("first> ")', '\tstr b = input("second> ")',
-            '\tprint("RESULT=[{a}/{b}]")',
+            "int main();", f'\tstr a = {self.input_name}("first> ")', f'\tstr b = {self.input_name}("second> ")',
+            f'\t{self.output_name}("RESULT=[{{a}}/{{b}}]")',
         ), steps=[(b"first> ", b"abc\n"), (b"second> ", "日本\n".encode())])
         self.assertIn("RESULT=[abc/日本]\n", transcript)
 
     def test_framed_input(self):
         transcript = self.exchange(program(
-            "int main();", "\tint age", '\tinput("年齢> {age} 歳")', '\tprint("RESULT=[{age}]")',
+            "int main();", "\tint age", f'\t{self.input_name}("年齢> {{age}} 歳")',
+            f'\t{self.output_name}("RESULT=[{{age}}]")',
         ), steps=[("年齢> ".encode(), b"2\x7f7\n")])
         self.assertIn(" 歳", transcript)
         self.assertIn("RESULT=[7]\n", transcript)
+
+
+class NamespacedLineEditTests(LineEditTests):
+    input_name = "io.input"
+    output_name = "io.print"
+
+
+class AliasedLineEditTests(LineEditTests):
+    input_name = "terminal.input"
+    output_name = "terminal.print"
+    preamble = "using io as terminal\n"
 
 
 if __name__ == "__main__":
