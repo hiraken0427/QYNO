@@ -5,12 +5,14 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#define QYC_VERSION "0.25.2"
+#define QYC_VERSION "0.26.0"
 
 typedef struct SourceFile SourceFile;
 typedef struct Module Module;
 typedef struct ModuleImport ModuleImport;
 typedef struct Ast Ast;
+typedef struct Model Model;
+typedef struct ModelField ModelField;
 
 struct SourceFile {
     const char *filename;
@@ -124,10 +126,11 @@ typedef enum {
     TY_FILE,    /* 共有されるファイル管理領域。0 は未オープン */
     TY_VOID,    /* 戻り値なし（関数の戻り値の型のみ） */
     TY_ADDR,    /* 変数の場所（x.addr・none。指す先の型は cmp_ty） */
-    TY_ARRAY    /* この値以降は types.c で管理する配列型のID */
+    TY_ARRAY    /* この値以降は types.c で管理する配列・モデル・未解決の名前付き型のID */
 } Type;
 
 #define MAX_ARRAY_RANK 32
+#define MAX_PLACE_DEPTH 128
 typedef struct ArrayDim ArrayDim;
 
 /* ---------- 構文解析（AST） ---------- */
@@ -181,6 +184,7 @@ struct Using {
     Using *scope;       /* 宣言前のブロック内 using */
     Using *all_next;
     Var *locals;        /* 宣言位置で見える変数 */
+    Model *target_model;
     Module *target_module;
     Function *target_function;
     Var *target_constant;
@@ -227,6 +231,11 @@ typedef enum {
     ND_STRLIT,  /* 文字列リテラル（式の中。str・str_len） */
     ND_INDEX,   /* 添字読み出し（lhs は配列・str・char、rhs は添字） */
     ND_LENGTH,  /* lhs.length（配列の要素数、またはUnicodeスカラー値の数） */
+    ND_MODEL_INIT, /* named contextual initializer; lhs items carry field names */
+    ND_MODEL_COPY,
+    ND_MODEL_NEW, /* default value via the per-model runtime helper */
+    ND_MODEL_METHOD,
+    ND_FIELD,
     ND_ARRAY_LITERAL, /* lhs が要素の並び。nargs は要素数 */
     ND_ARRAY_NEW,     /* 宣言に基づく初期配列 */
     ND_ARRAY_COPY,    /* lhs を dims の制約でコピー。val=1 は初期化の不足分を埋める */
@@ -312,11 +321,13 @@ struct Node {
     int end_literal;    /* ND_PRINT の end= が文字列リテラル直書きなら 1 */
     Token *tok;         /* エラー表示用 */
     char *name;         /* 未解決の名前（修飾名を含む） */
+    ModelField *field;
     Using *usings;      /* 式の位置のブロック内 using */
 };
 
 struct Function {
     Function *next;
+    Model *model;       /* implicit ref this receiver for model methods */
     const char *name;
     int name_len;
     Token *tok;         /* 関数名の位置 */
@@ -331,6 +342,29 @@ struct Function {
     int label;          /* コード生成で使うラベル */
 };
 
+struct ModelField {
+    ModelField *next;
+    Token *tok;
+    char *name;
+    Type ty;
+    ArrayDim *dims;
+    Node *initial;
+    int index;
+};
+struct Model {
+    Model *next;
+    Token *tok;
+    char *name;
+    Type ty;
+    ModelField *fields;
+    int field_count;
+    int state;
+    int copy_label;
+    int equal_label;
+    int print_label;
+    Node *default_value;
+};
+
 /* input の形の中の {変数} 1つ分 */
 struct InputField {
     InputField *next;
@@ -342,6 +376,7 @@ struct InputField {
 
 /* プログラム全体 */
 struct Ast {
+    Model *models;
     Function *funcs;    /* すべての関数（main を含む） */
     Node *globals;      /* ファイル先頭の const 宣言（ND_DECL の並び） */
     Var *global_vars;   /* ファイル先頭の const */
@@ -386,6 +421,7 @@ void fatal(const char *fmt, ...);
 Ast *load_program(const char *path, const char **roots, int root_count);
 void validate_module_names(Ast *program);
 void resolve_module_name(Node *node);
+Type resolve_module_type(Token *tok, const char *name, Using *scope);
 
 /* tokenize.c */
 Token *tokenize(const char *src);
@@ -404,6 +440,12 @@ Type array_base(Type array);
 int array_rank(Type array);
 const char *array_type_name(Type array);
 void typecheck(Ast *ast);
+int type_is_model(Type ty);
+Model *type_model(Type ty);
+Type model_type(Model *model);
+Type named_type(Token *tok, const char *name, Using *scope);
+Type resolve_type(Type ty);
+void resolve_model_types(Ast *ast);
 
 /* unicode.c：境界を越えずに UTF-8 の1スカラー値を読む。正常なら1、不正なら0 */
 int utf8_next(const unsigned char *s, size_t remaining, uint32_t *scalar, size_t *width);

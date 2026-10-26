@@ -3,7 +3,7 @@
  */
 typedef struct {
     Node *target;
-    Node *indices[MAX_ARRAY_RANK + 1];
+    Node *indices[MAX_PLACE_DEPTH];
     int count;
     int bytes;
     int base;
@@ -23,14 +23,14 @@ static void place_save(PlacePlan *plan, int slot, Reg reg)
 static PlacePlan place_capture(Node *target)
 {
     PlacePlan plan;
-    Node *path[MAX_ARRAY_RANK + 1];
+    Node *path[MAX_PLACE_DEPTH];
     Node *root = target;
     int i;
     memset(&plan, 0, sizeof(plan));
     plan.target = target;
     plan.text_last = target->kind == ND_INDEX && type_is_text(target->lhs->ty);
     while (root->kind == ND_INDEX) {
-        if (plan.count >= MAX_ARRAY_RANK + 1) fatal("更新先の次元が多すぎます");
+        if (plan.count >= MAX_PLACE_DEPTH) fatal("更新先の次元が多すぎます");
         path[plan.count++] = root;
         root = root->lhs;
     }
@@ -121,6 +121,14 @@ static void gen_index_store(Node *node)
         place_resolve(&plan, plan.count - 1);
     } else {
         place_resolve(&plan, plan.count);
+        if (type_is_model(node->lhs->ty)) {
+            x64_load(RAX, RAX, 0);
+            array_require_unborrowed();
+            place_load(&plan, RAX, value);
+            x64_call(type_model(node->lhs->ty)->copy_label);
+            place_save(&plan, value, RAX);
+            place_resolve(&plan, plan.count);
+        }
         if (type_is_array(node->lhs->ty)) {
             x64_load(RAX, RAX, 0);
             array_require_unborrowed();

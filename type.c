@@ -34,6 +34,7 @@
 const char *type_name(Type ty)
 {
     if (type_is_array(ty)) return array_type_name(ty);
+    if (type_is_model(ty)) return type_model(ty)->name;
     switch (ty) {
     case TY_INT:
         return "int";
@@ -90,6 +91,8 @@ static Node *value_node(Value v, Token *tok);
 static void check_expected(Node *node, Type expected);
 static void check_dims(ArrayDim *dims);
 static Node *copy_array(Node *source, ArrayDim *dims, int pad);
+static void check_model_init(Node *node, Type expected);
+static Node *copy_model(Node *source);
 static void validate_const_array(Node *where, Value source, ArrayDim *dims);
 
 /*
@@ -272,7 +275,7 @@ static void check_cmp(Node *cmp)
     Type r;
     CmpKind kind;
 
-    if (cmp->lhs->kind == ND_ARRAY_LITERAL && cmp->rhs->kind != ND_ARRAY_LITERAL) {
+    if ((cmp->lhs->kind == ND_ARRAY_LITERAL || cmp->lhs->kind == ND_MODEL_INIT) && cmp->rhs->kind != ND_ARRAY_LITERAL && cmp->rhs->kind != ND_MODEL_INIT) {
         check_expr(cmp->rhs);
         check_expected(cmp->lhs, cmp->rhs->ty);
     } else {
@@ -283,6 +286,10 @@ static void check_cmp(Node *cmp)
     r = cmp->rhs->ty;
     kind = (CmpKind)cmp->val;
     cmp->ty = TY_BOOL;
+    if (type_is_model(l) || type_is_model(r)) {
+        if (l != r || (kind != CMP_EQ && kind != CMP_NE)) error_tok(cmp->tok, "モデルは同じ型で == または != を使って比較してください");
+        cmp->cmp_ty = l; return;
+    }
     if (type_is_array(l) || type_is_array(r)) {
         if (l != r || (kind != CMP_EQ && kind != CMP_NE)) {
             error_tok(cmp->tok, "配列は同じ要素型・次元数で == または != を使って比較してください");
@@ -326,6 +333,7 @@ static void require_bool(Node *node, const char *what)
 }
 
 #include "arrays_type.inc"
+#include "models_type.inc"
 
 static long long round_integer(Node *node, long long x, long long digits, Builtin mode);
 static void check_pow_domain(Node *node);
@@ -556,7 +564,7 @@ static void check_ref_arg(Node *arg, Var *param, int index)
     v = check_place(arg->lhs);
     root = arg->lhs;
     while (root->kind == ND_INDEX) {
-        if (!type_is_array(root->lhs->ty))
+        if (!type_is_array(root->lhs->ty) && !type_is_model(root->lhs->ty))
             error_tok(root->tok, "文字列内の文字は ref で渡せません。char 配列の要素を指定してください");
         rank++;
         root = root->lhs;
@@ -586,7 +594,8 @@ static void check_call(Node *node)
     allow = allow_void;
     allow_void = 0;
 
-    resolve_module_name(node);
+    if (!node->func) resolve_module_name(node);
+    if (node->kind == ND_MODEL_INIT) { check_model_init(node, node->cmp_ty); return; }
     if (node->kind == ND_BUILTIN) {
         allow_void = allow;
         check_builtin(node);
@@ -594,7 +603,7 @@ static void check_call(Node *node)
         return;
     }
     fn = node->func;
-    if (same_name(fn->name, fn->name_len, "main", 4)) {
+    if (!fn->model && same_name(fn->name, fn->name_len, "main", 4)) {
         error_tok(node->tok, "main は呼び出せません");
     }
     if (node->nargs != fn->param_count) {
@@ -622,6 +631,11 @@ static void check_call(Node *node)
             check_expected(arg, param->ty);
             snprintf(what, sizeof(what), "%d 番目の引数", i);
             cur = cur->next = coerce(arg, param->ty, arg->tok, what);
+            if (type_is_model(param->ty)) {
+                Node *converted = copy_model(cur); Node *before = &head;
+                while (before->next != cur) before = before->next;
+                before->next = converted; cur = converted;
+            }
             if (type_is_array(param->ty)) {
                 Node *converted = copy_array(cur, param->dims, 0);
                 /* cur の直前を探索し、変換ノードを引数リストへ入れる。 */
@@ -669,10 +683,21 @@ static void check_expr(Node *node)
     case ND_STRLIT:
         node->ty = TY_STR;
         return;
+    case ND_MODEL_INIT:
+        check_model_init(node, node->cmp_ty);
+        return;
+    case ND_MODEL_COPY:
+        check_expr(node->lhs); node->ty = node->lhs->ty; return;
+    case ND_FIELD:
+        check_model_field(node); return;
+    case ND_MODEL_METHOD:
+        check_model_method(node); return;
     case ND_ARRAY_LITERAL:
         check_array_literal(node, TY_NONE);
         return;
     case ND_METHOD:
+        { int allow = allow_void; allow_void = 0; check_expr(node->lhs); allow_void = allow;
+          if (type_is_model(node->lhs->ty)) { check_model_method(node); return; } }
         check_method(node);
         return;
     case ND_LENGTH:
@@ -1406,6 +1431,7 @@ static Value eval_const(Node *node)
 static int is_const_expr(Node *node)
 {
     Node *cmp;
+    if (type_is_model(array_base(node->ty))) return 0;
 
     switch (node->kind) {
     case ND_ARRAY_NEW:
@@ -1647,6 +1673,7 @@ static void check_stmt(Node *node)
             return;
         }
         if (node->var->is_const) {
+            if (type_is_model(array_base(node->var->ty))) error_tok(node->tok, "model を含む const は未対応です");
             if (node->var->const_state == 2) {
                 return;         /* ほかの const から参照されて計算済み */
             }
@@ -1661,6 +1688,9 @@ static void check_stmt(Node *node)
             check_expected(node->lhs, node->var->ty);
             node->lhs = coerce(node->lhs, node->var->ty, node->lhs->tok, "初期値");
             if (type_is_array(node->var->ty)) node->lhs = copy_array(node->lhs, node->var->dims, 1);
+            if (type_is_model(node->var->ty)) node->lhs = copy_model(node->lhs);
+        } else if (type_is_model(node->var->ty)) {
+            node->lhs = model_default(node->var->ty, NULL, node->tok);
         } else if (type_is_array(node->var->ty)) {
             node->lhs = calloc(1, sizeof(Node));
             if (node->lhs == NULL) fatal("配列の初期化を作成できません");
@@ -1743,6 +1773,7 @@ static void check_stmt(Node *node)
         check_expected(node->lhs, cur_func->ret);
         node->lhs = coerce(node->lhs, cur_func->ret, node->lhs->tok, "戻り値");
         if (type_is_array(cur_func->ret)) node->lhs = copy_array(node->lhs, cur_func->return_dims, 0);
+        if (type_is_model(cur_func->ret)) node->lhs = copy_model(node->lhs);
         return;
     case ND_PRINT:
         check_print(node);
@@ -1780,14 +1811,14 @@ static void check_names(Ast *ast)
     main_fn = NULL;
     for (fn = ast->funcs; fn != NULL; fn = fn->next) {
         for (other = ast->funcs; other != fn; other = other->next) {
-            if (fn->tok->source->module == other->tok->source->module &&
+            if (fn->model == other->model && fn->tok->source->module == other->tok->source->module &&
                 same_name(fn->name, fn->name_len, other->name, other->name_len)) {
                 error_tok(fn->tok, "関数 %.*s は %d 行目ですでに定義されています",
                          fn->name_len, fn->name, other->tok->line);
             }
         }
         g = find_global(fn->tok->source->module, fn->name, fn->name_len);
-        if (g != NULL) {
+        if (g != NULL && !fn->model) {
             error_tok(fn->tok, "関数 %.*s は %d 行目の const と同じ名前です",
                      fn->name_len, fn->name, g->tok->line);
         }
@@ -1805,7 +1836,7 @@ static void check_names(Ast *ast)
                          v->name_len, v->name, g->tok->line);
             }
         }
-        if (fn->tok->source->module == ast->entry && same_name(fn->name, fn->name_len, "main", 4)) {
+        if (!fn->model && fn->tok->source->module == ast->entry && same_name(fn->name, fn->name_len, "main", 4)) {
             main_fn = fn;
         }
     }
@@ -1827,6 +1858,22 @@ void typecheck(Ast *ast)
     cur_func = NULL;
     allow_void = 0;
     check_names(ast);
+    resolve_model_types(ast);
+    { Model *m, *other; Function *f;
+      for (m = ast->models; m; m = m->next) {
+          for (other = ast->models; other != m; other = other->next)
+              if (m->tok->source->module == other->tok->source->module && !strcmp(m->name, other->name)) error_tok(m->tok, "モデル %s が重複しています", m->name);
+          if (find_global(m->tok->source->module, m->name, (int)strlen(m->name))) error_tok(m->tok, "モデル名が const と重複しています");
+          for (f = ast->funcs; f; f = f->next) if (!f->model && f->tok->source->module == m->tok->source->module && same_name(f->name, f->name_len, m->name, (int)strlen(m->name))) error_tok(m->tok, "モデル名が関数と重複しています");
+          check_model_definition(m);
+      }
+      for (m = ast->models; m; m = m->next) {
+          m->default_value = calloc(1, sizeof(*m->default_value));
+          if (!m->default_value) fatal("モデルの既定値を確保できません");
+          m->default_value->kind = ND_MODEL_INIT; m->default_value->tok = m->tok;
+          check_model_init(m->default_value, m->ty);
+      }
+    }
 
     /* ファイル先頭の const（ほかの const から参照されたものは、その時点で計算済み） */
     check_stmts(ast->globals);
@@ -1840,7 +1887,7 @@ void typecheck(Ast *ast)
     for (fn = ast->funcs; fn != NULL; fn = fn->next) {
         cur_func = fn;
         check_stmts(fn->body);
-        if (fn->ret != TY_VOID && !same_name(fn->name, fn->name_len, "main", 4) && !stmts_return(fn->body)) {
+        if (fn->ret != TY_VOID && (fn->model || !same_name(fn->name, fn->name_len, "main", 4)) && !stmts_return(fn->body)) {
             error_tok(fn->tok, "関数 %.*s には、最後まで進んだときの return がありません（すべての道筋で値を返してください）",
                      fn->name_len, fn->name);
         }

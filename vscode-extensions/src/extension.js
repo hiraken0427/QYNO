@@ -24,13 +24,22 @@ class Index {
     async project(document, discover, token) {
         const model = analyze(document.getText(), document.uri.toString());
         const roots = this.roots(document), modules = new Map(), moduleNames = [];
-        for (const item of model.imports) {
-            if (token?.isCancellationRequested) break;
-            for (const root of roots) {
-                try { modules.set(item.path, await this.model(vscode.Uri.joinPath(root, ...item.path.split('.').slice(0, -1), item.path.split('.').at(-1) + '.qy'))); break; }
-                catch { /* Missing modules are normal in an unfinished document. */ }
+        const visited = new Set();
+        const loadImports = async source => {
+            for (const item of source.imports) {
+                if (token?.isCancellationRequested || visited.size >= 2000) return;
+                if (visited.has(item.path)) continue;
+                visited.add(item.path);
+                for (const root of roots) {
+                    try {
+                        const imported = await this.model(vscode.Uri.joinPath(root, ...item.path.split('.').slice(0, -1), item.path.split('.').at(-1) + '.qy'));
+                        modules.set(item.path, imported);
+                        await loadImports(imported); break;
+                    } catch { /* Unfinished or missing modules are normal while editing. */ }
+                }
             }
-        }
+        };
+        await loadImports(model);
         if (discover) {
             const limit = vscode.workspace.getConfiguration('qyno', document.uri).get('maxIndexedFiles', 2000);
             let visited = 0, scanned = 0;
@@ -49,10 +58,10 @@ class Index {
         return { model, modules, moduleNames };
     }
 }
-const kinds = { function: vscode.CompletionItemKind.Function, variable: vscode.CompletionItemKind.Variable, parameter: vscode.CompletionItemKind.Variable, constant: vscode.CompletionItemKind.Constant, namespace: vscode.CompletionItemKind.Module, property: vscode.CompletionItemKind.Property, type: vscode.CompletionItemKind.TypeParameter, keyword: vscode.CompletionItemKind.Keyword };
+const kinds = { model: vscode.CompletionItemKind.Class, field: vscode.CompletionItemKind.Field, function: vscode.CompletionItemKind.Function, variable: vscode.CompletionItemKind.Variable, parameter: vscode.CompletionItemKind.Variable, constant: vscode.CompletionItemKind.Constant, namespace: vscode.CompletionItemKind.Module, property: vscode.CompletionItemKind.Property, type: vscode.CompletionItemKind.TypeParameter, keyword: vscode.CompletionItemKind.Keyword };
 function markdown(symbol) {
     const result = new vscode.MarkdownString();
-    result.appendCodeblock(symbol.kind === 'function' ? functionLabel(symbol, symbol.path || symbol.name) : symbol.type ? typeLabel(symbol) : symbol.path || symbol.name, 'qyno');
+    result.appendCodeblock(symbol.kind === 'model' ? `model ${symbol.name}` : symbol.kind === 'function' ? functionLabel(symbol, symbol.path || symbol.name) : symbol.type ? typeLabel(symbol) : symbol.path || symbol.name, 'qyno');
     if (symbol.documentation) result.appendText('\n' + symbol.documentation);
     return result;
 }
@@ -104,12 +113,15 @@ function activate(context) {
     context.subscriptions.push(vscode.languages.registerDocumentSymbolProvider(selector, {
         provideDocumentSymbols(document) {
             const model = analyze(document.getText(), document.uri.toString());
-            return model.symbols.filter(s => s.scopeId === 0).map(s => {
+            const outline = s => {
                 const selection = new vscode.Range(s.line, s.start, s.line, s.end);
                 const end = s.bodyScopeId ? model.scopes[s.bodyScopeId].endLine : s.line;
                 const range = new vscode.Range(s.line, 0, end, model.lines[end].length);
-                return new vscode.DocumentSymbol(s.name, s.kind === 'function' ? functionLabel(s) : typeLabel(s), s.kind === 'function' ? vscode.SymbolKind.Function : s.kind === 'constant' ? vscode.SymbolKind.Constant : vscode.SymbolKind.Variable, range, selection);
-            });
+                const symbol = new vscode.DocumentSymbol(s.name, s.kind === 'function' ? functionLabel(s) : typeLabel(s), s.kind === 'model' ? vscode.SymbolKind.Struct : s.kind === 'function' ? vscode.SymbolKind.Function : s.kind === 'constant' ? vscode.SymbolKind.Constant : vscode.SymbolKind.Variable, range, selection);
+                if (s.kind === 'model') symbol.children = s.members.map(outline);
+                return symbol;
+            };
+            return model.symbols.filter(s => s.scopeId === 0).map(outline);
         }
     }));
 }

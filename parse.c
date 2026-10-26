@@ -60,6 +60,7 @@ static Function *cur_fn;        /* 解析中の関数（ファイル先頭の co
 static Var *visible;        /* 今見えている変数（内側のブロックから外側へ vnext でつながる） */
 static int loop_depth;      /* 今いるループ（for・while）の深さ */
 static int block_depth;     /* 今いるブロックの深さ（関数の本体が 1） */
+static Model *parsing_model;
 static Using *local_usings; /* 関数の中で今見えている using */
 
 static Node *expr(void);
@@ -71,7 +72,7 @@ static const char *keywords[] = {
     "int", "float", "double", "bool", "str", "char", "void", "file", "const",
     "true", "false", "return", "print", "if", "else", "for", "while",
     "break", "continue", "and", "or", "not", "struct", "enum", "import", "of", "using", "input",
-    "ref", "val", "none", "as",
+    "ref", "val", "none", "as", "model",
     NULL
 };
 
@@ -201,7 +202,31 @@ static Type type_keyword(Token *t)
     if (equal(t, "char")) {
         return TY_CHAR;
     }
+    if (t->kind == TK_IDENT && !is_keyword(t)) {
+        Token *end = t;
+        char *path;
+        size_t length;
+        while (equal(end->next, ".") && end->next->next->kind == TK_IDENT) end = end->next->next;
+        if (end->next->kind != TK_IDENT) return TY_NONE;
+        length = (size_t)(end->loc + end->len - t->loc);
+        path = calloc(length + 1, 1);
+        if (!path) fatal("型名を確保できません");
+        /* Build the path from tokens so spaces around dots are harmless. */
+        { Token *part; size_t n = 0;
+          for (part = t; ; part = part->next) {
+              memcpy(path + n, part->loc, (size_t)part->len); n += (size_t)part->len;
+              if (part == end) break;
+          }
+        }
+        { Type ty = named_type(t, path, local_usings); free(path); return ty; }
+    }
     return TY_NONE;
+}
+
+static void skip_type(void)
+{
+    tok = tok->next;
+    while (equal(tok, ".") && tok->next->kind == TK_IDENT) tok = tok->next->next;
 }
 
 /* 宣言・引数・戻り値の各次元。[] の上限は -1 として保持する。 */
@@ -447,7 +472,7 @@ static Node *input_expr(Token *start)
                 }
                 continue;
             }
-            if (part->kind != ND_VAR && part->kind != ND_INDEX) {
+            if (part->kind != ND_VAR && part->kind != ND_INDEX && part->kind != ND_FIELD) {
                 error_tok(part->tok, "input の {} の中には、読み込む先の変数または配列要素を書いてください");
             }
             if (cur != NULL && cur->sep_len == 0) {
@@ -476,7 +501,7 @@ static Node *input_expr(Token *start)
         }
     } else if (!equal(tok, ")")) {
         node->lhs = expr();
-        if (node->lhs->kind == ND_VAR || node->lhs->kind == ND_INDEX) {
+        if (node->lhs->kind == ND_VAR || node->lhs->kind == ND_INDEX || node->lhs->kind == ND_FIELD) {
             node->input_pattern = 1;
             node->fields = calloc(1, sizeof(InputField));
             if (node->fields == NULL) fatal("入力先を確保できません");
@@ -592,6 +617,22 @@ static Node *primary(void)
         node = expr();
         expect(")");
         return node;
+    }
+    if (consume("{")) {
+        Node head = {0}; Node *tail = &head;
+        node = new_node(ND_MODEL_INIT, tok);
+        while (!equal(tok, "}")) {
+            Token *field = tok; Node *item;
+            if (field->kind != TK_IDENT || is_keyword(field)) error_tok(field, "初期化するフィールド名が必要です");
+            tok = tok->next; expect("=");
+            item = new_unary(ND_FIELD, expr(), field);
+            item->name = calloc((size_t)field->len + 1, 1);
+            if (!item->name) fatal("フィールド名を確保できません");
+            memcpy(item->name, field->loc, (size_t)field->len);
+            tail = tail->next = item; node->nargs++;
+            if (!consume(",")) break;
+        }
+        expect("}"); node->lhs = head.next; return node;
     }
     if (consume("[")) {
         Node head = {0};
@@ -718,7 +759,10 @@ static Node *postfix(void)
                 } else if (equal(field, "clear")) {
                     method->val = AM_CLEAR;
                 } else {
-                    error_tok(field, "配列の操作は add・remove_at・clear です");
+                    method->kind = ND_MODEL_METHOD;
+                    method->name = calloc((size_t)field->len + 1, 1);
+                    if (!method->name) fatal("メソッド名を確保できません");
+                    memcpy(method->name, field->loc, (size_t)field->len);
                 }
                 tok = field->next->next;
                 call_args(method);
@@ -739,7 +783,13 @@ static Node *postfix(void)
                 }
                 variable_member = 1;
             } else {
-                error_tok(field, "使える要素は length・value・addr です");
+                Node *access;
+                if (field->kind != TK_IDENT || is_keyword(field)) error_tok(field, "フィールド名が必要です");
+                access = new_unary(ND_FIELD, node, field);
+                access->name = calloc((size_t)field->len + 1, 1);
+                if (!access->name) fatal("フィールド名を確保できません");
+                memcpy(access->name, field->loc, (size_t)field->len);
+                tok = tok->next; node = access; variable_member = 0;
             }
         } else {
             return node;
@@ -1144,7 +1194,7 @@ static Node *declaration_ref(Token *start, int is_const, int is_ref)
     if (ty == TY_NONE) {
         error_tok(tok, "型（int・float・double・bool・str・char）が必要です");
     }
-    tok = tok->next;
+    skip_type();
     if (tok->kind != TK_IDENT) {
         error_tok(tok, "%sが必要です", is_const ? "定数名" : "変数名");
     }
@@ -1603,7 +1653,7 @@ static Node *stmt(void)
             else { expect("--"); node->val = UPDATE_DEC; }
             node->rhs = node->val == UPDATE_INC || node->val == UPDATE_DEC ? new_num(1, node->tok) : expr();
         } else {
-            if (target->kind != ND_CALL && target->kind != ND_METHOD && target->kind != ND_INPUT) {
+            if (target->kind != ND_CALL && target->kind != ND_METHOD && target->kind != ND_MODEL_METHOD && target->kind != ND_INPUT) {
                 error_tok(target->tok, "この式は代入・print・条件などで使ってください");
             }
             if (target->kind == ND_INPUT) target->input_stmt = 1;
@@ -1651,11 +1701,12 @@ static Function *function_def(void)
     if (fn->ret == TY_NONE) {
         error_tok(tok, "ファイルの先頭に書けるのは const 定数と関数の定義だけです（関数は 戻り値の型 名前(引数); の形で書きます）");
     }
-    tok = tok->next;
+    skip_type();
     if (tok->kind != TK_IDENT || is_keyword(tok)) {
         error_tok(tok, "関数名が必要です");
     }
     name = tok;
+    fn->model = parsing_model;
     fn->name = name->loc;
     fn->name_len = name->len;
     fn->tok = name;
@@ -1664,13 +1715,20 @@ static Function *function_def(void)
     cur_fn = fn;
     visible = NULL;
     loop_depth = 0;
-    block_depth = 0;
+    block_depth = parsing_model ? 1 : 0;
     local_usings = NULL;
 
     /* 引数 */
     expect("(");
     memset(&head, 0, sizeof(head));
     cur = &head;
+    if (parsing_model) {
+        Token *self = calloc(1, sizeof(*self));
+        if (!self) fatal("this を確保できません");
+        *self = *name; self->loc = "this"; self->len = 4;
+        v = new_var(self, parsing_model->ty); v->is_param = 1; v->is_ref = 1;
+        cur = cur->next = v; fn->param_count++;
+    }
     if (!equal(tok, ")")) {
         for (;;) {
             int param_ref = 0;
@@ -1683,7 +1741,7 @@ static Function *function_def(void)
             if (ty == TY_NONE) {
                 error_tok(tok, "引数の型（int・float・double・bool・str・char）が必要です");
             }
-            tok = tok->next;
+            skip_type();
             if (tok->kind != TK_IDENT) {
                 error_tok(tok, "引数の名前が必要です");
             }
@@ -1746,6 +1804,50 @@ static Function *function_def(void)
     return fn;
 }
 
+static Model *model_def(Function **tail)
+{
+    Model *m = calloc(1, sizeof(*m)); ModelField **fields;
+    Token *start;
+    if (!m) fatal("モデルを確保できません");
+    expect("model"); start = tok;
+    if (tok->kind != TK_IDENT || is_keyword(tok)) error_tok(tok, "モデル名が必要です");
+    m->tok = tok; m->name = calloc((size_t)tok->len + 1, 1);
+    if (!m->name) fatal("モデル名を確保できません");
+    memcpy(m->name, tok->loc, (size_t)tok->len); m->ty = model_type(m);
+    tok = tok->next; expect(";");
+    expect_kind(TK_NEWLINE, "モデル定義には改行が必要です");
+    expect_kind(TK_INDENT, "モデルの中はタブで1段インデントしてください");
+    fields = &m->fields;
+    parsing_model = m;
+    while (tok->kind != TK_DEDENT && tok->kind != TK_EOF) {
+        Type ty = return_type(tok); Token *name = tok;
+        if (ty == TY_NONE) error_tok(tok, "モデルにはフィールドまたはメソッドを定義してください");
+        tok = tok->next;
+        while (equal(tok, ".") && tok->next->kind == TK_IDENT) tok = tok->next->next;
+        if (tok->kind != TK_IDENT || is_keyword(tok)) error_tok(tok, "メンバー名が必要です");
+        if (equal(tok->next, "(")) {
+            tok = name;
+            (*tail)->next = function_def(); *tail = (*tail)->next;
+        } else {
+            ModelField *f = calloc(1, sizeof(*f));
+            if (!f) fatal("フィールドを確保できません");
+            if (ty == TY_VOID) error_tok(name, "フィールドに void は使えません");
+            if (equal(tok, "this") || equal(tok, "addr") || equal(tok, "value") || equal(tok, "length"))
+                error_tok(tok, "this・addr・value・length はモデルのフィールド名に使えません");
+            f->tok = tok; f->name = calloc((size_t)tok->len + 1, 1);
+            if (!f->name) fatal("フィールド名を確保できません");
+            memcpy(f->name, tok->loc, (size_t)tok->len); f->ty = ty; f->index = m->field_count++;
+            tok = tok->next; f->dims = dimensions(&f->ty);
+            cur_fn = NULL; visible = NULL; local_usings = NULL;
+            if (consume("=")) f->initial = expr();
+            expect_kind(TK_NEWLINE, "フィールド宣言の終わりには改行が必要です");
+            *fields = f; fields = &f->next;
+        }
+    }
+    expect_kind(TK_DEDENT, "モデル定義を閉じてください");
+    parsing_model = NULL; (void)start; return m;
+}
+
 /* program = (const_decl | function)* EOF */
 Ast *parse(Token *t)
 {
@@ -1773,9 +1875,15 @@ Ast *parse(Token *t)
     memset(&uhead, 0, sizeof(uhead));
     ucur = &uhead;
     local_usings = NULL;
+    parsing_model = NULL;
     while (tok->kind != TK_EOF) {
         if (tok->kind == TK_INDENT) {
             error_tok(tok, "余分なインデントがあります");
+        }
+        if (equal(tok, "model")) {
+            Model *m = model_def(&fcur); Model **end = &ast->models;
+            while (*end) end = &(*end)->next;
+            *end = m; continue;
         }
         if (equal(tok, "import")) {
             start = tok;

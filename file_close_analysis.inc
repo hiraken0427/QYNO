@@ -126,7 +126,16 @@ static FcState *fc_clone(FcState *s)
     }
     return r;
 }
-static int fc_file_type(Type ty) { return ty == TY_FILE || (type_is_array(ty) && array_base(ty) == TY_FILE); }
+static int fc_file_type(Type ty)
+{
+    ModelField *f;
+    if (type_is_array(ty)) return fc_file_type(array_base(ty));
+    if (type_is_model(ty)) {
+        for (f = type_model(ty)->fields; f; f = f->next) if (fc_file_type(f->ty)) return 1;
+        return 0;
+    }
+    return ty == TY_FILE;
+}
 static FcInfo *fc_info(Function *fn)
 {
     FcInfo *i; for (i = fc_infos; i; i = i->next) if (i->fn == fn) return i; return NULL;
@@ -254,7 +263,10 @@ static FcMap *fc_call(FcContext *ctx, FcState *s, Node *n)
     FcInfo *callee = fc_info(n->func); FcMap **args; Node *arg; Var *p; FcFlow *f;
     int i, id;
     args = fc_new((size_t)(n->nargs + 1) * sizeof(*args));
-    i = 0; for (arg = n->lhs; arg; arg = arg->next) args[i++] = fc_eval(ctx, s, arg->kind == ND_REFARG ? arg->lhs : arg);
+    i = 0; for (arg = n->lhs; arg; arg = arg->next) {
+        if (arg->kind == ND_REFARG && arg->rhs) fc_set(s, arg->lhs->var, fc_eval(ctx, s, arg->rhs));
+        args[i++] = fc_eval(ctx, s, arg->kind == ND_REFARG ? arg->lhs : arg);
+    }
     if (!callee->relevant) return fc_empty();
     if (callee->status == 1) error_tok(n->tok, "再帰する file 関数の close を証明できません。ファイル操作を再帰の外へ分離してください");
     fc_analyze(callee);
@@ -277,9 +289,19 @@ static FcMap *fc_eval(FcContext *ctx, FcState *s, Node *n)
     Node *p; FcMap *m; int i;
     if (!n) return fc_empty();
     if (n->kind == ND_VAR) return fc_value(s, n->var);
+    if (n->kind == ND_MODEL_NEW) return fc_empty();
     if (n->kind == ND_CALL) return fc_call(ctx, s, n);
-    if (n->kind == ND_ARRAY_COPY) return fc_eval(ctx, s, n->lhs);
+    if (n->kind == ND_MODEL_COPY || n->kind == ND_ARRAY_COPY) return fc_eval(ctx, s, n->lhs);
     if (n->kind == ND_ARRAY_NEW) { m = fc_empty(); m->length = n->dims && n->dims->limit >= 0 ? n->dims->limit : 0; return m; }
+    if (n->kind == ND_MODEL_INIT) {
+        m = fc_empty(); m->length = type_model(n->ty)->field_count;
+        for (p = n->lhs; p; p = p->next) {
+            char key[64]; FcEntry *e; FcMap *item = fc_eval(ctx, s, p->lhs);
+            snprintf(key, sizeof(key), "[%d]", p->field->index);
+            for (e = item->entries; e; e = e->next) fc_put(m, fc_join(key, e->path), e->id);
+        }
+        return m;
+    }
     if (n->kind == ND_ARRAY_LITERAL) {
         m = fc_empty(); m->length = n->nargs; i = 0;
         for (p = n->lhs; p; p = p->next, i++) {

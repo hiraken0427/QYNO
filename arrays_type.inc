@@ -57,12 +57,14 @@ static void check_array_literal(Node *node, Type expected)
 
 static void check_expected(Node *node, Type expected)
 {
-    if (node->kind == ND_ARRAY_LITERAL && type_is_array(expected)) check_array_literal(node, expected);
+    if (node->kind == ND_MODEL_INIT) check_model_init(node, expected);
+    else if (node->kind == ND_ARRAY_LITERAL && type_is_array(expected)) check_array_literal(node, expected);
     else check_expr(node);
 }
 
 static ArrayDim *expression_dims(Node *node)
 {
+    if (node->field) return node->field->dims;
     if (node->kind == ND_VAR) return node->var->dims;
     if (node->kind == ND_CALL) return node->func->return_dims;
     if (node->kind == ND_ARRAY_NEW || node->kind == ND_ARRAY_COPY) return node->dims;
@@ -128,7 +130,9 @@ static Node *copy_array(Node *source, ArrayDim *dims, int pad)
 static Var *check_place(Node *place)
 {
     Node *root = place;
+    int depth = 0;
     while (root->kind == ND_INDEX) {
+        if (++depth > MAX_PLACE_DEPTH) error_tok(root->tok, "参照・更新先のパスが深すぎます");
         if (root != place && type_is_text(root->lhs->ty)) {
             error_tok(root->tok, "文字列の添字は更新先の最後に1回だけ書けます");
         }

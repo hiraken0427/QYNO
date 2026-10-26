@@ -76,5 +76,19 @@
       "$0"
     ],
     "description": "UTF-8を書き込み、明示的に閉じる"
+  },
+  "Model": {
+    "prefix": "model",
+    "body": [
+      "model ${1:Point};",
+      "\tdouble x = 0.0",
+      "\tdouble y = 0.0",
+      "",
+      "\tvoid move(double dx, double dy);",
+      "\t\tthis.x += dx",
+      "\t\tthis.y += dy",
+      "$0"
+    ],
+    "description": "値としてコピーされるモデル型"
   }
 }
