@@ -1,0 +1,185 @@
+'use strict';
+
+const TYPES = new Set(['int', 'float', 'double', 'bool', 'str', 'char', 'file', 'void']);
+const KEYWORDS = new Set([...TYPES, 'const', 'ref', 'val', 'return', 'if', 'else', 'for', 'while', 'break', 'continue', 'and', 'or', 'not', 'true', 'false', 'none', 'import', 'using', 'as', 'print', 'input', 'struct', 'enum', 'of']);
+const identifierStart = c => /[A-Za-z_]/.test(c || '');
+const identifierPart = c => /[A-Za-z0-9_]/.test(c || '');
+
+/** UTF-16 columns deliberately match VS Code positions, including emoji. */
+function lexLine(text, line = 0) {
+    const tokens = [];
+    let i = 0;
+    const add = (kind, start, end, extra = {}) => tokens.push({ kind, value: text.slice(start, end), start, end, line, ...extra });
+    while (i < text.length) {
+        const start = i;
+        if (/\s|\uFEFF/.test(text[i])) { i++; continue; }
+        if (text.startsWith('//', i)) { add('comment', i, text.length); break; }
+        if (text[i] === '"' || text[i] === "'") {
+            const quote = text[i++];
+            const interpolations = [];
+            let closed = false;
+            while (i < text.length) {
+                if (text[i] === '\\') { i = Math.min(text.length, i + 2); continue; }
+                if (text[i] === quote) { i++; closed = true; break; }
+                if (text[i] === '{') {
+                    const begin = ++i;
+                    while (i < text.length && text[i] !== '}' && text[i] !== quote) i++;
+                    const end = i;
+                    const nested = lexLine(text.slice(begin, end), line).map(t => ({ ...t, start: t.start + begin, end: t.end + begin }));
+                    interpolations.push({ start: begin, end, tokens: nested });
+                    if (text[i] === '}') i++;
+                    continue;
+                }
+                i++;
+            }
+            add('string', start, i, { closed, interpolations });
+        } else if (identifierStart(text[i])) {
+            while (identifierPart(text[++i])) { /* consume */ }
+            add('id', start, i);
+        } else if (/[0-9]/.test(text[i])) {
+            while (/[0-9]/.test(text[++i] || '')) { /* consume */ }
+            if (text[i] === '.' && /[0-9]/.test(text[i + 1] || '')) {
+                i++; while (/[0-9]/.test(text[i] || '')) i++;
+            }
+            add('number', start, i);
+        } else {
+            i += ['==', '!=', '<=', '>=', '++', '--', '+=', '-='].includes(text.slice(i, i + 2)) ? 2 : 1;
+            add('punct', start, i);
+        }
+    }
+    return tokens;
+}
+
+function codeContext(model, line, character) {
+    const text = model.lines[line] || '';
+    for (const token of model.tokens[line] || []) {
+        if (token.kind === 'comment' && character >= token.start) return null;
+        if (token.kind === 'string' && character > token.start && (character < token.end || !token.closed && character === token.end)) {
+            const interpolation = token.interpolations.find(p => character >= p.start && character <= p.end);
+            return interpolation ? { text: text.slice(interpolation.start, character), start: interpolation.start, tokens: interpolation.tokens } : null;
+        }
+    }
+    return { text: text.slice(0, character), start: 0, tokens: model.tokens[line] || [] };
+}
+
+function split(tokens, separator = ',') {
+    const parts = []; let part = [], depth = 0;
+    for (const token of tokens) {
+        if (token.value === separator && depth === 0) { parts.push(part); part = []; continue; }
+        if (['(', '['].includes(token.value)) depth++;
+        if ([')', ']'].includes(token.value)) depth--;
+        part.push(token);
+    }
+    parts.push(part); return parts;
+}
+function closing(tokens, begin) {
+    let depth = 0;
+    for (let i = begin; i < tokens.length; i++) {
+        if (tokens[i].value === '(') depth++;
+        if (tokens[i].value === ')' && --depth === 0) return i;
+    }
+    return -1;
+}
+function rankOf(tokens) { return tokens.filter(t => t.value === '[').length; }
+function typeLabel(symbol) { return `${symbol.ref ? 'ref ' : ''}${symbol.type} ${symbol.name}${'[]'.repeat(symbol.rank || 0)}`; }
+function functionLabel(symbol, name = symbol.name) {
+    return `${symbol.type} ${name}(${symbol.params.map(typeLabel).join(', ')})${'[]'.repeat(symbol.rank || 0)}`;
+}
+
+function analyze(text, uri = '') {
+    const lines = text.split(/\r?\n/);
+    const tokens = lines.map(lexLine);
+    const scopes = [{ id: 0, parent: null, depth: 0, startLine: 0, endLine: lines.length - 1, kind: 'module' }];
+    const symbols = [], imports = [], usings = [], stack = [scopes[0]];
+    const newScope = (line, depth, kind, parent, headerVisible = false) => {
+        const scope = { id: scopes.length, parent: parent.id, depth, startLine: headerVisible ? line : line + 1, endLine: lines.length - 1, headerLine: line, kind };
+        scopes.push(scope); return scope;
+    };
+    const declare = (token, properties) => {
+        if (!token || token.kind !== 'id' || KEYWORDS.has(token.value)) return null;
+        const symbol = { name: token.value, uri, line: token.line, start: token.start, end: token.end, visibleAfter: lines[token.line].length + 1, rank: 0, ref: false, ...properties };
+        symbols.push(symbol); return symbol;
+    };
+    for (let line = 0; line < lines.length; line++) {
+        const ts = tokens[line].filter(t => t.kind !== 'comment');
+        if (!ts.length) continue;
+        // Space indentation is tolerated while editing; the compiler still requires tabs.
+        const whitespace = lines[line].match(/^[\t \uFEFF]*/)[0];
+        const indent = (whitespace.match(/\t/g) || []).length + Math.floor((whitespace.match(/ /g) || []).length / 4);
+        while (stack.length > 1 && stack.at(-1).depth > indent) stack.pop().endLine = line - 1;
+        const scope = stack.at(-1);
+        if (['import', 'using'].includes(ts[0].value)) {
+            for (const part of split(ts.slice(1))) {
+                const as = part.findIndex(t => t.value === 'as');
+                const pathTokens = as < 0 ? part : part.slice(0, as);
+                const path = pathTokens.map(t => t.value).join('');
+                if (!/^[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*$/.test(path)) continue;
+                const item = { path, alias: as >= 0 ? part[as + 1]?.value : null, scopeId: scope.id, line, start: pathTokens[0].start, end: pathTokens.at(-1).end, visibleAfter: lines[line].length };
+                (ts[0].value === 'import' ? imports : usings).push(item);
+            }
+            continue;
+        }
+        let index = 0;
+        const constant = ts[index]?.value === 'const'; if (constant) index++;
+        const modifier = ['ref', 'val'].includes(ts[index]?.value) ? ts[index++].value : null;
+        if (TYPES.has(ts[index]?.value) && ts[index + 1]?.kind === 'id') {
+            const type = ts[index].value, name = ts[index + 1];
+            if (indent === 0 && ts[index + 2]?.value === '(') {
+                const end = closing(ts, index + 2);
+                const body = newScope(line, 1, 'function', scope, true);
+                const params = [];
+                for (const part of split(ts.slice(index + 3, end < 0 ? ts.length : end))) {
+                    let p = 0; const ref = part[p]?.value === 'ref';
+                    if (['ref', 'val'].includes(part[p]?.value)) p++;
+                    if (!TYPES.has(part[p]?.value)) continue;
+                    const parameter = declare(part[p + 1], { kind: 'parameter', type: part[p].value, rank: rankOf(part.slice(p + 2)), ref, scopeId: body.id, visibleAfter: part[p + 1]?.end || 0 });
+                    if (parameter) params.push(parameter);
+                }
+                const fn = declare(name, { kind: 'function', type, rank: end < 0 ? 0 : rankOf(ts.slice(end + 1).filter(t => t.value !== '=')), params, scopeId: 0, bodyScopeId: body.id, visibleAfter: 0 });
+                body.owner = fn;
+                // Return dimensions end at '=' or ';', not at an array in the body.
+                if (fn && end >= 0) { const suffix = ts.slice(end + 1); const stop = suffix.findIndex(t => ['=', ';'].includes(t.value)); fn.rank = rankOf(stop < 0 ? suffix : suffix.slice(0, stop)); }
+                if (end >= 0 && ts[end + 1]?.value === '=') body.endLine = line;
+                else if (ts.some(t => t.value === ';')) stack.push(body);
+                else body.endLine = line;
+                continue;
+            }
+            const end = ts.findIndex((t, n) => n > index + 1 && t.value === '=');
+            declare(name, { kind: constant ? 'constant' : 'variable', type, rank: rankOf(ts.slice(index + 2, end < 0 ? ts.length : end)), ref: modifier === 'ref', scopeId: scope.id });
+        }
+        if (ts[0].value === 'for') {
+            let depth = 0, counter = -1;
+            for (let i = 1; i < ts.length; i++) {
+                if (ts[i].value === '(') depth++;
+                if (ts[i].value === ')') depth--;
+                if (depth === 1 && ['<', '<=', '>', '>='].includes(ts[i].value)) { counter = i + 1; break; }
+            }
+            const body = newScope(line, indent + 1, 'for', scope, true);
+            if (counter >= 0) {
+                const typed = TYPES.has(ts[counter]?.value);
+                const token = ts[counter + (typed ? 1 : 0)];
+                declare(token, { kind: 'variable', type: typed ? ts[counter].value : 'int', loop: true, scopeId: body.id, visibleAfter: token?.end || 0 });
+            }
+            stack.push(body);
+        } else if (['if', 'else', 'while'].includes(ts[0].value) && ts.some(t => t.value === ';')) {
+            stack.push(newScope(line, indent + 1, ts[0].value, scope));
+        }
+    }
+    return { uri, text, lines, tokens, scopes, symbols, imports, usings };
+}
+
+function scopeContains(model, scopeId, line, character) {
+    const scope = model.scopes[scopeId];
+    if (!scope || line < scope.startLine || line > scope.endLine) return false;
+    if (scope.depth && !model.lines[line]?.trim() && character < scope.depth) return false;
+    return scope.parent === null || scopeContains(model, scope.parent, line, character);
+}
+function visibleSymbols(model, line, character) {
+    return model.symbols.filter(s => scopeContains(model, s.scopeId, line, character) &&
+        (s.scopeId === 0 || s.line < line || s.line === line && s.visibleAfter <= character));
+}
+function visibleUsings(model, line, character) {
+    return model.usings.filter(u => scopeContains(model, u.scopeId, line, character) &&
+        (u.scopeId === 0 || u.line < line || u.line === line && u.visibleAfter <= character));
+}
+module.exports = { TYPES, KEYWORDS, lexLine, codeContext, analyze, split, closing, visibleSymbols, visibleUsings, scopeContains, typeLabel, functionLabel };

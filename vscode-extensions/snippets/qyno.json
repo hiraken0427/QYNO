@@ -1,0 +1,80 @@
+{
+  "Main": {
+    "prefix": "main",
+    "body": [
+      "int main();",
+      "\t$0",
+      "\treturn 0"
+    ],
+    "description": "エントリ関数"
+  },
+  "Forward loop": {
+    "prefix": "for",
+    "body": [
+      "for(0 <= ${1:i} < ${2:count}, ${1:i}++);",
+      "\t$0"
+    ],
+    "description": "半開区間の昇順ループ"
+  },
+  "Reverse loop": {
+    "prefix": "forrev",
+    "body": [
+      "for(${1:count} > ${2:i} >= 0, ${2:i}--);",
+      "\t$0"
+    ],
+    "description": "半開区間の降順ループ"
+  },
+  "Function": {
+    "prefix": "fn",
+    "body": [
+      "${1:void} ${2:name}(${3});",
+      "\t$0"
+    ],
+    "description": "関数を定義"
+  },
+  "If": {
+    "prefix": "if",
+    "body": [
+      "if(${1:condition});",
+      "\t$0"
+    ],
+    "description": "条件分岐"
+  },
+  "While": {
+    "prefix": "while",
+    "body": [
+      "while(${1:condition});",
+      "\t$0"
+    ],
+    "description": "繰り返し"
+  },
+  "Using alias": {
+    "prefix": "usingalias",
+    "body": [
+      "using ${1:io.file} as ${2:fs}"
+    ],
+    "description": "モジュールの別名"
+  },
+  "Read file": {
+    "prefix": "fileread",
+    "body": [
+      "file ${1:source} = io.file.open(${2:\"input.txt\"}, \"r\")",
+      "str ${3:line}",
+      "while(io.file.readline(${1:source}, ref ${3:line}));",
+      "\tio.print(${3:line})",
+      "io.file.close(${1:source})",
+      "$0"
+    ],
+    "description": "UTF-8を行ごとに読み、明示的に閉じる"
+  },
+  "Write file": {
+    "prefix": "filewrite",
+    "body": [
+      "file ${1:destination} = io.file.open(${2:\"output.txt\"}, \"w\")",
+      "io.file.write(${1:destination}, ${3:\"text\"})",
+      "io.file.close(${1:destination})",
+      "$0"
+    ],
+    "description": "UTF-8を書き込み、明示的に閉じる"
+  }
+}

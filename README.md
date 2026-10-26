@@ -33,6 +33,13 @@ int main();
 `--target windows` で Windows 用 PE32+、`--target linux` で Linux 用 ELF64 を生成する。
 既定はコンパイラを実行している OS。`-S` はアセンブリ出力、`--help` はオプション一覧。
 
+## VS Code 拡張
+
+[VSCode Option](vscode-extensions/README.md) は QYNO 0.25.2 のハイライト、
+ユーザー定義の関数名・変数名の補完、定義への移動、引数ヒントに対応する。
+[vscode-extensions/0.25.2_VSCode_option.vsix](vscode-extensions/0.25.2_VSCode_option.vsix) を
+VS Code の「VSIX からのインストール…」で指定する。
+
 ## モジュール
 
 `import geometry.circle` でモジュールを読み込み、
