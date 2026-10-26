@@ -1,4 +1,4 @@
-# QYNO 0.25.1
+# QYNO 0.25.2
 
 C99 で実装した、Linux x64 / Windows x64 向けのコンパイラ。
 UTF-8 の `.qy` ソースから実行ファイルを直接生成する。
@@ -52,7 +52,7 @@ int main();
 ## 標準モジュール
 
 よく使う機能は標準モジュールとして用意し、import なしで利用できる。
-現在は `io`（コンソール入出力）と `math`（数学関数）が該当する。
+現在は `io`（コンソール入出力）、`io.file`（UTF-8ファイル操作）と `math`（数学関数）が該当する。
 
 ```text
 int main();
@@ -65,6 +65,29 @@ int main();
 `using io` を書けば `print` / `input` に省略できる。
 従来の裸の呼び出しも互換性のため維持する。
 使用例は [examples/io/greeting.qy](examples/io/greeting.qy)、詳細は [io の仕様](docs/io.md) を参照。
+
+## ファイル操作
+
+`io.file.open(path, mode)` のモードは r / w / a。省略時は r。
+`readline(f, ref line)` は、1行読めれば true、EOFなら false を返す。
+取得した file は、正常終了へ至る全経路で明示的な close が必要。
+コンパイラが close を確認できない場合はエラーになる。
+
+```text
+using io.file as fs
+
+int main();
+	file source = fs.open("input.txt")
+	str line
+	while(fs.readline(source, ref line));
+		io.print(line)
+	fs.close(source)
+	return 0
+```
+
+相対パスは実行時の作業ディレクトリを基準にする。
+詳細は [io.file の仕様](docs/io-file-design.md)、
+実行例は [examples/io/files.qy](examples/io/files.qy) を参照。
 
 ## 配列と参照渡し
 

@@ -1,0 +1,15 @@
+using io.file as fs
+
+int main();
+	file destination = fs.open("file-example.txt", "w")
+	int count = 3
+	fs.write(destination, "count={count}\n")
+	fs.write(destination, "日本語・絵文字😀\n")
+	fs.close(destination)
+
+	file source = fs.open("file-example.txt")
+	str line
+	while(fs.readline(source, ref line));
+		io.print(line)
+	fs.close(source)
+	return 0

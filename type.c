@@ -47,6 +47,8 @@ const char *type_name(Type ty)
         return "str";
     case TY_CHAR:
         return "char";
+    case TY_FILE:
+        return "file";
     case TY_VOID:
         return "void";
     case TY_ADDR:
@@ -115,6 +117,7 @@ static int is_float_literal(Node *node)
     case ND_ABS:
         return is_float_literal(node->lhs);
     case ND_BUILTIN:
+        if (node->val >= BI_FILE_OPEN) return 0;
         for (arg = node->lhs; arg != NULL; arg = arg->next) {
             if (!is_float_literal(arg)) {
                 return 0;
@@ -130,6 +133,8 @@ static void ensure_const(Var *v);
 static void check_stmt(Node *node);
 static void check_builtin(Node *node);
 static void check_input(Node *node);
+static void check_ref_arg(Node *arg, Var *param, int index);
+static void check_print_parts(Node *list);
 
 /* 名前が同じか */
 static int same_name(const char *a, int alen, const char *b, int blen)
@@ -301,7 +306,7 @@ static void check_cmp(Node *cmp)
         cmp->cmp_ty = TY_ADDR;
         return;
     }
-    if ((l == r && l == TY_BOOL) || (type_is_text(l) && type_is_text(r))) {
+    if ((l == r && (l == TY_BOOL || l == TY_FILE)) || (type_is_text(l) && type_is_text(r))) {
         if (kind != CMP_EQ && kind != CMP_NE) {
             error_tok(cmp->tok, "%s は == と != でしか比べられません（%s は使えません）",
                      type_name(l), cmp_name(kind));
@@ -324,6 +329,61 @@ static void require_bool(Node *node, const char *what)
 
 static long long round_integer(Node *node, long long x, long long digits, Builtin mode);
 static void check_pow_domain(Node *node);
+
+static void check_file_builtin(Node *node)
+{
+    Builtin b = (Builtin)node->val;
+    Node *first = node->lhs;
+    Node *second = first != NULL ? first->next : NULL;
+    int allowed = allow_void;
+    int expected = b == BI_FILE_READLINE || b == BI_FILE_WRITE ? 2 : 1;
+    allow_void = 0;
+    if (node->nargs != expected && !(b == BI_FILE_OPEN && node->nargs == 2))
+        error_tok(node->tok, "io.file.%s の引数の数が不正です（%d 個）", builtin_name(b), node->nargs);
+    check_expr(first);
+    if (b == BI_FILE_OPEN || b == BI_FILE_EXISTS) {
+        if (!type_is_text(first->ty)) error_tok(first->tok, "ファイルのパスは str・char にしてください");
+    } else if (first->ty != TY_FILE) error_tok(first->tok, "io.file.%s には file が必要です", builtin_name(b));
+    if (b == BI_FILE_OPEN) {
+        if (second == NULL) {
+            second = calloc(1, sizeof(*second));
+            if (!second) fatal("既定モードを確保できません");
+            second->kind = ND_STRLIT; second->ty = TY_STR; second->tok = node->tok;
+            second->str = "r"; second->str_len = 1; first->next = second; node->nargs = 2;
+        }
+        check_expr(second);
+        if (!type_is_text(second->ty)) error_tok(second->tok, "ファイルのモードは str・char にしてください");
+        if (is_const_expr(second)) {
+            Value mode = eval_const(second);
+            if (mode.len != 1 || (mode.s[0] != 'r' && mode.s[0] != 'w' && mode.s[0] != 'a'))
+                error_tok(second->tok, "ファイルのモードは r・w・a のいずれかです");
+        }
+        node->ty = TY_FILE;
+    } else if (b == BI_FILE_READLINE) {
+        Var target = {0};
+        target.ty = TY_STR;
+        if (second->kind != ND_REFARG) error_tok(second->tok, "readline の出力先は ref str を指定してください");
+        check_ref_arg(second, &target, 2);
+        node->ty = TY_BOOL;
+    } else if (b == BI_FILE_WRITE) {
+        if (second->kind == ND_FORMAT) {
+            Node *part;
+            check_print_parts(second->lhs);
+            for (part = second->lhs; part; part = part->next)
+                if (part->kind != ND_STR && !is_numeric(part->ty) && part->ty != TY_BOOL && !type_is_text(part->ty))
+                    error_tok(part->tok, "write の埋め込みは int・float・double・bool・str・char にしてください");
+        }
+        else {
+            check_expr(second);
+            if (!is_numeric(second->ty) && second->ty != TY_BOOL && !type_is_text(second->ty))
+                error_tok(second->tok, "write できるのは int・float・double・bool・str・char です");
+        }
+        node->ty = TY_INT;
+    } else if (b == BI_FILE_CLOSE) {
+        node->ty = TY_VOID;
+        if (!allowed) error_tok(node->tok, "close は戻り値がないので文として使ってください");
+    } else node->ty = b == BI_FILE_READ ? TY_STR : TY_BOOL;
+}
 
 /* int(x) に渡せる値か（NaN でなく、int の範囲に収まる） */
 static int fits_int(double d)
@@ -348,6 +408,7 @@ static void check_builtin(Node *node)
     Value v;
 
     b = (Builtin)node->val;
+    if (b >= BI_FILE_OPEN) { check_file_builtin(node); return; }
     min_args = 1;
     max_args = (b == BI_ROUND || b == BI_ROUNDUP || b == BI_ROUNDDOWN) ? 2 : 1;
     if (node->nargs < min_args || node->nargs > max_args) {
@@ -527,7 +588,9 @@ static void check_call(Node *node)
 
     resolve_module_name(node);
     if (node->kind == ND_BUILTIN) {
+        allow_void = allow;
         check_builtin(node);
+        allow_void = 0;
         return;
     }
     fn = node->func;
@@ -645,6 +708,9 @@ static void check_expr(Node *node)
         return;
     case ND_BUILTIN:
         check_builtin(node);
+        return;
+    case ND_FORMAT:
+        error_tok(node->tok, "文字列の {式} は print または io.file.write の出力に使ってください");
         return;
     case ND_INPUT:
         check_input(node);
@@ -827,7 +893,7 @@ static int compare_values(Value l, Value r, CmpKind kind)
         eq = l.len == r.len && (l.len == 0 || memcmp(l.s, r.s, (size_t)l.len) == 0);
         return kind == CMP_EQ ? eq : !eq;
     }
-    if (l.ty == TY_INT || l.ty == TY_BOOL) {
+    if (l.ty == TY_INT || l.ty == TY_BOOL || l.ty == TY_FILE) {
         switch (kind) {
         case CMP_EQ:
             return l.i == r.i;
@@ -1165,6 +1231,7 @@ static Value eval_builtin(Node *node)
     Builtin b;
 
     b = (Builtin)node->val;
+    if (b >= BI_FILE_OPEN) const_error(node, "ファイル操作は const の初期値に使えません");
     x = eval_const(node->lhs);
     v = x;
     v.ty = node->ty;
@@ -1364,6 +1431,7 @@ static int is_const_expr(Node *node)
     case ND_LENGTH:
         return is_const_expr(node->lhs);
     case ND_BUILTIN:
+        if (node->val >= BI_FILE_OPEN) return 0;
         for (cmp = node->lhs; cmp != NULL; cmp = cmp->next) {
             if (!is_const_expr(cmp)) {
                 return 0;
@@ -1411,6 +1479,7 @@ static Node *value_node(Value v, Token *tok)
     }
     switch (v.ty) {
     case TY_INT:
+    case TY_FILE:
         node->kind = ND_NUM;
         node->val = v.i;
         break;
@@ -1507,6 +1576,8 @@ static void check_print_parts(Node *list)
             continue;
         }
         check_expr(part);
+        if (part->ty == TY_FILE || (type_is_array(part->ty) && array_base(part->ty) == TY_FILE))
+            error_tok(part->tok, "file は出力・文字列埋め込みに使えません");
     }
 }
 
@@ -1746,6 +1817,8 @@ static void check_names(Ast *ast)
     }
 }
 
+#include "file_close_analysis.inc"
+
 void typecheck(Ast *ast)
 {
     Function *fn;
@@ -1772,5 +1845,6 @@ void typecheck(Ast *ast)
                      fn->name_len, fn->name);
         }
     }
+    check_file_closes(ast);
     cur_func = NULL;
 }

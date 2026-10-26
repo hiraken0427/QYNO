@@ -259,8 +259,21 @@ static Symbol exported_symbol(Module *module, const char *name)
     Symbol symbol = {0};
     Function *function;
     Var *constant;
-    if (strchr(name, '.') != NULL) return symbol;
     if (module->builtin) {
+        char *qualified = malloc(strlen(module->name) + strlen(name) + 2);
+        const char *dot = strchr(name, '.');
+        Module *child;
+        sprintf(qualified, "%s.%s", module->name, name);
+        child = standard_module(qualified);
+        free(qualified);
+        if (child != NULL) return namespace_symbol(child);
+        if (dot != NULL) {
+            char *prefix = copy_name(name, (size_t)(dot - name));
+            Symbol parent = exported_symbol(module, prefix);
+            free(prefix);
+            if (parent.kind == SYM_MODULE) return exported_symbol(parent.module, dot + 1);
+            return symbol;
+        }
         Token ns = {0};
         Token member = {0};
         int builtin;
@@ -275,6 +288,7 @@ static Symbol exported_symbol(Module *module, const char *name)
         }
         return symbol;
     }
+    if (strchr(name, '.') != NULL) return symbol;
     for (function = module->ast->funcs; function != NULL; function = function->next) {
         if (function->tok->source->module == module && name_matches(function->name, function->name_len, name)) {
             symbol.kind = SYM_FUNCTION;
@@ -349,9 +363,9 @@ static Symbol using_symbol(Using *u, const char *name)
         if (name[length] == '\0') return namespace_symbol(u->target_module);
         return exported_symbol(u->target_module, name + length + 1);
     }
-    if (strchr(name, '.') != NULL) return symbol;
     resolve_using(u);
     if (u->target_module != NULL) return exported_symbol(u->target_module, name);
+    if (strchr(name, '.') != NULL) return symbol;
     last = strrchr(u->path, '.');
     last = last != NULL ? last + 1 : u->path;
     if (strcmp(last, name) != 0) return symbol;
@@ -472,7 +486,13 @@ static void validate_using(Using *u)
         name = name != NULL ? name + 1 : u->path;
         introduced_name(u, name, using_symbol(u, name));
     } else if (target->builtin) {
+        Module *child;
+        size_t n = strlen(target->name);
         int b;
+        for (child = modules; child != NULL; child = child->next) {
+            if (child->builtin && strncmp(child->name, target->name, n) == 0 && child->name[n] == '.' && strchr(child->name + n + 1, '.') == NULL)
+                introduced_name(u, child->name + n + 1, namespace_symbol(child));
+        }
         for (b = 0; b < BI_COUNT; b++) {
             const char *ns = builtin_namespace((Builtin)b);
             if (ns == NULL || strcmp(ns, target->name) != 0) continue;
