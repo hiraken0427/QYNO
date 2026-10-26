@@ -5,3 +5,4 @@ tmp
 tmp.exe
 tmp.qy
 tmp.s
+__pycache__/

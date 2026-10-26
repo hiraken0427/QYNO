@@ -7,6 +7,19 @@
 
 #define QYC_VERSION "0.25.0"
 
+typedef struct SourceFile SourceFile;
+typedef struct Module Module;
+typedef struct ModuleImport ModuleImport;
+typedef struct Ast Ast;
+
+struct SourceFile {
+    const char *filename;
+    char *canonical_path;
+    char *text;
+    const char *input;  /* UTF-8 BOM の後 */
+    Module *module;
+};
+
 /* ---------- 出力先 ---------- */
 
 typedef enum {
@@ -89,6 +102,7 @@ struct Token {
     int len;            /* トークンの長さ */
     int line;           /* 行番号（1始まり） */
     int col;            /* 列番号（1始まり、バイト単位） */
+    SourceFile *source;
 };
 
 /* ---------- 型 ---------- */
@@ -140,13 +154,22 @@ typedef enum {
     BI_COUNT
 } Builtin;
 
-/* using の1項目（using math.sqrt なら名前空間 math・名前 sqrt。using math なら名前は NULL） */
+/* using の1項目。参照先と宣言位置の字句スコープを保持する。 */
 struct Using {
     Using *next;
     Using *vnext;       /* 関数の中の using の見える範囲 */
-    Token *ns;          /* 名前空間 */
-    Token *name;        /* 名前（NULL なら名前空間のすべて） */
+    Token *path_tok;    /* 参照先の最初の Token */
     Token *tok;         /* 書いた位置 */
+    char *path;
+    Token *alias;
+    Using *scope;       /* 宣言前のブロック内 using */
+    Using *all_next;
+    Var *locals;        /* 宣言位置で見える変数 */
+    Module *target_module;
+    Function *target_function;
+    Var *target_constant;
+    int target_builtin;
+    int state;         /* 0:未解決、1:解決中、2:解決済み */
 };
 struct Var {
     Var *next;          /* 関数内の全変数の並び */
@@ -166,6 +189,7 @@ struct Var {
     Node *decl;         /* const の宣言（ND_DECL）。値を必要になった時点で計算する */
     int const_state;    /* const の値の計算状況（0：未、1：計算中、2：済み） */
     Token *tok;         /* 宣言した位置 */
+    Using *usings;
 };
 
 typedef enum {
@@ -251,7 +275,7 @@ struct Node {
     Node *inc;          /* ND_FOR の増分の量（i += 2 なら 2、i++ なら 1） */
     int inc_sign;       /* ND_FOR の増分の向き（+= と ++ は 1、-= と -- は -1） */
     Function *func;     /* ND_CALL の呼び出し先（型検査で決まる） */
-    Using *using_ref;   /* ND_CALL：関数の中の using で省略できる名前なら、その using。ND_USING：その using */
+    Using *using_ref;   /* ND_USING の宣言リスト */
     int arg_val;        /* 呼び出しの引数に val を付けたら 1 */
     int input_pattern;  /* ND_INPUT：{変数} を含む形に当てはめる形なら 1（結果は bool） */
     int input_stmt;     /* ND_INPUT：文として使う（失敗したら実行時エラーで止める）なら 1 */
@@ -268,6 +292,8 @@ struct Node {
     int has_end;        /* ND_PRINT で end= を指定したら 1 */
     int end_literal;    /* ND_PRINT の end= が文字列リテラル直書きなら 1 */
     Token *tok;         /* エラー表示用 */
+    char *name;         /* 未解決の名前（修飾名を含む） */
+    Using *usings;      /* 式の位置のブロック内 using */
 };
 
 struct Function {
@@ -296,26 +322,50 @@ struct InputField {
 };
 
 /* プログラム全体 */
-typedef struct {
+struct Ast {
     Function *funcs;    /* すべての関数（main を含む） */
     Node *globals;      /* ファイル先頭の const 宣言（ND_DECL の並び） */
     Var *global_vars;   /* ファイル先頭の const */
     Using *usings;      /* 関数の外の using */
-} Ast;
+    ModuleImport *imports;
+    Using *all_usings;
+    Module *modules;
+    Module *entry;
+};
+
+struct ModuleImport {
+    ModuleImport *next;
+    char *name;
+    Token *tok;
+    Module *module;
+};
+
+struct Module {
+    Module *next;
+    char *name;
+    SourceFile *source;
+    Ast *ast;
+    int state;          /* 1:読み込み中、2:完了 */
+    int id;
+    int builtin;
+};
 
 /* builtin.c：組み込み関数の一覧 */
 const char *builtin_name(Builtin b);
 int builtin_find(Token *ns, Token *name);           /* 見つからなければ -1 */
-int builtin_namespace_exists(Token *ns);
-int using_covers(Using *u, const char *name, int len);
 const char *builtin_namespace_of(const char *name, int len);  /* u で name を省略して使えるか。使えれば Builtin を、なければ -1 */
 
 /* main.c */
-extern const char *current_filename;
-extern const char *current_source;     /* ソース全体（実行時エラーで該当行を表示するため） */
-extern const char *current_input;
+extern SourceFile *current_file;
+void select_source(SourceFile *source);
 void error_at(int line, int col, const char *fmt, ...);
+void error_tok(Token *tok, const char *fmt, ...);
 void fatal(const char *fmt, ...);
+
+/* modules.c：読み込み・モジュール単位の名前解決 */
+Ast *load_program(const char *path, const char **roots, int root_count);
+void validate_module_names(Ast *program);
+void resolve_module_name(Node *node);
 
 /* tokenize.c */
 Token *tokenize(const char *src);

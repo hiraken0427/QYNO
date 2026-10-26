@@ -18,6 +18,7 @@ static Token *new_token(TokenKind kind, const char *start, int len, int line, in
     tok->len = len;
     tok->line = line;
     tok->col = col;
+    tok->source = current_file;
     return tok;
 }
 

@@ -8,9 +8,12 @@
 #include <windows.h>
 #endif
 
-const char *current_filename;
-const char *current_source;
-const char *current_input;
+SourceFile *current_file;
+
+void select_source(SourceFile *source)
+{
+    current_file = source;
+}
 
 /* 位置情報なしのエラー */
 void fatal(const char *fmt, ...)
@@ -26,15 +29,14 @@ void fatal(const char *fmt, ...)
 }
 
 /* ソースの該当行と ^ で位置を示してエラー終了する */
-void error_at(int line, int col, const char *fmt, ...)
+static void source_error(SourceFile *source, int line, int col, const char *fmt, va_list ap)
 {
-    va_list ap;
     const char *line_start;
     const char *line_end;
     int cur_line;
     int i;
 
-    line_start = current_input;
+    line_start = source->input;
     cur_line = 1;
     while (cur_line < line && *line_start != '\0') {
         if (*line_start == '\n') {
@@ -47,10 +49,8 @@ void error_at(int line, int col, const char *fmt, ...)
         line_end++;
     }
 
-    fprintf(stderr, "%s:%d:%d: エラー: ", current_filename, line, col);
-    va_start(ap, fmt);
+    fprintf(stderr, "%s:%d:%d: エラー: ", source->filename, line, col);
     vfprintf(stderr, fmt, ap);
-    va_end(ap);
     fprintf(stderr, "\n");
 
     fprintf(stderr, "%.*s\n", (int)(line_end - line_start), line_start);
@@ -59,6 +59,22 @@ void error_at(int line, int col, const char *fmt, ...)
     }
     fprintf(stderr, "^\n");
     exit(1);
+}
+
+void error_at(int line, int col, const char *fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    source_error(current_file, line, col, fmt, ap);
+    va_end(ap);
+}
+
+void error_tok(Token *tok, const char *fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    source_error(tok->source, tok->line, tok->col, fmt, ap);
+    va_end(ap);
 }
 
 #ifdef _WIN32
@@ -87,11 +103,12 @@ static void setup_console(void)
 
 static void usage(int status)
 {
-    fprintf(stderr, "使い方: qyc <入力ファイル.qy> [-o <出力ファイル>] [-S] [--target windows|linux]\n");
+    fprintf(stderr, "使い方: qyc <入力ファイル.qy> [-o <出力ファイル>] [-S] [-I <探索ルート>] [--target windows|linux]\n");
     fprintf(stderr, "  -o <ファイル>        出力ファイル名を指定する\n");
     fprintf(stderr, "                       （既定は Windows 向けなら 入力名.exe、Linux 向けなら拡張子なし）\n");
     fprintf(stderr, "  -S                   実行ファイルを作らず、アセンブリ（.s）だけを出力する\n");
     fprintf(stderr, "  --target <OS>        出力先の OS（windows または linux）。既定は実行中の OS\n");
+    fprintf(stderr, "  -I <ディレクトリ>    import の探索ルートを追加する（複数指定可）\n");
     fprintf(stderr, "  --version            バージョンを表示する\n");
     exit(status);
 }
@@ -102,36 +119,6 @@ static int has_qy_extension(const char *path)
 
     len = strlen(path);
     return len > 3 && strcmp(path + len - 3, ".qy") == 0;
-}
-
-static char *read_file(const char *path)
-{
-    FILE *fp;
-    char *buf;
-    long size;
-    size_t n;
-
-    fp = fopen(path, "rb");
-    if (fp == NULL) {
-        fatal("%s を開けません", path);
-    }
-    if (fseek(fp, 0, SEEK_END) != 0) {
-        fatal("%s のサイズを取得できません", path);
-    }
-    size = ftell(fp);
-    if (size < 0) {
-        fatal("%s のサイズを取得できません", path);
-    }
-    rewind(fp);
-
-    buf = malloc((size_t)size + 1);
-    if (buf == NULL) {
-        fatal("メモリを確保できません");
-    }
-    n = fread(buf, 1, (size_t)size, fp);
-    buf[n] = '\0';
-    fclose(fp);
-    return buf;
 }
 
 /* 末尾の ".qy" を ext に置き換えた文字列を作る */
@@ -208,16 +195,18 @@ int main(int argc, char **argv)
 {
     const char *input_path;
     const char *output_path;
-    char *src;
     char *out_path;
-    Token *tok;
     Ast *ast;
     Program prog;
     Target target;
     int asm_only;
     int i;
+    const char **roots;
+    int root_count = 0;
 
     setup_console();
+    roots = calloc((size_t)argc, sizeof(*roots));
+    if (roots == NULL) fatal("探索ルートの領域を確保できません");
 
     input_path = NULL;
     output_path = NULL;
@@ -254,6 +243,15 @@ int main(int argc, char **argv)
             target = parse_target(argv[i]);
             continue;
         }
+        if (strcmp(argv[i], "-I") == 0) {
+            if (i + 1 >= argc) fatal("-I の後に探索ルートが必要です");
+            roots[root_count++] = argv[++i];
+            continue;
+        }
+        if (strncmp(argv[i], "-I", 2) == 0 && argv[i][2] != '\0') {
+            roots[root_count++] = argv[i] + 2;
+            continue;
+        }
         if (argv[i][0] == '-') {
             fatal("不明なオプションです: %s", argv[i]);
         }
@@ -270,18 +268,9 @@ int main(int argc, char **argv)
         fatal("ソースファイルの拡張子は .qy にしてください: %s", input_path);
     }
 
-    /* 1. ソースファイルを読み込む（UTF-8 の BOM は読み飛ばす） */
-    src = read_file(input_path);
-    current_filename = input_path;
-    current_source = src;
-    current_input = src;
-    if ((unsigned char)src[0] == 0xEF && (unsigned char)src[1] == 0xBB && (unsigned char)src[2] == 0xBF) {
-        current_input = src + 3;
-    }
-
-    /* 3. 字句解析・構文解析 */
-    tok = tokenize(current_input);
-    ast = parse(tok);
+    /* 1–3. 全モジュールを読み込み、各ソース位置を保持して解析する。 */
+    ast = load_program(input_path, roots, root_count);
+    free(roots);
 
     /* 4. 型検査 */
     typecheck(ast);
@@ -295,7 +284,6 @@ int main(int argc, char **argv)
         }
         write_assembly(ast, out_path, target);
         free(out_path);
-        free(src);
         return 0;
     }
 
@@ -319,6 +307,5 @@ int main(int argc, char **argv)
 
     free(out_path);
     prog_free(&prog);
-    free(src);
     return 0;
 }
