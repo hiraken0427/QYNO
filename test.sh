@@ -512,7 +512,7 @@ assert_error 'ブロックの外で using' 'int main();\n\tif(true);\n\t\tusing 
 assert_error 'input の {} が隣り合う' 'int main();\n\tint a\n\tint b\n\tinput("> {a}{b}")\n'
 assert_error 'input の {} に式' 'int main();\n\tint a\n\tinput("> {a + 1}")\n'
 assert_error 'input で定数に読み込む' 'const int C = 1\nint main();\n\tinput("> {C}")\n'
-assert_error 'input のプロンプトが数値' 'int main();\n\tstr s = input(1)\n'
+assert_error 'input のプロンプトが配列' 'int main();\n\tstr s = input(prompt=[1])\n'
 assert_error 'input の引数が2つ' 'int main();\n\tstr s = input("a", "b")\n'
 assert_error '形の input の結果を int に' 'int main();\n\tint a\n\tint x = input("> {a}")\n'
 assert_error '関数の外の input' 'const int K = input()\nint main();\n\treturn 0\n'

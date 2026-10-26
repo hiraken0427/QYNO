@@ -43,7 +43,7 @@
  *          | ("int" | "float" | "double" | "char" | "str") "(" args ")"   （型変換）
  *          | input
  *          | ident "(" args? ")" | ident | "(" expr ")"
- * input    = "input" "(" (str（{変数} を含む） | expr)? ")"
+ * input    = "input" "(" (str（{入力先} を含む） | ("prompt" "=")? expr)? ")"
  * args     = expr ("," expr)*
  * print_arg = str（{式} の埋め込み可） | expr
  * 標準 io の修飾名・別名も print/input の構文で解析し、参照先を型検査で確認する。
@@ -407,7 +407,8 @@ static void append_text(char **buf, int *len, const char *s, int n)
  * input(...)
  *   値の形            input() ・ input(プロンプト)     読んだ1行を、代入先の型で読む（型検査で決まる）
  *   形に当てはめる形  input("表示する文字{a}区切り{b}")  最初の { より前を表示し、後ろの形に当てはめて変数に入れる
- * 形に当てはめる形では、{} の中は変数の名前だけで、{} と {} の間には区切りの文字が必要。最後の {} の後には何も書けない。
+ * 入力先は変数または添字。{} と {} の間には区切りが必要で、最後の {} の後ろは右側の表示枠。
+ * input(x) も直接入力。値をプロンプトとして渡すには input(prompt=x) を使う。
  */
 static Node *input_expr(Token *start)
 {
@@ -422,7 +423,10 @@ static Node *input_expr(Token *start)
 
     node = new_node(ND_INPUT, start);
     expect("(");
-    if (tok->kind == TK_STR && equal(tok->next, ")") && has_placeholder(tok)) {
+    if (equal(tok, "prompt") && equal(tok->next, "=")) {
+        tok = tok->next->next;
+        node->lhs = expr();
+    } else if (tok->kind == TK_STR && equal(tok->next, ")") && has_placeholder(tok)) {
         lit = tok;
         parts = string_literal(lit);
         tok = tok->next;
@@ -442,8 +446,8 @@ static Node *input_expr(Token *start)
                 }
                 continue;
             }
-            if (part->kind != ND_VAR) {
-                error_tok(part->tok, "input の {} の中には、読み込む先の変数の名前だけを書いてください");
+            if (part->kind != ND_VAR && part->kind != ND_INDEX) {
+                error_tok(part->tok, "input の {} の中には、読み込む先の変数または配列要素を書いてください");
             }
             if (cur != NULL && cur->sep_len == 0) {
                 error_tok(part->tok, "{} と {} の間には、区切りの文字が必要です（例：{a}, {b}）");
@@ -471,6 +475,14 @@ static Node *input_expr(Token *start)
         }
     } else if (!equal(tok, ")")) {
         node->lhs = expr();
+        if (node->lhs->kind == ND_VAR || node->lhs->kind == ND_INDEX) {
+            node->input_pattern = 1;
+            node->fields = calloc(1, sizeof(InputField));
+            if (node->fields == NULL) fatal("入力先を確保できません");
+            node->fields->var = node->lhs;
+            node->fields->temp = hidden_var(TY_INT, start);
+            node->lhs = NULL;
+        }
     }
     if (!equal(tok, ")")) {
         error_tok(tok, "input の引数は1つです（複数の値は input(\"表示{a}, {b}\") のように形で書きます）");

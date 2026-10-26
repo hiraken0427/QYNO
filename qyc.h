@@ -226,7 +226,7 @@ typedef enum {
     ND_INPUT,   /* input(...)：値の形（lhs がプロンプト）か、形に当てはめる形（fields） */
     ND_ADDR,    /* x.addr：変数の場所（lhs は ND_VAR） */
     ND_NONE,    /* none：何も指していない場所 */
-    ND_REFARG,  /* 呼び出しの ref x（lhs は ND_VAR） */
+    ND_REFARG,  /* 呼び出しの ref x（lhs は変数または配列要素） */
     ND_ADDR_ASSIGN, /* p.addr = 式：ref の変数の指す先を変える（var、lhs） */
     ND_CAST,    /* 型変換（型検査で挿入。lhs を ty に変換する） */
     ND_STR,     /* print の文字列の固定部分（str・str_len） */
@@ -319,7 +319,7 @@ struct Function {
 /* input の形の中の {変数} 1つ分 */
 struct InputField {
     InputField *next;
-    Node *var;          /* 読み込む先の変数（ND_VAR） */
+    Node *var;          /* 読み込む先の変数または添字（ND_VAR / ND_INDEX） */
     char *sep;          /* この {} の後ろの区切りの文字（最後の {} なら NULL） */
     int sep_len;
     Var *temp;          /* 読み取った値を一時的に置くローカル変数（すべて読めてから変数に移す） */

@@ -423,36 +423,33 @@ static void check_builtin(Node *node)
 
 /*
  * input の型検査
- *   値の形            プロンプトは str。結果はひとまず str で、代入先があればその型に変わる（coerce）
- *   形に当てはめる形  {} の中は定数でない変数で、型は int・float・double・bool・str。結果は bool
+ *   値の形            プロンプトはスカラー値。結果は str で、代入先があればその型で読む（coerce）
+ *   直接・形式指定    入力先は変更可能なスカラー変数または要素。結果は bool
  */
 static void check_input(Node *node)
 {
     InputField *f;
-    Var *v;
-
     if (node->name != NULL) resolve_module_name(node);
     if (!node->input_pattern) {
         if (node->lhs != NULL) {
+            Type ty;
             check_expr(node->lhs);
-            if (!type_is_text(node->lhs->ty)) {
-                error_tok(node->lhs->tok, "input のプロンプトは文字列にしてください（%s が指定されています）",
-                         type_name(node->lhs->ty));
-            }
+            ty = node->lhs->ty;
+            if (!is_numeric(ty) && ty != TY_BOOL && !type_is_text(ty))
+                error_tok(node->lhs->tok, "input のプロンプトは int・float・double・bool・str・char にしてください");
         }
         node->ty = TY_STR;
         return;
     }
     for (f = node->fields; f != NULL; f = f->next) {
+        Type ty;
         check_expr(f->var);
-        v = f->var->var;
-        if (v->is_const) {
-            error_tok(f->var->tok, "定数 %.*s には読み込めません", v->name_len, v->name);
-        }
-        if (v->ty != TY_INT && v->ty != TY_FLOAT && v->ty != TY_DOUBLE && v->ty != TY_BOOL && !type_is_text(v->ty)) {
-            error_tok(f->var->tok, "%s の変数には読み込めません", type_name(v->ty));
-        }
-        f->temp->ty = v->ty;
+        check_place(f->var);
+        ty = f->var->ty;
+        if (!is_numeric(ty) && ty != TY_BOOL && !type_is_text(ty))
+            error_tok(f->var->tok, "%s には直接入力できません。変数または末端の配列要素を指定してください", type_name(ty));
+        /* 文字列内の1文字への入力も1スカラー値に制限する。 */
+        f->temp->ty = f->var->kind == ND_INDEX && type_is_text(f->var->lhs->ty) ? TY_CHAR : ty;
     }
     node->ty = TY_BOOL;
 }
@@ -492,26 +489,24 @@ static void check_ref_target(Var *v, Node *e, const char *what)
 static void check_ref_arg(Node *arg, Var *param, int index)
 {
     Var *v;
-
-    if (arg->lhs->kind != ND_VAR) {
-        error_tok(arg->lhs->tok, "%d 番目の引数：ref には変数の名前だけを書けます（式は渡せません）", index);
-    }
+    Node *root;
+    int rank = 0;
     check_expr(arg->lhs);
-    v = arg->lhs->var;
-    check_ref_limits(param, v, arg->tok);
-    if (v->is_const) {
-        error_tok(arg->lhs->tok, "%d 番目の引数：定数 %.*s は ref で渡せません", index, v->name_len, v->name);
+    v = check_place(arg->lhs);
+    root = arg->lhs;
+    while (root->kind == ND_INDEX) {
+        if (!type_is_array(root->lhs->ty))
+            error_tok(root->tok, "文字列内の文字は ref で渡せません。char 配列の要素を指定してください");
+        rank++;
+        root = root->lhs;
     }
-    if (v->is_loop) {
-        error_tok(arg->lhs->tok, "%d 番目の引数：for 文の繰り返しの変数 %.*s は ref で渡せません",
-                 index, v->name_len, v->name);
-    }
-    if (v->ty != param->ty) {
-        error_tok(arg->lhs->tok, "%d 番目の引数：ref の引数の型は %s です（%s の変数は渡せません。ref では型を変換しません）",
-                 index, type_name(param->ty), type_name(v->ty));
-    }
+    if (v->is_loop) error_tok(arg->tok, "%d 番目の引数：for 文の繰り返しの変数は ref で渡せません", index);
+    if (arg->lhs->ty != param->ty)
+        error_tok(arg->tok, "%d 番目の引数：ref の引数の型は %s です（%s は渡せません。ref では型を変換しません）",
+                  index, type_name(param->ty), type_name(arg->lhs->ty));
+    if (rank == 0) check_ref_limits(param, v, arg->tok);
     arg->ty = TY_ADDR;
-    arg->cmp_ty = v->ty;
+    arg->cmp_ty = arg->lhs->ty;
 }
 
 /* 関数呼び出し：呼び出し先を探し、引数の数と型を確かめて、引数を引数の型に変換する */

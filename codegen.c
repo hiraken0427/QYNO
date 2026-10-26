@@ -61,6 +61,9 @@ static void lineedit_labels(void);
 static int edit_line_label;
 static void gen_fail(Token *tok, const char *text, int code);
 static void gen_store_var(Var *v, Token *tok);
+static void gen_var_addr(Var *v, Token *tok, int check);
+static void gen_load_var(Var *v, Token *tok);
+static void gen_print_value(Node *expr);
 
 /* 実行時エラーの終了コード（sysexits.h の取り決め） */
 #define EX_DATAERR  65      /* sysexits.h：入力のデータが正しくない */
@@ -4863,6 +4866,8 @@ static void gen_real_to_float(int range)
     x64_jcc(CC_AE, range);
 }
 
+#include "places_codegen.inc"
+
 /*
  * 値の形：input() ・ input(プロンプト)
  * プロンプトを表示して1行を読み、node->ty の値を rax に入れる。str なら行をそのまま返す。
@@ -4885,8 +4890,7 @@ static void gen_input_value(Node *node)
     eof = new_label("input.eof");
     done = new_label("input.done");
     if (node->lhs != NULL) {
-        gen_expr(node->lhs);
-        x64_call(print_str_label);
+        gen_print_value(node->lhs);
     }
     gen_read_line_into(node, eof);
     if (ty == TY_STR) {
@@ -4989,7 +4993,9 @@ static void gen_input_pattern(Node *node)
     char name[256];
     char reason[512];
     char sepbuf[256];
-    Var *v;
+    Node *root;
+    Type ty;
+    PlacePlan *plans;
     int n;
     int i;
     int *missing;
@@ -5005,6 +5011,14 @@ static void gen_input_pattern(Node *node)
     n = 0;
     for (f = node->fields; f != NULL; f = f->next) {
         n++;
+    }
+    plans = calloc((size_t)n, sizeof(*plans));
+    if (plans == NULL) fatal("入力先を確保できません");
+    i = 0;
+    for (f = node->fields; f != NULL; f = f->next, i++) {
+        plans[i] = place_capture(f->var);
+        collection_context(f->var->tok);
+        place_read(&plans[i]);
     }
     missing = calloc((size_t)n, sizeof(int));
     type_err = calloc((size_t)n, sizeof(int));
@@ -5033,10 +5047,10 @@ static void gen_input_pattern(Node *node)
 
     i = 0;
     for (f = node->fields; f != NULL; f = f->next, i++) {
-        v = f->var->var;
+        ty = f->temp->ty;
         x64_load(RSI, RBP, -node->in_cur->offset);
         x64_load(RDX, RBP, -node->in_end->offset);
-        if (type_is_text(v->ty)) {
+        if (type_is_text(ty)) {
             int nonempty = new_label("input.nonempty");
             if (f->next == NULL) {
                 /* 最後の str は行の終わりまで */
@@ -5049,7 +5063,7 @@ static void gen_input_pattern(Node *node)
                 x64_jmp(missing[i]);
                 x64_bind(nonempty);
                 x64_store(RBP, -f->temp->offset, RAX);
-                if (v->ty == TY_CHAR) {
+                if (ty == TY_CHAR) {
                     gen_text_measure_preserving();
                     x64_test(R8, R8);
                     x64_jcc(CC_NZ, type_err[i]);
@@ -5086,7 +5100,7 @@ static void gen_input_pattern(Node *node)
             x64_load(RCX, RBP, -f->temp->offset);
             x64_store(RBP, -node->in_cur->offset, RCX);
             x64_store(RBP, -f->temp->offset, RAX);
-            if (v->ty == TY_CHAR) {
+            if (ty == TY_CHAR) {
                 gen_text_measure_preserving();
                 x64_test(R8, R8);
                 x64_jcc(CC_NZ, type_err[i]);
@@ -5101,7 +5115,7 @@ static void gen_input_pattern(Node *node)
         x64_cmp(RSI, RDX);
         x64_jcc(CC_AE, missing[i]);
         x64_store(RBP, -f->temp->offset, RSI);          /* 値の先頭（float の範囲外の表示に使う） */
-        x64_call(v->ty == TY_INT ? parse_int_label : v->ty == TY_BOOL ? parse_bool_label : parse_real_label);
+        x64_call(ty == TY_INT ? parse_int_label : ty == TY_BOOL ? parse_bool_label : parse_real_label);
         x64_mov_imm(R8, 1);
         x64_cmp(RCX, R8);
         x64_jcc(CC_Z, type_err[i]);
@@ -5109,7 +5123,7 @@ static void gen_input_pattern(Node *node)
         x64_cmp(RCX, R8);
         x64_jcc(CC_Z, range_err[i]);
         x64_store(RBP, -node->in_cur->offset, RSI);
-        if (v->ty == TY_FLOAT) {
+        if (ty == TY_FLOAT) {
             int ok = new_label("input.float_ok");
             int bad = new_label("input.float_bad");
             gen_real_to_float(bad);
@@ -5144,10 +5158,27 @@ static void gen_input_pattern(Node *node)
         }
     }
 
+    /* 添字式の副作用で先の入力先が変わっていても、一部更新する前に検査する。 */
+    for (i = 0; i < n; i++) {
+        collection_context(plans[i].target->tok);
+        place_read(&plans[i]);
+    }
+
     /* すべて読めたので変数に移す */
-    for (f = node->fields; f != NULL; f = f->next) {
-        x64_load(RAX, RBP, -f->temp->offset);
-        gen_store_var(f->var->var, f->var->tok);
+    i = 0;
+    for (f = node->fields; f != NULL; f = f->next, i++) {
+        collection_context(f->var->tok);
+        if (plans[i].text_last) {
+            place_resolve(&plans[i], plans[i].count - 1);
+            x64_load(RAX, RAX, 0);
+            place_load(&plans[i], RDI, plans[i].count);
+            x64_load(RSI, RBP, -f->temp->offset);
+            x64_call(string_replace_label);
+            x64_store(RBP, -f->temp->offset, RAX);
+            place_resolve(&plans[i], plans[i].count - 1);
+        } else place_resolve(&plans[i], plans[i].count);
+        x64_load(RDX, RBP, -f->temp->offset);
+        x64_store(RAX, 0, RDX);
     }
     x64_mov_imm(RAX, 1);
     x64_jmp(done);
@@ -5165,6 +5196,8 @@ static void gen_input_pattern(Node *node)
         x64_bind(fail);
         x64_xor(RAX, RAX);
         x64_bind(done);
+        for (i = n - 1; i >= 0; i--) place_release(&plans[i]);
+        free(plans);
         free(missing);
         free(type_err);
         free(range_err);
@@ -5179,16 +5212,18 @@ static void gen_input_pattern(Node *node)
     gen_input_fail(node, head, head_len, "余計な文字があります");
     i = 0;
     for (f = node->fields; f != NULL; f = f->next, i++) {
-        v = f->var->var;
-        snprintf(name, sizeof(name), "%.*s", v->name_len, v->name);
+        ty = f->temp->ty;
+        root = f->var;
+        while (root->kind == ND_INDEX) root = root->lhs;
+        snprintf(name, sizeof(name), "%.*s", root->var->name_len, root->var->name);
         x64_bind(missing[i]);
         snprintf(reason, sizeof(reason), "「%s」に入れる値がありません", name);
         gen_input_fail(node, head, head_len, reason);
         x64_bind(type_err[i]);
-        snprintf(reason, sizeof(reason), "「%s」に入れる値を %s として読めません", name, type_name(v->ty));
+        snprintf(reason, sizeof(reason), "「%s」に入れる値を %s として読めません", name, type_name(ty));
         gen_input_fail(node, head, head_len, reason);
         x64_bind(range_err[i]);
-        snprintf(reason, sizeof(reason), "「%s」に入れる値が %s の範囲を超えています", name, type_name(v->ty));
+        snprintf(reason, sizeof(reason), "「%s」に入れる値が %s の範囲を超えています", name, type_name(ty));
         gen_input_fail(node, head, head_len, reason);
         x64_bind(sep_err[i]);
         if (f->sep != NULL) {
@@ -5201,6 +5236,8 @@ static void gen_input_pattern(Node *node)
     }
     x64_bind(fail);
     x64_bind(done);
+    for (i = n - 1; i >= 0; i--) place_release(&plans[i]);
+    free(plans);
     free(missing);
     free(type_err);
     free(range_err);
@@ -5245,6 +5282,13 @@ static void gen_load_var(Var *v, Token *tok)
 /* rax を変数に書く（ref の変数は、使う場所を通して書く。r11 を使う） */
 static void gen_store_var(Var *v, Token *tok)
 {
+    if (type_is_array(v->ty)) {
+        push();
+        gen_load_var(v, tok);
+        collection_context(tok);
+        array_require_unborrowed();
+        pop(RAX);
+    }
     if (v->is_ref) {
         x64_push(RAX);
         gen_ref_place(v, tok, R11);
@@ -5269,22 +5313,61 @@ static void gen_var_addr(Var *v, Token *tok, int check)
     x64_lea(RAX, RBP, -v->offset);
 }
 
-#include "places_codegen.inc"
 
 /* 関数呼び出し：引数を左から順に積み、呼び出した後に取り除く */
 static void gen_call(Node *node)
 {
     Node *arg;
-
-    for (arg = node->lhs; arg != NULL; arg = arg->next) {
+    Node *part;
+    int owners = 0;
+    int bytes;
+    int base;
+    int slot;
+    int i;
+    for (arg = node->lhs; arg != NULL; arg = arg->next)
+        if (arg->kind == ND_REFARG)
+            for (part = arg->lhs; part->kind == ND_INDEX; part = part->lhs) owners++;
+    if (owners == 0) {
+        for (arg = node->lhs; arg != NULL; arg = arg->next) {
+            gen_expr(arg);
+            push();
+        }
+        x64_call(node->func->label);
+        if (node->nargs) {
+            x64_add_imm(RSP, 8 * node->nargs);
+            depth -= node->nargs;
+        }
+        return;
+    }
+    bytes = ((node->nargs + owners) * 8 + 15) / 16 * 16;
+    base = emitting_function->stack_size + depth * 8 + bytes;
+    if (bytes) { x64_sub_imm(RSP, bytes); depth += bytes / 8; }
+    slot = node->nargs;
+    i = 0;
+    for (arg = node->lhs; arg != NULL; arg = arg->next, i++) {
+        if (arg->kind == ND_REFARG) {
+            arg->val = base - slot * 8;
+            for (part = arg->lhs; part->kind == ND_INDEX; part = part->lhs) slot++;
+        }
         gen_expr(arg);
+        x64_store(RBP, -base + i * 8, RAX);
+    }
+    for (i = 0; i < node->nargs; i++) {
+        x64_load(RAX, RBP, -base + i * 8);
         push();
     }
     x64_call(node->func->label);
-    if (node->nargs > 0) {
+    if (node->nargs) {
         x64_add_imm(RSP, 8 * node->nargs);
         depth -= node->nargs;
     }
+    for (i = node->nargs; i < slot; i++) {
+        x64_load(RDX, RBP, -base + i * 8);
+        x64_load(RCX, RDX, 32);
+        x64_sub_imm(RCX, 1);
+        x64_store(RDX, 32, RCX);
+    }
+    if (bytes) { x64_add_imm(RSP, bytes); depth -= bytes / 8; }
 }
 
 /* 式を評価し、結果を rax に入れる */
@@ -5361,7 +5444,8 @@ static void gen_expr(Node *node)
         x64_xor(RAX, RAX);
         return;
     case ND_REFARG:
-        gen_var_addr(node->lhs->var, node->tok, 1);
+        if (node->lhs->kind == ND_INDEX) gen_element_ref(node);
+        else gen_var_addr(node->lhs->var, node->tok, 1);
         if (type_is_array(node->lhs->ty)) {
             collection_context(node->tok);
             collection_shape(node->lhs->ty, node->dims, RDI);
@@ -5742,6 +5826,7 @@ static void gen_function(Function *fn)
 {
     char label_name[128];
     emitting_function = fn;
+    depth = 0;
 
     snprintf(label_name, sizeof(label_name), ".L.return.%d", fn->label);
     return_label = x64_new_label(label_name);

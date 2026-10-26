@@ -80,6 +80,43 @@ int main();
 値を読み取る形式では、代入先・引数・戻り値などの型の文脈に応じて読み取る。
 プロンプトは省略可能。既存の int / float / double / bool / str / char の扱いを変更しない。
 
+入力先を引数として直接指定することもできる。変数・配列要素・ref 変数が対象となる。
+int / float / double / bool / str / char の入力に対応する。
+
+```text
+int main();
+	int num
+	int matrix[2][3]
+	io.input(num)
+	io.input(matrix[0][0])
+	io.input("入力> {matrix[0][1]}")
+	io.print(matrix[0])
+```
+
+入力先を指定する形式の `{}` 内では、変数名に加えて多次元配列の要素も使える。
+添字式は入力前に左から順に1回だけ評価し、読み取り後も保存した添字へ代入する。
+たとえば `io.input("{i}, {items[i]}")` は、入力前の i で選んだ要素へ書き込む。
+文字列の添字を入力先にする場合は、Unicodeスカラー値1個だけを受け取る。
+定数や配列全体への直接入力は許可しない。
+
+**変数をプロンプトに使う場合は `prompt=` を明示する。**
+従来の `name = io.input(message)` は、message が変数なら直接入力として解釈されるため、
+`name = io.input(prompt=message)` へ変更する必要がある。
+
+| 記述 | 動作 |
+| --- | --- |
+| `io.input(num)` | num の型で入力して代入する。結果は bool |
+| `io.input(items[i])` | 選んだ要素の型で入力して代入する。結果は bool |
+| `io.input("入力> {items[i]}")` | プロンプトを表示して入力先へ代入する。結果は bool |
+| `num = io.input("入力> ")` | 入力値を num の型で返す |
+| `num = io.input(prompt=message)` | message を表示し、入力値を num の型で返す |
+| `num = io.input(123)` | 123 を表示し、入力値を num の型で返す |
+
+プロンプトは int / float / double / bool / str / char を受け付け、
+print と同じ書式で改行を追加せずに表示する。
+直接指定した文字列リテラルの `{}` は入力先を表す。
+`prompt=` を付けた値や通常の式を、入力先として解釈することはない。
+
 ```text
 int main();
 	int age
@@ -90,7 +127,7 @@ int main();
 	return 0
 ```
 
-入力先を指定する形式は bool を返す。条件・値として使う場合、形式不一致や EOF は false。
+直接入力と入力先を指定する形式は bool を返す。条件・値として使う場合、形式不一致や EOF は false。
 複数の欄を読み取る場合、全体が成功してから変数を更新し、失敗時は既存値を保持する。
 文として呼び出した場合は、失敗を既存の実行時エラーとして扱う。
 
