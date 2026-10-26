@@ -5555,15 +5555,83 @@ static void gen_while(Node *node)
     x64_bind(end);
 }
 
-/*
- * for：
- *          ループ変数 = 開始値（1回だけ評価）
- *   begin: 変数 比較 終了値（終了値は毎周評価）→ 偽なら end へ
- *          本体
- *   next:  増分（continue() はここへ）
- *          begin へ戻る
- *   end:
- */
+/* rax を保持し、NaN / 無限大のヘッダー値を拒否する。 */
+static void gen_for_finite(Type ty, Token *tok, const char *message)
+{
+    int ok;
+    if (ty == TY_INT) return;
+    ok = new_label("for.finite");
+    x64_mov(RCX, RAX);
+    x64_mov_imm(RDX, ty == TY_FLOAT ? 0x7f800000LL : 0x7ff0000000000000LL);
+    x64_and(RCX, RDX);
+    x64_cmp(RCX, RDX);
+    x64_jcc(CC_NZ, ok);
+    gen_fail(tok, message, EX_SOFTWARE);
+    x64_bind(ok);
+}
+
+/* 初期候補と通常回で共通の更新。int の範囲外は終了、小数の停滞は診断する。 */
+static void gen_for_update(Node *node, int end)
+{
+    Var *v = node->init->var;
+    Token *tok = node->inc->tok;
+    int progress;
+    if (v->ty == TY_INT) {
+        gen_expr(node->for_amount);
+        x64_mov(RDI, RAX);
+        gen_load_var(v, tok);
+        if (node->inc_sign > 0) x64_add(RAX, RDI);
+        else x64_sub(RAX, RDI);
+        x64_jcc(CC_O, end); /* store や他の命令でフラグを壊す前に検査する */
+        gen_store_var(v, tok);
+        return;
+    }
+    gen_load_var(v, tok);
+    gen_for_finite(v->ty, tok, "for の更新前の値は有限の数値にしてください");
+    push();
+    gen_expr(node->step->lhs); /* 既存の型変換・演算・丸め順序を維持する */
+    gen_for_finite(v->ty, tok, "for の更新結果が有限ではありません");
+    pop(RDI);
+    if (v->ty == TY_FLOAT) {
+        x64_movd_to_xmm(0, RDI);
+        x64_cvtss2sd(0, 0);
+        x64_movd_to_xmm(1, RAX);
+        x64_cvtss2sd(1, 1);
+    } else {
+        x64_movq_to_xmm(0, RDI);
+        x64_movq_to_xmm(1, RAX);
+    }
+    progress = new_label("for.progress");
+    x64_ucomisd(node->val > 0 ? 1 : 0, node->val > 0 ? 0 : 1);
+    x64_jcc(CC_A, progress);
+    gen_fail(tok, "for の増分では値が前進しません（丸め後の値を確認してください）", EX_SOFTWARE);
+    x64_bind(progress);
+    gen_store_var(v, tok);
+}
+
+/* 各辺を一度だけ評価する。比較型への変換で非有限値になる場合も検査する。 */
+static void gen_for_condition(Node *node)
+{
+    Node *cmp = node->cond->lhs;
+    Node converted = {0};
+    Node comparison = *cmp;
+    converted.ty = cmp->cmp_ty == TY_FLOAT ? TY_DOUBLE : cmp->cmp_ty;
+    comparison.cmp_ty = converted.ty;
+    comparison.lhs = &converted;
+    comparison.rhs = &converted;
+    gen_expr(cmp->lhs);
+    gen_for_finite(cmp->lhs->ty, cmp->lhs->tok, "for のループ変数は有限の数値にしてください");
+    gen_convert_for_compare(cmp->lhs->ty, cmp->cmp_ty);
+    push();
+    gen_expr(cmp->rhs);
+    gen_for_finite(cmp->rhs->ty, cmp->rhs->tok, "for の終了境界は有限の数値にしてください");
+    gen_convert_for_compare(cmp->rhs->ty, cmp->cmp_ty);
+    gen_for_finite(converted.ty, cmp->rhs->tok, "for の終了境界は有限の数値にしてください");
+    pop(RDI);
+    gen_compare(&comparison);
+}
+
+/* 開いた開始側だけ最初に更新する。continue は更新、break は終了へ進む。 */
 static void gen_for(Node *node)
 {
     int begin;
@@ -5574,15 +5642,18 @@ static void gen_for(Node *node)
     next = new_label("for.next");
     end = new_label("for.end");
     gen_stmt(node->init);
+    gen_load_var(node->init->var, node->init->tok);
+    gen_for_finite(node->init->var->ty, node->init->lhs->tok, "for の開始値は有限の数値にしてください");
+    if (node->for_open) gen_for_update(node, end);
     x64_bind(begin);
-    gen_expr(node->cond);
+    gen_for_condition(node);
     x64_test(RAX, RAX);
     x64_jcc(CC_Z, end);
     push_loop(end, next);
     gen_stmts(node->then);
     loop_depth--;
     x64_bind(next);
-    gen_stmt(node->step);
+    gen_for_update(node, end);
     x64_jmp(begin);
     x64_bind(end);
 }

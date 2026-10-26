@@ -1441,26 +1441,64 @@ static Node *value_node(Value v, Token *tok)
 
 static void check_stmts(Node *list);
 
-/* for の増分は定数で、0 でなく、範囲の向き（増やす・減らす）と合っていること */
+/* 定数のヘッダーも、実行時の比較・代入と同じ型へ変換して有限性を調べる。 */
+static void check_for_finite_constant(Node *expr, Type ty, const char *part)
+{
+    Value v;
+    if (ty == TY_INT || !is_const_expr(expr)) return;
+    v = convert_value(expr, eval_const(expr), ty);
+    if (!isfinite(v.d)) error_tok(expr->tok, "for の%sは有限の数値にしてください", part);
+}
+
+/* 増分はループ変数の型でも有限・非0の定数で、方向が一致すること。 */
 static void check_for_step(Node *node)
 {
     Value v;
-    double amount;
+    Type ty = node->init->var->ty;
     int direction;
 
     if (!is_const_expr(node->inc)) {
         error_tok(node->inc->tok,
                  "for の増分の量は定数（リテラルや const）にしてください（向きと 0 をコンパイル時に確かめるため）");
     }
-    v = eval_const(node->inc);
-    amount = v.ty == TY_INT ? (double)v.i : v.d;
-    if (amount == 0) {
+    v = convert_value(node->inc, eval_const(node->inc), ty);
+    if (ty != TY_INT && !isfinite(v.d)) {
+        error_tok(node->inc->tok, "for の増分は有限の数値にしてください");
+    }
+    if (ty == TY_INT ? v.i == 0 : v.d == 0) {
         error_tok(node->inc->tok, "for の増分が 0 です（ループが終わりません）");
     }
-    direction = (amount > 0 ? 1 : -1) * node->inc_sign;
+    direction = (ty == TY_INT ? (v.i > 0 ? 1 : -1) : (v.d > 0 ? 1 : -1)) * node->inc_sign;
     if (direction != node->val) {
         error_tok(node->inc->tok, "増分の向きが範囲の向きと逆です（%s範囲なので、ループ変数を%sしてください）",
                  node->val > 0 ? "増やしていく" : "減らしていく", node->val > 0 ? "増や" : "減ら");
+    }
+    node->for_amount = value_node(v, node->inc->tok);
+}
+
+static void check_for_header(Node *node)
+{
+    Type ty = node->init->var->ty;
+    Node *limit = node->cond->lhs->rhs;
+    if (node->for_open && ty == TY_INT && (limit->ty != TY_INT || node->inc->ty != TY_INT)) {
+        error_tok(limit->tok, "開始側が開いた int の for は、境界・増分も int にしてください");
+    }
+    check_for_finite_constant(node->init->lhs, ty, "開始値");
+    check_for_finite_constant(limit, node->cond->lhs->cmp_ty, "終了境界");
+    if (node->for_open && ty != TY_INT && is_const_expr(node->init->lhs)) {
+        Value start = eval_const(node->init->lhs);
+        Value amount = eval_const(node->for_amount);
+        double next;
+        if (ty == TY_FLOAT) {
+            next = node->inc_sign > 0 ? (float)((float)start.d + (float)amount.d) :
+                                        (float)((float)start.d - (float)amount.d);
+        } else {
+            next = node->inc_sign > 0 ? start.d + amount.d : start.d - amount.d;
+        }
+        if (!isfinite(next)) error_tok(node->inc->tok, "for の初回の更新結果が有限ではありません");
+        if (node->val > 0 ? !(next > start.d) : !(next < start.d)) {
+            error_tok(node->inc->tok, "for の増分では値が前進しません（丸め後の値を確認してください）");
+        }
     }
 }
 
@@ -1600,10 +1638,15 @@ static void check_stmt(Node *node)
         check_stmts(node->then);
         return;
     case ND_FOR:
+        if (!is_numeric(node->init->var->ty)) {
+            error_tok(node->init->var->tok, "for のループ変数は int・float・double にしてください（%s は使えません）",
+                      type_name(node->init->var->ty));
+        }
         check_stmt(node->init);
         check_expr(node->cond);
         check_stmt(node->step);
         check_for_step(node);
+        check_for_header(node);
         check_stmts(node->then);
         return;
     case ND_BREAK:

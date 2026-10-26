@@ -8,7 +8,7 @@ make test
 
 Linux x86_64、GCC、Make、Bash、Python 3 の標準ライブラリを使用する。
 追加の Python パッケージは不要。`make test` は必要なら `qyc` をビルドし、
-既存の `test.sh`、行編集、統合プログラム、6 つの専用スイートを実行する。
+既存の `test.sh`、行編集、統合プログラム、7 つの専用スイートを実行する。
 `test.sh` は実行権限に依存しないよう Bash で起動する。
 Python を指定する場合は `make test PYTHON=/path/to/python3` とする。
 
@@ -20,6 +20,7 @@ Python を指定する場合は `make test PYTHON=/path/to/python3` とする。
 | `make test-arrays` | 上限・初期化、伸長・削除、深いコピー、多次元、値渡し・参照、添字の副作用 |
 | `make test-modules` | 複数ファイルの import・using・別名、探索ルート、衝突・循環、診断、出力形式 |
 | `make test-io` | print / input の互換性、io 修飾名、using・別名、型の文脈、形式指定入力 |
+| `make test-for` | 範囲の開閉、評価回数、整数の範囲外、小数の有限性・停滞、bool の拒否 |
 | `make test-lineedit` | 擬似端末でのカーソル移動・編集、Unicode、EOF・割り込み、端末設定の復元 |
 | `bash test.sh` | 既存チェック、行編集、`all_features.qy`、CLI の出力指定・アセンブリ出力 |
 
@@ -57,6 +58,14 @@ Python を指定する場合は `make test PYTHON=/path/to/python3` とする。
 入出力専用の 33 メソッドを追加した。専用スイートは合計 161 メソッド。
 行編集も従来形・io 修飾名・別名の各 18 メソッドを実行するため 54 メソッドとなり、
 `test.sh` のチェック数は 317 になる。using の有無・表記変更で入出力の期待値は変えない。
+
+0.25.1 では範囲 for の 32 メソッドを追加し、専用スイートは合計 193 メソッド。
+整数の範囲と増減幅は Python の range、小数の正確な 0.25 刻みは独立した期待値と比較する。
+浮動小数点の丸め、NaN・無限大、停滞、整数最小値を含む増分、境界式の副作用も確認する。
+Linux のアセンブリ出力をアセンブルし、Windows は PE ヘッダーと出力形式を確認する。
+
+必要な個別検証の後、最終の全体テストは `make test` を 1 回だけ実行する。
+ZIP 展開後の再ビルド・再テストは行わない。
 
 Python の失敗・例外・タイムアウトはコマンドの失敗として返される。
 シェルの出力比較でも生成プログラムの終了コードを検証し、

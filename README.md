@@ -1,4 +1,4 @@
-# QYNO
+# QYNO 0.25.1
 
 C99 で実装した、Linux x64 / Windows x64 向けのコンパイラ。
 UTF-8 の `.qy` ソースから実行ファイルを直接生成する。
@@ -65,6 +65,23 @@ int main();
 `using io` を書けば `print` / `input` に省略できる。
 従来の裸の呼び出しも互換性のため維持する。
 使用例は [examples/io/greeting.qy](examples/io/greeting.qy)、詳細は [io の仕様](docs/io.md) を参照。
+
+## 範囲 for
+
+開始側を含まない `<` / `>` も使用できる。開いた開始側ではヘッダーの更新を 1 回適用してから始める。
+
+```text
+int main();
+	int values[] = [0, 1, 2, 3]
+	for(values.length > i >= 0, i--);
+		io.print(values[i])
+	for(0.0 < double x <= 1.0, x += 0.25);
+		io.print(x)
+	return 0
+```
+
+整数の範囲外への更新は折り返さず終了する。小数の非有限値・前進できない更新は診断する。
+bool は数値範囲のループ変数にしない。詳細は [for の仕様](docs/for-open-start-design.md) を参照。
 
 ## 開発ブランチ
 

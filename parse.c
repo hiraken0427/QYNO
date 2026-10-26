@@ -1351,10 +1351,10 @@ static Node *while_stmt(Token *start)
 }
 
 /*
- * "for" "(" 開始値 ("<=" | ">=") 型? 変数 比較 終了値 "," 増分 ")" ";" block
+ * "for" "(" 開始値 比較 型? 変数 比較 終了値 "," 増分 ")" ";" block
  *
- * 左が開始値、右が終了値。開始側は <= か >=（開区間は不可）。
- * 開始側が <= なら終了側は < か <=（増やす）、>= なら > か >=（減らす）。
+ * 開始側が < / > なら、開始値をヘッダーの更新で1回進めてから判定する。
+ * 左右の比較と更新は同じ方向でなければならない。
  * ループ変数は for の中で新しく宣言し、型を省略すると int になる。
  * 条件「変数 比較 終了値」は毎周評価する（終了値も毎周評価される）。
  */
@@ -1380,13 +1380,11 @@ static Node *for_stmt(Token *start)
 
     /* 開始側の比較 */
     op1 = tok;
-    if (equal(op1, "<") || equal(op1, ">")) {
-        error_tok(op1, "for の開始側に %.*s は使えません（開区間は不可）。<= か >= を使ってください", op1->len, op1->loc);
-    }
-    if (!equal(op1, "<=") && !equal(op1, ">=")) {
+    if (!equal(op1, "<") && !equal(op1, "<=") && !equal(op1, ">") && !equal(op1, ">=")) {
         error_tok(op1, "for の範囲は「開始値 <= 変数 < 終了値」の形で書いてください");
     }
-    increasing = equal(op1, "<=");
+    increasing = equal(op1, "<") || equal(op1, "<=");
+    node->for_open = equal(op1, "<") || equal(op1, ">");
     tok = tok->next;
 
     /* ループ変数（型を省略すると int） */
@@ -1408,7 +1406,7 @@ static Node *for_stmt(Token *start)
         error_tok(op2, "for の終了側には <、<=、>、>= のいずれかを書いてください");
     }
     if (increasing != (equal(op2, "<") || equal(op2, "<="))) {
-        error_tok(op2, "範囲の向きが合っていません（開始側が <= なら終了側は < か <=、>= なら > か >=）");
+        error_tok(op2, "範囲の向きが合っていません（左右とも <・<=、または左右とも >・>= にしてください）");
     }
     tok = tok->next;
 

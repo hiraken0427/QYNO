@@ -5,7 +5,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#define QYC_VERSION "0.25.0"
+#define QYC_VERSION "0.25.1"
 
 typedef struct SourceFile SourceFile;
 typedef struct Module Module;
@@ -276,6 +276,8 @@ struct Node {
     Node *step;         /* ND_FOR の増分（ND_ASSIGN） */
     Node *inc;          /* ND_FOR の増分の量（i += 2 なら 2、i++ なら 1） */
     int inc_sign;       /* ND_FOR の増分の向き（+= と ++ は 1、-= と -- は -1） */
+    int for_open;       /* ND_FOR：開始側の境界を含まない */
+    Node *for_amount;   /* ND_FOR：ループ変数の型へ変換した定数の増分 */
     Function *func;     /* ND_CALL の呼び出し先（型検査で決まる） */
     Using *using_ref;   /* ND_USING の宣言リスト */
     int arg_val;        /* 呼び出しの引数に val を付けたら 1 */
@@ -414,6 +416,7 @@ typedef enum {
 } Reg;
 
 typedef enum {
+    CC_O = 0x0,     /* 符号付き演算のオーバーフロー */
     CC_B = 0x2,     /* 符号なしで小さい */
     CC_AE = 0x3,    /* 符号なしで以上 */
     CC_Z = 0x4,     /* 0 なら（等しい） */
