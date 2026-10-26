@@ -431,6 +431,7 @@ static void check_input(Node *node)
     InputField *f;
     Var *v;
 
+    if (node->name != NULL) resolve_module_name(node);
     if (!node->input_pattern) {
         if (node->lhs != NULL) {
             check_expr(node->lhs);
@@ -1478,6 +1479,7 @@ static void check_print_parts(Node *list)
 
 static void check_print(Node *node)
 {
+    if (node->name != NULL) resolve_module_name(node);
     check_print_parts(node->lhs);
     check_print_parts(node->end);
 }

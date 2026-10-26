@@ -19,7 +19,6 @@ typedef struct {
 } Symbol;
 
 static Module *modules;
-static Module *math_module;
 static const char **search_roots;
 static int search_root_count;
 static int module_count;
@@ -110,13 +109,28 @@ static void import_trace(void)
     }
 }
 
+static Module *standard_module(const char *name)
+{
+    Module *module;
+    for (module = modules; module != NULL; module = module->next) {
+        if (module->builtin && strcmp(module->name, name) == 0) return module;
+    }
+    return NULL;
+}
+
 static Module *load_module(const char *name, const char *filename, char *canonical, Token *site)
 {
     Module *module;
     ModuleImport *item;
     int i;
-    if (strcmp(name, "math") == 0) return math_module;
-    if (strncmp(name, "math.", 5) == 0) error_tok(site, "math は組み込みモジュールです");
+    module = standard_module(name);
+    if (module != NULL) return module;
+    for (module = modules; module != NULL; module = module->next) {
+        size_t length = strlen(module->name);
+        if (module->builtin && strncmp(name, module->name, length) == 0 && name[length] == '.') {
+            error_tok(site, "標準モジュール %s に %s はありません", module->name, name + length + 1);
+        }
+    }
     for (module = modules; module != NULL; module = module->next) {
         if (strcmp(module->name, name) == 0) {
             if (module->state == 1) {
@@ -205,12 +219,18 @@ Ast *load_program(const char *path, const char **roots, int root_count)
     modules = NULL;
     module_count = 0;
     load_depth = 0;
-    math_module = allocate(sizeof(*math_module));
-    math_module->name = copy_name("math", 4);
-    math_module->builtin = 1;
-    math_module->state = 2;
-    math_module->id = module_count++;
-    modules = math_module;
+    for (i = 0; i < BI_COUNT; i++) {
+        const char *name = builtin_namespace((Builtin)i);
+        if (name != NULL && standard_module(name) == NULL) {
+            Module *standard = allocate(sizeof(*standard));
+            standard->name = copy_name(name, strlen(name));
+            standard->builtin = 1;
+            standard->state = 2;
+            standard->id = module_count++;
+            standard->next = modules;
+            modules = standard;
+        }
+    }
     program->entry = load_module("", path, canonical, NULL);
     program->modules = modules;
     /* 所有モジュールは Token.source に残す。リストだけを出力単位へ連結する。 */
@@ -244,8 +264,8 @@ static Symbol exported_symbol(Module *module, const char *name)
         Token ns = {0};
         Token member = {0};
         int builtin;
-        ns.loc = "math";
-        ns.len = 4;
+        ns.loc = module->name;
+        ns.len = (int)strlen(module->name);
         member.loc = name;
         member.len = (int)strlen(name);
         builtin = builtin_find(&ns, &member);
@@ -276,9 +296,18 @@ static Symbol direct_symbol(Module *owner, const char *name)
 {
     Symbol symbol = {0};
     ModuleImport *item;
+    Module *standard;
     size_t length;
-    if (strcmp(name, "math") == 0) return namespace_symbol(math_module);
-    if (strncmp(name, "math.", 5) == 0) return exported_symbol(math_module, name + 5);
+    standard = standard_module(name);
+    if (standard != NULL) return namespace_symbol(standard);
+    for (standard = modules; standard != NULL; standard = standard->next) {
+        if (!standard->builtin) continue;
+        length = strlen(standard->name);
+        if (strncmp(name, standard->name, length) == 0 && name[length] == '.') {
+            symbol = exported_symbol(standard, name + length + 1);
+            if (symbol.kind != SYM_NONE) return symbol;
+        }
+    }
     if (strchr(name, '.') == NULL) {
         symbol = exported_symbol(owner, name);
         if (symbol.kind != SYM_NONE) return symbol;
@@ -382,7 +411,15 @@ static void resolve_using(Using *u)
 static int import_root(Module *owner, const char *name)
 {
     ModuleImport *item;
-    if (strcmp(name, "math") == 0) return 1;
+    Module *standard;
+    for (standard = modules; standard != NULL; standard = standard->next) {
+        const char *dot;
+        size_t length;
+        if (!standard->builtin) continue;
+        dot = strchr(standard->name, '.');
+        length = dot != NULL ? (size_t)(dot - standard->name) : strlen(standard->name);
+        if (strlen(name) == length && memcmp(standard->name, name, length) == 0) return 1;
+    }
     for (item = owner->ast->imports; item != NULL; item = item->next) {
         const char *dot = strchr(item->name, '.');
         size_t length = dot != NULL ? (size_t)(dot - item->name) : strlen(item->name);
@@ -436,7 +473,9 @@ static void validate_using(Using *u)
         introduced_name(u, name, using_symbol(u, name));
     } else if (target->builtin) {
         int b;
-        for (b = BI_SQRT; b <= BI_ROUNDDOWN; b++) {
+        for (b = 0; b < BI_COUNT; b++) {
+            const char *ns = builtin_namespace((Builtin)b);
+            if (ns == NULL || strcmp(ns, target->name) != 0) continue;
             symbol.kind = SYM_BUILTIN;
             symbol.builtin = b;
             introduced_name(u, builtin_name((Builtin)b), symbol);
@@ -513,6 +552,12 @@ void resolve_module_name(Node *node)
     Module *owner = node->tok->source->module;
     char *name = node->name != NULL ? node->name : copy_name(node->tok->loc, (size_t)node->tok->len);
     Symbol symbol = scoped_symbol(owner, name, node->usings, NULL, node->tok);
+    if (node->kind == ND_PRINT || node->kind == ND_INPUT) {
+        int expected = node->kind == ND_PRINT ? BI_IO_PRINT : BI_IO_INPUT;
+        if (symbol.kind == SYM_BUILTIN && symbol.builtin == expected) return;
+        error_tok(node->tok, "%s は io.%s を参照していません。using と名前空間を確認してください",
+                  name, builtin_name((Builtin)expected));
+    }
     if (symbol.kind == SYM_NONE && node->kind == ND_VAR) {
         char *dot = strrchr(name, '.');
         if (dot != NULL && (strcmp(dot + 1, "length") == 0 || strcmp(dot + 1, "addr") == 0 || strcmp(dot + 1, "value") == 0)) {

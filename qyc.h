@@ -151,6 +151,8 @@ typedef enum {
     BI_DOUBLE,      /* double(x) */
     BI_CHAR,        /* char(x)：str/char を1スカラー値に制限する */
     BI_STR,         /* str(x)：char/str を str にする */
+    BI_IO_PRINT,    /* io.print(...)：出力文として解析する */
+    BI_IO_INPUT,    /* io.input(...)：入力先と形式を保持する */
     BI_COUNT
 } Builtin;
 
@@ -352,8 +354,9 @@ struct Module {
 
 /* builtin.c：組み込み関数の一覧 */
 const char *builtin_name(Builtin b);
+const char *builtin_namespace(Builtin b);          /* 型変換は NULL */
 int builtin_find(Token *ns, Token *name);           /* 見つからなければ -1 */
-const char *builtin_namespace_of(const char *name, int len);  /* u で name を省略して使えるか。使えれば Builtin を、なければ -1 */
+const char *builtin_namespace_of(const char *name, int len);  /* 標準モジュール名。見つからなければ NULL */
 
 /* main.c */
 extern SourceFile *current_file;

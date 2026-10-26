@@ -473,6 +473,68 @@ class ModuleTests(QynoTestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("同じファイル", result.stderr)
 
+    def test_standard_modules_do_not_require_import(self):
+        self.run_project({
+            "main.qy": 'using io, math\nint main();\n\tio.print(sqrt(9))\n\tprint(math.round(2.5))\n',
+        }, "3.0\n3.0\n")
+
+    def test_standard_modules_ignore_local_files_even_with_explicit_import(self):
+        for directive in ("", "import io, math\n"):
+            with self.subTest(directive=directive):
+                self.run_project({
+                    "main.qy": directive + 'int main();\n\tio.print(math.sqrt(9))\n',
+                    "io.qy": "not valid source\n", "math.qy": "not valid source\n",
+                }, "3.0\n")
+
+    def test_standard_module_imports_are_idempotent(self):
+        self.run_project({
+            "main.qy": 'import io, io, math\nusing io, io.print, io.input\nint main();\n\tprint(math.sqrt(9))\n',
+        }, "3.0\n")
+
+    def test_standard_namespace_alias_chain(self):
+        self.run_project({
+            "main.qy": 'using io as terminal\nusing terminal as console\nusing console.print, console.input\nint main();\n\tstr name = console.input()\n\tconsole.print("Hello, {name}!")\n',
+        }, "Hello, Alice!\n", stdin="Alice\n")
+
+    def test_io_is_available_inside_dependency(self):
+        self.run_project({
+            "main.qy": "import greeting\nint main();\n\tgreeting.run()\n",
+            "greeting.qy": 'using io as terminal\nvoid run();\n\tstr name = terminal.input()\n\tterminal.print("Hello, {name}!")\n',
+        }, "Hello, Alice!\n", stdin="Alice\n")
+
+    def test_io_alias_does_not_leak_from_dependency(self):
+        self.compile_project({
+            "main.qy": 'import greeting\nint main();\n\tterminal.print("x")\n',
+            "greeting.qy": 'using io as terminal\nvoid run();\n\tterminal.print("x")\n',
+        }, error="名前空間")
+
+    def test_unknown_standard_child_does_not_load_local_file(self):
+        for namespace in ("io", "math"):
+            with self.subTest(namespace=namespace):
+                self.compile_project({
+                    "main.qy": f"import {namespace}.custom\nint main();\n\treturn 0\n",
+                    f"{namespace}/custom.qy": "int f() = 1\n",
+                }, error="標準モジュール")
+
+    def test_io_root_cannot_be_shadowed(self):
+        self.compile_project({"main.qy": "int main();\n\tint io = 1\n"}, error="衝突")
+
+    def test_io_alias_input_error_keeps_dependency_location(self):
+        result = self.run_project({
+            "main.qy": "import reading\nint main();\n\treading.run()\n",
+            "reading.qy": 'using io as terminal\nvoid run();\n\tint n\n\tterminal.input("{n}")\n',
+        }, "", stdin="invalid\n", status=65, diagnostic="reading.qy:4:")
+        self.assertIn('terminal.input("{n}")', result.stderr)
+
+    def test_io_in_windows_pe_generation(self):
+        binary = self.compile_project({
+            "main.qy": 'using io\nint main();\n\tstr name\n\tio.input("{name}")\n\tio.print("Hello, {name}!")\n',
+        }, flags=("--target", "windows"))
+        data = binary.read_bytes()
+        self.assertEqual(data[:2], b"MZ")
+        offset = int.from_bytes(data[60:64], "little")
+        self.assertEqual(data[offset:offset + 4], b"PE\0\0")
+
 
 if __name__ == "__main__":
     run_suite()

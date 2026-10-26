@@ -1,7 +1,8 @@
 /*
  * 組み込み関数の一覧
  *
- * 名前空間 math の関数と、型の名前で呼ぶ変換（int・float・double）を持つ。
+ * 標準モジュールの公開名と、型の名前で呼ぶ変換を持つ。
+ * 標準モジュールはこの表から登録し、import なしで利用可能にする。
  */
 
 #include "qyc.h"
@@ -24,7 +25,9 @@ static const BuiltinInfo builtins[BI_COUNT] = {
     { NULL, "float" },
     { NULL, "double" },
     { NULL, "char" },
-    { NULL, "str" }
+    { NULL, "str" },
+    { "io", "print" },
+    { "io", "input" }
 };
 
 static int token_is(Token *t, const char *s)
@@ -35,6 +38,11 @@ static int token_is(Token *t, const char *s)
 const char *builtin_name(Builtin b)
 {
     return builtins[b].name;
+}
+
+const char *builtin_namespace(Builtin b)
+{
+    return builtins[b].ns;
 }
 
 /* 名前空間 ns の name を探す（ns が NULL なら型変換） */
