@@ -15,6 +15,7 @@ static Node *model_default(Type ty, ArrayDim *dims, Token *tok)
     Node *n = calloc(1, sizeof(*n));
     if (!n) fatal("モデルの初期値を確保できません");
     n->tok = tok; n->ty = ty;
+    require_default(ty, dims, tok);
     if (type_is_model(ty)) n->kind = ND_MODEL_NEW;
     else if (type_is_array(ty)) { n->kind = ND_ARRAY_NEW; n->dims = dims; }
     else if (type_is_text(ty)) { n->kind = ND_STRLIT; n->str = ""; n->str_len = ty == TY_CHAR; }
@@ -48,6 +49,7 @@ static void check_model_init(Node *node, Type expected)
         return;
     }
     m = type_model(expected);
+    if (m->initializer) { check_construction(node, m); return; }
     for (item = node->lhs; item; item = item->next) {
         Node *before;
         f = find_model_field(m, item->name);
@@ -95,6 +97,7 @@ static void check_model_method(Node *node)
     for (fn = cur_ast->funcs; fn; fn = fn->next)
         if (fn->model == type_model(node->lhs->ty) && same_name(fn->name, fn->name_len, node->tok->loc, node->tok->len)) break;
     if (!fn) error_tok(node->tok, "モデル %s にメソッド %.*s はありません", type_name(node->lhs->ty), node->tok->len, node->tok->loc);
+    if (fn->is_initializer) error_tok(node->tok, "init は生成専用です。型の文脈で {名前=値} と書いてください");
     check_member_access(node, fn->model, fn->is_private, fn->name, fn->tok);
     if (readonly_place(node->lhs) && !fn->is_readonly)
         error_tok(node->tok, "const / readonly の %s から呼べません。このメソッドは readonly ではありません", fn->model->name);
@@ -121,12 +124,25 @@ static void check_model_method(Node *node)
 static int model_constant_default(Node *n)
 {
     Node *item;
-    if (n->kind == ND_MODEL_COPY || n->kind == ND_ARRAY_COPY) return model_constant_default(n->lhs);
-    if (n->kind == ND_MODEL_INIT || n->kind == ND_ARRAY_LITERAL) {
+    if (n->kind == ND_MODEL_COPY || n->kind == ND_ARRAY_COPY || n->kind == ND_CAST || n->kind == ND_NEG ||
+        n->kind == ND_NOT || n->kind == ND_ABS || n->kind == ND_LENGTH) return model_constant_default(n->lhs);
+    if (n->kind == ND_MODEL_INIT || n->kind == ND_CONSTRUCT || n->kind == ND_ARRAY_LITERAL) {
         for (item = n->lhs; item; item = item->next)
-            if (!model_constant_default(n->kind == ND_MODEL_INIT ? item->lhs : item)) return 0;
+            if (!model_constant_default(n->kind != ND_ARRAY_LITERAL ? item->lhs : item)) return 0;
         return 1;
     }
+    if (n->kind == ND_BUILTIN && n->val < BI_FILE_OPEN) {
+        for (item = n->lhs; item; item = item->next) if (!model_constant_default(item)) return 0;
+        return 1;
+    }
+    if (n->kind == ND_CHAIN) {
+        for (item = n->lhs; item; item = item->next)
+            if (!model_constant_default(item->lhs) || !model_constant_default(item->rhs)) return 0;
+        return 1;
+    }
+    if (n->kind == ND_INDEX || n->kind == ND_ADD || n->kind == ND_SUB || n->kind == ND_MUL ||
+        n->kind == ND_DIV || n->kind == ND_MOD || n->kind == ND_POW || n->kind == ND_AND || n->kind == ND_OR)
+        return model_constant_default(n->lhs) && model_constant_default(n->rhs);
     return n->kind == ND_MODEL_NEW || n->kind == ND_ARRAY_NEW || is_const_expr(n);
 }
 static int model_definition_depth;
@@ -144,6 +160,8 @@ static void check_model_definition(Model *m)
             if (!strcmp(other->name, f->name)) error_tok(f->tok, "フィールド %s が重複しています", f->name);
         if (type_is_model(array_base(f->ty))) check_model_definition(type_model(array_base(f->ty)));
         check_dims(f->dims);
+        f->pending = !f->initial && !defaultable(f->ty, f->dims);
+        if (f->pending && !m->initializer) error_tok(f->tok, "フィールド %s には既定値または親の init が必要です", f->name);
         if (f->initial) {
             check_expected(f->initial, f->ty);
             f->initial = coerce(f->initial, f->ty, f->tok, "フィールドの既定値");
@@ -151,4 +169,5 @@ static void check_model_definition(Model *m)
         }
     }
     m->state = 2; model_definition_depth--;
+    check_initializer_defaults(m);
 }

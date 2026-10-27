@@ -1709,6 +1709,9 @@ static Function *function_def(int is_readonly)
     }
     name = tok;
     fn->model = parsing_model;
+    fn->is_initializer = parsing_model && equal(name, "init");
+    if (fn->is_initializer && (is_readonly || (fn->ret != TY_VOID && fn->ret != TY_BOOL)))
+        error_tok(name, "init は public void / bool のブロック形式で定義してください");
     fn->name = name->loc;
     fn->name_len = name->len;
     fn->tok = name;
@@ -1761,6 +1764,11 @@ static Function *function_def(int is_readonly)
             fn->param_count++;
             tok = tok->next;
             v->dims = dimensions(&v->ty);
+            if (consume("=")) {
+                if (!fn->is_initializer) error_tok(v->tok, "既定引数は init にだけ指定できます");
+                v->default_arg = expr();
+            }
+            if (fn->is_initializer && v->is_ref) error_tok(v->tok, "init の引数は値引数にしてください");
             if (!consume(",")) {
                 break;
             }
@@ -1769,6 +1777,7 @@ static Function *function_def(int is_readonly)
     expect(")");
     fn->params = head.next;
     fn->return_dims = dimensions(&fn->ret);
+    if (fn->is_initializer && fn->return_dims) error_tok(name, "init の戻り値は void / bool のみです。配列は返せません");
     i = 0;
     for (v = fn->params; v != NULL; v = v->next) {
         v->offset = -(16 + 8 * (fn->param_count - 1 - i));
@@ -1780,6 +1789,7 @@ static Function *function_def(int is_readonly)
     /* 本体：数式形式（= 式）またはブロック */
     start = tok;
     if (consume("=")) {
+        if (fn->is_initializer) error_tok(start, "init の本体はブロック形式にしてください");
         if (fn->ret == TY_VOID) {
             error_tok(start, "void の関数は数式の形（= 式）では書けません");
         }
@@ -1842,11 +1852,17 @@ static Model *model_def(Function **tail)
             tok = name;
             (*tail)->next = function_def(is_readonly); *tail = (*tail)->next;
             (*tail)->is_private = is_private;
+            if ((*tail)->is_initializer) {
+                if (is_private) error_tok((*tail)->tok, "init は public で定義してください");
+                if (m->initializer) error_tok((*tail)->tok, "init の定義が重複しています");
+                m->initializer = *tail;
+            }
         } else {
             ModelField *f = calloc(1, sizeof(*f));
             if (is_readonly) error_tok(name, "readonly はメソッドと ref 引数に指定してください");
             if (!f) fatal("フィールドを確保できません");
             if (ty == TY_VOID) error_tok(name, "フィールドに void は使えません");
+            if (equal(tok, "init")) error_tok(tok, "init はモデル生成専用の名前です");
             if (equal(tok, "this") || equal(tok, "addr") || equal(tok, "value") || equal(tok, "length"))
                 error_tok(tok, "this・addr・value・length はモデルのフィールド名に使えません");
             f->model = m; f->is_private = is_private;

@@ -1,4 +1,4 @@
-# QYNO 0.26.2
+# QYNO 0.26.3
 
 C99 で実装した、Linux x64 / Windows x64 向けのコンパイラ。
 UTF-8 の `.qy` ソースから実行ファイルを直接生成する。
@@ -35,9 +35,9 @@ int main();
 
 ## VS Code 拡張
 
-[VSCode Option](vscode-extensions/README.md) は QYNO 0.26.2 のハイライト、
+[VSCode Option](vscode-extensions/README.md) は QYNO 0.26.3 のハイライト、
 ユーザー定義の関数名・変数名の補完、定義への移動、引数ヒントに対応する。
-[vscode-extensions/0.26.2_VSCode_option.vsix](vscode-extensions/0.26.2_VSCode_option.vsix) を
+[vscode-extensions/0.26.3_VSCode_option.vsix](vscode-extensions/0.26.3_VSCode_option.vsix) を
 VS Code の「VSIX からのインストール…」で指定する。
 
 ## モデル型
@@ -69,11 +69,17 @@ private は宣言元のモデル内部だけで利用できる。自動表示か
 `public` と `private` は予約語になる。
 詳細は [モデルの仕様](docs/models.md)、実行例は [examples/models/main.qy](examples/models/main.qy) を参照。
 
-0.26.2 では const モデル、readonly メソッド、`ref readonly` 引数に対応する。
+const モデル、readonly メソッド、`ref readonly` 引数に対応する。
 const の値はコンパイル時に確定し、readonly の経路からは入れ子・配列を含めて変更できない。
 独立したコピーは変更できる。file の共有ハンドルの持ち出しも検査する。
 [読み取り専用の仕様](docs/model-readonly-design.md) と
 [実行例](examples/models/readonly.qy) を参照。
+
+0.26.3 ではモデル生成時の `init` を定義できる。`Counter counter = {initial=3}` のように、
+型名を繰り返さずに名前付き引数を渡し、private の設定や入力検証を行う。
+コピーでは init を再実行せず、必須引数・未完了フィールド・file の close 責任も検査する。
+[カスタム初期化の仕様](docs/model-initialization-design.md) と
+[実行例](examples/models/initialization.qy) を参照。
 
 ## モジュール
 

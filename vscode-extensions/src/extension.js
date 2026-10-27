@@ -117,7 +117,7 @@ function activate(context) {
                 const selection = new vscode.Range(s.line, s.start, s.line, s.end);
                 const end = s.bodyScopeId ? model.scopes[s.bodyScopeId].endLine : s.line;
                 const range = new vscode.Range(s.line, 0, end, model.lines[end].length);
-                const symbol = new vscode.DocumentSymbol(s.name, s.kind === 'function' ? functionLabel(s) : typeLabel(s), s.kind === 'model' ? vscode.SymbolKind.Struct : s.kind === 'function' ? vscode.SymbolKind.Function : s.kind === 'constant' ? vscode.SymbolKind.Constant : vscode.SymbolKind.Variable, range, selection);
+                const symbol = new vscode.DocumentSymbol(s.name, s.kind === 'function' ? functionLabel(s) : typeLabel(s), s.kind === 'model' ? vscode.SymbolKind.Struct : s.initializer ? vscode.SymbolKind.Constructor : s.kind === 'function' ? vscode.SymbolKind.Function : s.kind === 'constant' ? vscode.SymbolKind.Constant : vscode.SymbolKind.Variable, range, selection);
                 if (s.kind === 'model') symbol.children = s.members.map(outline);
                 return symbol;
             };

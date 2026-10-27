@@ -1,4 +1,4 @@
-# モデル型（0.26.2）
+# モデル型（0.26.3）
 
 `model` は型付きフィールドとメソッドを持つ値型。代入・通常の引数・戻り値では
 独立した値を作り、変更したい変数は `ref` で渡す。型名が異なれば別の型であり、
@@ -181,7 +181,7 @@ int main();
 `geometry.Point`、`using geometry`、`using geometry.Point` にも対応する。
 別ファイルの同じ名前のモデルは別の型。モデルと通常の関数の前方参照も可能。
 
-0.26.2 では継承、カスタムコンストラクタ、静的メソッド、
+0.26.3 では継承、静的メソッド、
 自己参照・相互参照するフィールド型は導入しない。
 配列を介するフィールド型の循環も診断する。モデルの入れ子と参照・更新パスは128段まで。
 
@@ -209,3 +209,40 @@ file を含むモデル・配列も値コピーや戻り値を介して共有ハ
 
 詳細は [const モデルと読み取り専用の仕様](model-readonly-design.md)、
 実行例は [examples/models/readonly.qy](../examples/models/readonly.qy) を参照。
+
+## カスタム初期化（0.26.3）
+
+モデル内に `public void init(...)` または `public bool init(...)` を定義できる。
+init のある型の `{名前=値}` は init の名前付き引数になり、private フィールドは本体で設定する。
+省略可能な引数には `int n=1` のように既定値を書ける。既定値は通常関数・メソッドには追加しない。
+
+```text
+model Counter;
+	private int count
+	public bool init(int initial=0);
+		if(initial < 0);
+			return false
+		this.count = initial
+		return true
+	public readonly int current() = this.count
+
+int main();
+	Counter counter = {initial=3}
+	io.print(counter.current())
+	return 0
+```
+
+void は通常完了、bool は true で生成に成功する。false は生成位置を示す実行時エラー70で停止する。
+init は直接呼べず、通常の代入・引数・戻り値・配列コピーでは再実行しない。
+明示引数は記述順、足りない既定引数は宣言順に、生成ごとに1回評価する。
+
+必須引数のある子モデルや配列は、親の init 内で全体代入して完成させられる。
+完成前の読み取り・部分更新・ref・this 全体の使用を拒否し、全成功経路での完了を検査する。
+空配列や末端0要素の形は、モデル要素の既定生成を要求しない。
+
+init の引数は file を含まない値型に限定する。成功時に保持する file の責任は呼び出し元へ渡す。
+false の通常 return では、生成中に取得した file を全て明示 close する必要がある。
+init と再帰的にそれを含む型は const として生成できない。init のない型の const は維持する。
+
+詳細は [カスタム初期化の仕様](model-initialization-design.md)、
+実行例は [examples/models/initialization.qy](../examples/models/initialization.qy) を参照。

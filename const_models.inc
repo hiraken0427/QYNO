@@ -16,6 +16,7 @@ static Value eval_const(Node *node)
 static Value constant_model(Node *node)
 {
     Model *m = type_model(node->ty);
+    if (contains_initializer(node->ty)) const_error(node, "init を含む値はコンパイル時に生成できません");
     ModelField *f; Node *item, **values; Node head = {0}, *tail = &head;
     Value v = {0};
     v.ty = node->ty; v.len = m->field_count;

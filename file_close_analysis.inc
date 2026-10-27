@@ -17,7 +17,7 @@ struct FcEntry { FcEntry *next; char *path; int id; };
 struct FcMap { FcEntry *entries; int origin; char *prefix; long long length; };
 struct FcEnv { FcEnv *next; Var *var; FcMap *value; Var *alias; };
 struct FcState { unsigned char live[FC_MAX_RESOURCES], known[FC_MAX_RESOURCES]; FcEnv *env; };
-struct FcFlow { FcFlow *next; FcState *state; int kind; FcMap *value; };
+struct FcFlow { FcFlow *next; FcState *state; int kind; int truth; FcMap *value; };
 typedef struct { Node *site; int parameter; char *path; } FcResource;
 struct FcContext { FcInfo *info; int count; FcResource resources[FC_MAX_RESOURCES]; };
 struct FcInfo {
@@ -147,7 +147,8 @@ static int fc_direct(Node *n, int calls)
         for (field = n->fields; field; field = field->next) if (fc_direct(field->var, calls)) return 1;
         if (fc_file_type(n->ty) || (n->var && fc_file_type(n->var->ty)) ||
             (n->kind == ND_BUILTIN && n->val >= BI_FILE_OPEN)) return 1;
-        if (calls && n->kind == ND_CALL && fc_info(n->func)->relevant) return 1;
+        if (calls && (n->kind == ND_CALL || n->kind == ND_CONSTRUCT) && fc_info(n->func)->relevant) return 1;
+        if (calls && n->kind == ND_MODEL_NEW && fc_info(type_model(n->ty)->default_builder)->relevant) return 1;
         if (fc_direct(n->lhs, calls) || fc_direct(n->rhs, calls) || fc_direct(n->cond, calls) ||
             fc_direct(n->then, calls) || fc_direct(n->els, calls) || fc_direct(n->init, calls) ||
             fc_direct(n->step, calls) || fc_direct(n->end, calls)) return 1;
@@ -218,7 +219,7 @@ static void fc_merge_optional(FcContext *ctx, FcState *s, FcState *other)
     }
 }
 /* Instantiate a callee's return/ref-output map in the caller. */
-static FcMap *fc_transfer(FcContext *ctx, FcState *s, FcInfo *callee, FcMap **args, int output, Node *site)
+static FcMap *fc_transfer(FcContext *ctx, FcState *s, FcInfo *callee, FcMap **args, int output, Node *site, FcMap *owned)
 {
     FcFlow *f; FcMap *result = fc_empty(); FcEntry *e;
     FcMap *first = NULL; Var *parameter = callee->fn->params; int j;
@@ -235,10 +236,11 @@ static FcMap *fc_transfer(FcContext *ctx, FcState *s, FcInfo *callee, FcMap **ar
     if (!first) return result;
     result->length = first->length;
     for (e = result->entries; e; e = e->next) {
-        int owner = 0, source = -2;
+        int owner = 0, source = -2; char *identity = "";
         for (f = callee->exits; f; f = f->next) {
             FcMap *m = output ? fc_value(f->state, parameter) : f->value;
             int id = fc_get(callee->context, m, e->path);
+            { char part[32]; snprintf(part, sizeof(part), "/%d", id); identity = fc_join(identity, part); }
             int actual = 0;
             if (id < 0) actual = -1;
             else if (id > 0) {
@@ -249,7 +251,12 @@ static FcMap *fc_transfer(FcContext *ctx, FcState *s, FcInfo *callee, FcMap **ar
             if (source == -2) source = actual;
             else if (source != actual) source = -1;
         }
-        if (owner) { e->id = fc_id(ctx, site, 0, ""); s->known[e->id] = s->live[e->id] = 1; }
+        if (owner) {
+            FcEntry *entry;
+            for (entry = owned->entries; entry && strcmp(entry->path, identity); entry = entry->next) { }
+            if (!entry) { fc_put(owned, identity, fc_id(ctx, site, 0, "")); entry = owned->entries; }
+            e->id = entry->id; s->known[e->id] = s->live[e->id] = 1;
+        }
         else e->id = source == -2 ? 0 : source;
     }
     /* An untouched borrowed array carries its origin through the call. */
@@ -260,7 +267,7 @@ static FcMap *fc_transfer(FcContext *ctx, FcState *s, FcInfo *callee, FcMap **ar
 }
 static FcMap *fc_call(FcContext *ctx, FcState *s, Node *n)
 {
-    FcInfo *callee = fc_info(n->func); FcMap **args; Node *arg; Var *p; FcFlow *f;
+    FcInfo *callee = fc_info(n->func); FcMap **args; Node *arg; Var *p; FcFlow *f; FcMap *owned = fc_empty();
     int i, id;
     args = fc_new((size_t)(n->nargs + 1) * sizeof(*args));
     i = 0; for (arg = n->lhs; arg; arg = arg->next) {
@@ -281,19 +288,85 @@ static FcMap *fc_call(FcContext *ctx, FcState *s, Node *n)
     }
     i = 1; p = callee->fn->params;
     for (arg = n->lhs; arg; arg = arg->next, p = p->next, i++)
-        if (p->is_ref && fc_file_type(p->ty)) fc_store(ctx, s, arg->lhs, fc_transfer(ctx, s, callee, args, i, n));
-    return fc_transfer(ctx, s, callee, args, 0, n);
+        if (p->is_ref && fc_file_type(p->ty)) fc_store(ctx, s, arg->lhs, fc_transfer(ctx, s, callee, args, i, n, owned));
+    return fc_transfer(ctx, s, callee, args, 0, n, owned);
+}
+static Node *fc_array_recipe(Node *site, long long index, Type ty, ArrayDim *dims)
+{
+    Node **end = &site->init;
+    while (*end && (*end)->val != index) end = &(*end)->next;
+    if (!*end) {
+        *end = fc_new(sizeof(**end)); (*end)->val = index; (*end)->tok = site->tok;
+        (*end)->ty = ty; (*end)->dims = dims;
+        (*end)->kind = type_is_model(ty) ? ND_MODEL_NEW : ND_ARRAY_NEW;
+    }
+    return *end;
+}
+static FcMap *fc_array_padding(FcContext *ctx, FcState *s, Node *site, Type ty, ArrayDim *dims, FcMap *source, Node *syntax)
+{
+    long long length = source->length, target = dims ? dims->limit : -1, count, i;
+    FcMap *result = fc_empty(); Type element = array_element(ty); Node *item = NULL;
+    while (syntax && syntax->kind == ND_ARRAY_COPY) syntax = syntax->lhs;
+    if (syntax && syntax->kind == ND_ARRAY_LITERAL) { length = syntax->nargs; item = syntax->lhs; }
+    if (length < 0) {
+        if (target >= 0 || (type_is_array(element) && dims && dims->next))
+            error_tok(site->tok, "init による配列要素の file 所有責任を追跡できません。要素数が分かる初期値を指定してください");
+        return source;
+    }
+    count = target > length ? target : length;
+    if (count > FC_MAX_RESOURCES) error_tok(site->tok, "file を生成する配列が大きすぎて close を証明できません");
+    result->length = count;
+    for (i = 0; i < count; i++) {
+        char key[64]; FcMap *child; FcEntry *e;
+        Node *recipe = fc_array_recipe(site, i, element, dims ? dims->next : NULL);
+        snprintf(key, sizeof(key), "[%lld]", i);
+        if (i < length) child = fc_slice(source, key);
+        else { child = fc_empty(); child->length = 0; }
+        if (type_is_array(element)) child = fc_array_padding(ctx, s, recipe, element, dims ? dims->next : NULL, child, item);
+        else if (i >= length) child = fc_eval(ctx, s, recipe);
+        for (e = child->entries; e; e = e->next) fc_put(result, fc_join(key, e->path), e->id);
+        if (item) item = item->next;
+    }
+    return result;
 }
 static FcMap *fc_eval(FcContext *ctx, FcState *s, Node *n)
 {
     Node *p; FcMap *m; int i;
     if (!n) return fc_empty();
     if (n->kind == ND_VAR) return fc_value(s, n->var);
-    if (n->kind == ND_MODEL_NEW) return fc_empty();
+    if (n->kind == ND_CONSTRUCT || n->kind == ND_MODEL_NEW) {
+        if (n->kind == ND_CONSTRUCT) for (p = n->lhs; p; p = p->next) fc_eval(ctx, s, p->lhs);
+        if (!n->init) {
+            Node *call = fc_new(sizeof(*call)), **end = &call->lhs; Var *p;
+            call->kind = ND_CALL; call->ty = n->ty; call->tok = n->tok;
+            call->func = n->kind == ND_MODEL_NEW ? type_model(n->ty)->default_builder : n->func;
+            call->nargs = call->func->param_count;
+            *end = fc_new(sizeof(**end)); (*end)->kind = ND_NUM; (*end)->ty = TY_ADDR; end = &(*end)->next;
+            for (p = call->func->params->next; p; p = p->next) {
+                Node *item;
+                for (item = n->lhs; item && item->var != p; item = item->next) { }
+                if (!item) fatal("生成引数の close 解析が不正です");
+                *end = fc_new(sizeof(**end)); (*end)->kind = ND_NUM; (*end)->ty = p->ty; end = &(*end)->next;
+            }
+            n->init = call;
+        }
+        return fc_call(ctx, s, n->init);
+    }
     if (n->kind == ND_CALL) return fc_call(ctx, s, n);
-    if (n->kind == ND_MODEL_COPY || n->kind == ND_ARRAY_COPY) return fc_eval(ctx, s, n->lhs);
-    if (n->kind == ND_ARRAY_NEW) { m = fc_empty(); m->length = n->dims && n->dims->limit >= 0 ? n->dims->limit : 0; return m; }
-    if (n->kind == ND_MODEL_INIT) {
+    if (n->kind == ND_MODEL_COPY || n->kind == ND_ARRAY_COPY) {
+        m = fc_eval(ctx, s, n->lhs);
+        if (n->kind == ND_ARRAY_COPY && n->val && contains_file(n->ty) && contains_initializer(n->ty))
+            m = fc_array_padding(ctx, s, n, n->ty, n->dims, m, n->lhs);
+        return m;
+    }
+    if (n->kind == ND_ARRAY_NEW) {
+        m = fc_empty(); m->length = 0;
+        if (contains_file(n->ty) && contains_initializer(n->ty)) return fc_array_padding(ctx, s, n, n->ty, n->dims, m, NULL);
+        m->length = n->dims && n->dims->limit >= 0 ? n->dims->limit : 0; return m;
+    }
+    if (n->kind == ND_MODEL_INIT || n->kind == ND_MODEL_SEED) {
+        if (n->kind == ND_MODEL_SEED && ctx->info->fn == type_model(n->ty)->builder && type_model(n->ty)->initializer)
+            return fc_empty(); /* The initializer summary owns and evaluates its seed. */
         m = fc_empty(); m->length = type_model(n->ty)->field_count;
         for (p = n->lhs; p; p = p->next) {
             char key[64]; FcEntry *e; FcMap *item = fc_eval(ctx, s, p->lhs);
@@ -371,7 +444,11 @@ static FcMap *fc_eval(FcContext *ctx, FcState *s, Node *n)
 }
 static FcFlow *fc_flow(FcState *s, int kind, FcMap *value)
 {
-    FcFlow *f = fc_new(sizeof(*f)); f->state = s; f->kind = kind; f->value = value ? value : fc_empty(); return f;
+    FcFlow *f = fc_new(sizeof(*f)); f->state = s; f->kind = kind; f->truth = -1; f->value = value ? value : fc_empty(); return f;
+}
+static FcFlow *fc_copy_flow(FcFlow *f)
+{
+    FcFlow *copy = fc_flow(f->state, f->kind, f->value); copy->truth = f->truth; return copy;
 }
 static FcFlow *fc_append(FcFlow *a, FcFlow *b, Token *site)
 {
@@ -385,6 +462,7 @@ static FcFlow *fc_append(FcFlow *a, FcFlow *b, Token *site)
 }
 static FcFlow *fc_step(FcContext *ctx, FcState *s, Node *n)
 {
+    if (n->kind == ND_BUILD_REJECT) return NULL;
     if (n->kind == ND_IF) {
         int truth; FcFlow *a = NULL, *b = NULL;
         fc_eval(ctx, s, n->cond); truth = fc_truth(ctx, s, n->cond);
@@ -402,7 +480,7 @@ static FcFlow *fc_step(FcContext *ctx, FcState *s, Node *n)
         { FcState *iteration = fc_clone(s); fc_assume(ctx, iteration, n->cond, 1); body = fc_run(ctx, iteration, n->then); }
         for (f = body; f; f = f->next) {
             int id;
-            if (f->kind == 1) { out = fc_append(out, fc_flow(f->state, 1, f->value), n->tok); continue; }
+            if (f->kind == 1) { out = fc_append(out, fc_copy_flow(f), n->tok); continue; }
             if (f->kind == 2) { out = fc_append(out, fc_flow(f->state, 0, NULL), n->tok); continue; }
             for (id = before; id < ctx->count; id++)
                 if (ctx->resources[id].parameter == 0 && fc_alive(ctx, f->state, id))
@@ -424,7 +502,11 @@ static FcFlow *fc_step(FcContext *ctx, FcState *s, Node *n)
         }
         return out;
     }
-    if (n->kind == ND_RETURN) return fc_flow(s, 1, fc_eval(ctx, s, n->lhs));
+    if (n->kind == ND_RETURN) {
+        FcFlow *f = fc_flow(s, 1, fc_eval(ctx, s, n->lhs));
+        if (n->lhs && n->lhs->ty == TY_BOOL) f->truth = fc_truth(ctx, s, n->lhs);
+        return f;
+    }
     if (n->kind == ND_BREAK || n->kind == ND_CONTINUE) return fc_flow(s, n->kind == ND_BREAK ? 2 : 3, NULL);
     if (n->kind == ND_DECL) {
         if (n->var->is_ref && n->lhs && n->lhs->kind == ND_ADDR) fc_env(s, n->var)->alias = fc_reference_target(s, n->lhs->lhs->var);
@@ -444,7 +526,7 @@ static FcFlow *fc_run(FcContext *ctx, FcState *s, Node *n)
     for (; n; n = n->next) {
         FcFlow *f, *next = NULL;
         for (f = flows; f; f = f->next)
-            next = fc_append(next, f->kind ? fc_flow(f->state, f->kind, f->value) : fc_step(ctx, f->state, n), n->tok);
+            next = fc_append(next, f->kind ? fc_copy_flow(f) : fc_step(ctx, f->state, n), n->tok);
         flows = next;
     }
     return flows;
@@ -464,16 +546,23 @@ static void fc_analyze(FcInfo *info)
         if (p->ty == TY_FILE) fc_put(m, "", fc_id(ctx, NULL, index, ""));
         fc_set(s, p, m);
     }
+    if (info->fn->is_initializer)
+        fc_set(s, info->fn->params, fc_eval(ctx, s, info->fn->model->default_value));
     info->exits = fc_run(ctx, s, info->fn->body);
     for (f = info->exits; f; f = f->next) {
         int id;
         for (id = 1; id < ctx->count; id++) if (ctx->resources[id].parameter == 0 && fc_alive(ctx, f->state, id)) {
             int escaped = fc_contains(f->value, id);
             for (p = info->fn->params; p; p = p->next)
-                if (p->is_ref && fc_file_type(p->ty) && fc_contains(fc_value(f->state, p), id)) escaped = 1;
+                if (p->is_ref && fc_file_type(p->ty) && fc_contains(fc_value(f->state, p), id) &&
+                    (!info->fn->is_initializer || info->fn->ret == TY_VOID || f->truth == 1)) escaped = 1;
             if (!escaped) error_tok(ctx->resources[id].site->tok,
                 "この file が正常終了する全経路で明示的に close されることを確認できません（関数 %.*s）", info->fn->name_len, info->fn->name);
         }
+    }
+    if (info->fn->is_initializer && info->fn->ret == TY_BOOL) {
+        FcFlow **end = &info->exits;
+        while (*end) { if ((*end)->truth == 0) *end = (*end)->next; else end = &(*end)->next; }
     }
     info->status = 2;
 }

@@ -97,8 +97,9 @@ static void gen_array_copy_runtime(void)
     int scalar = rt_label("copy.scalar");
     int store = rt_label("copy.store");
     int done = rt_label("copy.done");
-    rt_enter(array_copy_label, 9);
+    rt_enter(array_copy_label, 10);
     rt_save(1, RAX); rt_save(2, RDI); rt_save(8, RSI);
+    x64_load(RCX, R14, COLLECTION_CONTEXT); rt_save(10, RCX);
     x64_xor(RCX, RCX);
     x64_test(RAX, RAX);
     x64_jcc(CC_NZ, source);
@@ -179,6 +180,7 @@ static void gen_array_copy_runtime(void)
     x64_jcc(CC_Z, scalar);
     x64_add_imm(RDI, 24);
     rt_load(RSI, 8);
+    rt_load(R11, 10); x64_store(R14, COLLECTION_CONTEXT, R11);
     x64_call(array_copy_label);
     x64_jmp(store);
     x64_bind(scalar);
@@ -187,7 +189,11 @@ static void gen_array_copy_runtime(void)
       for (m = emitting_models; m; m = m->next) {
           int next_model = rt_label("copy.not.model");
           rt_cmp(RCX, m->ty); x64_jcc(CC_NZ, next_model);
-          x64_call(m->copy_label); x64_jmp(store);
+          { int existing = rt_label("copy.model.existing");
+            rt_load(RCX, 5); rt_load(RDX, 7); x64_cmp(RCX, RDX); x64_jcc(CC_B, existing);
+            rt_load(RAX, 10); x64_push(RAX); x64_call(m->default_builder->label); x64_add_imm(RSP, 8); x64_jmp(store);
+            x64_bind(existing); x64_call(m->copy_label); x64_jmp(store);
+          }
           x64_bind(next_model);
       }
     }

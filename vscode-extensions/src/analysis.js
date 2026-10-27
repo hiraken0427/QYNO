@@ -82,7 +82,7 @@ function closing(tokens, begin) {
 }
 function rankOf(tokens) { return tokens.filter(t => t.value === '[').length; }
 function visibilityLabel(symbol) { return symbol.declaringModelId ? `${symbol.visibility || 'public'} ` : ''; }
-function typeLabel(symbol) { return `${visibilityLabel(symbol)}${symbol.kind === 'constant' ? 'const ' : ''}${symbol.ref ? `ref ${symbol.readonly ? 'readonly ' : ''}` : ''}${symbol.type} ${symbol.name}${'[]'.repeat(symbol.rank || 0)}${symbol.kind === 'field' && symbol.readonly ? ' (readonly)' : ''}`; }
+function typeLabel(symbol) { return `${visibilityLabel(symbol)}${symbol.kind === 'constant' ? 'const ' : ''}${symbol.ref ? `ref ${symbol.readonly ? 'readonly ' : ''}` : ''}${symbol.type} ${symbol.name}${'[]'.repeat(symbol.rank || 0)}${symbol.kind === 'field' && symbol.readonly ? ' (readonly)' : ''}${symbol.defaultText !== undefined ? `=${symbol.defaultText}` : ''}`; }
 function functionLabel(symbol, name = symbol.name) {
     return `${visibilityLabel(symbol)}${symbol.readonly ? 'readonly ' : ''}${symbol.type} ${name}(${symbol.params.map(typeLabel).join(', ')})${'[]'.repeat(symbol.rank || 0)}`;
 }
@@ -156,13 +156,16 @@ function analyze(text, uri = '') {
                     const parameterType = readType(part, p);
                     if (!parameterType) continue;
                     p = parameterType.end - 1;
-                    const parameter = declare(part[p + 1], { kind: 'parameter', type: parameterType.name, rank: rankOf(part.slice(p + 2)), ref, readonly, scopeId: body.id, visibleAfter: part[p + 1]?.end || 0 });
+                    const equal = part.findIndex((t, n) => n > p + 1 && t.value === '=');
+                    const parameter = declare(part[p + 1], { kind: 'parameter', type: parameterType.name, rank: rankOf(part.slice(p + 2, equal < 0 ? part.length : equal)), ref, readonly, scopeId: body.id, visibleAfter: part[p + 1]?.end || 0,
+                        ...(equal < 0 ? {} : { defaultText: lines[line].slice(part[equal].end, part.at(-1).end).trim() }) });
                     if (parameter) params.push(parameter);
                 }
-                const fn = declare(name, { ...member, readonly, kind: 'function', type, rank: end < 0 ? 0 : rankOf(ts.slice(end + 1).filter(t => t.value !== '=')), params, scopeId: scope.id, bodyScopeId: body.id, visibleAfter: 0 });
+                const fn = declare(name, { ...member, readonly, initializer: scope.kind === 'model' && name.value === 'init', kind: 'function', type, rank: end < 0 ? 0 : rankOf(ts.slice(end + 1).filter(t => t.value !== '=')), params, scopeId: scope.id, bodyScopeId: body.id, visibleAfter: 0 });
                 body.owner = fn;
                 if (scope.kind === 'model') {
                     scope.owner?.members.push(fn);
+                    if (fn?.initializer && scope.owner) scope.owner.initializer = fn;
                     symbols.push({ name: 'this', type: scope.owner?.name, rank: 0, ref: true, readonly, kind: 'parameter', scopeId: body.id, line, start: -1, end: -1, visibleAfter: 0 });
                 }
                 // Return dimensions end at '=' or ';', not at an array in the body.

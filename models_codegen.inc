@@ -28,6 +28,34 @@ static void gen_model_init(Node *node)
     }
     pop(RAX);
 }
+static void gen_creation_context(Token *tok)
+{
+    if (emitting_function && emitting_function->creation_context)
+        gen_load_var(emitting_function->creation_context, tok);
+    else {
+        collection_context(tok); x64_load(RAX, R14, COLLECTION_CONTEXT);
+    }
+}
+static void gen_construction(Node *node)
+{
+    Node *item; int count = node->func->param_count, i;
+    int bytes = ((count * 8 + 15) / 16) * 16;
+    int base = emitting_function->stack_size + depth * 8 + bytes;
+    x64_sub_imm(RSP, bytes); depth += bytes / 8;
+    for (item = node->lhs; item; item = item->next) {
+        gen_expr(item->lhs);
+        x64_store(RBP, -base + item->var->parameter_index * 8, RAX);
+    }
+    gen_creation_context(node->tok); x64_store(RBP, -base, RAX);
+    for (i = 0; i < count; i++) { x64_load(RAX, RBP, -base + i * 8); push(); }
+    x64_call(node->func->label);
+    x64_add_imm(RSP, count * 8 + bytes); depth -= count + bytes / 8;
+}
+static void gen_model_default(Model *m, Token *tok)
+{
+    gen_creation_context(tok); push(); x64_call(m->default_builder->label);
+    x64_add_imm(RSP, 8); depth--;
+}
 static void model_copy_field(ModelField *f)
 {
     if (type_is_model(f->ty)) x64_call(type_model(f->ty)->copy_label);
@@ -47,7 +75,7 @@ static void gen_model_runtime(void)
         depth = 0;
         rt_enter(m->copy_label, 4); rt_save(1, RAX);
         x64_test(RAX, RAX); x64_jcc(CC_NZ, from_value);
-        gen_model_init(m->default_value); rt_leave();
+        collection_fail("未完了のモデルはコピーできません\n");
         x64_bind(from_value);
         gen_model_allocate(m); rt_save(2, RAX);
         for (f = m->fields; f; f = f->next) {

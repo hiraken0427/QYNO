@@ -107,5 +107,26 @@
       "\t${0:return items.length}"
     ],
     "description": "配列をコピーせず読み取り専用で受け取る関数"
+  },
+  "Initializer": {
+    "prefix": "init",
+    "body": [
+      "public void init(${1:int initial});",
+      "\t${2:this.count = initial}",
+      "$0"
+    ],
+    "description": "モデル生成時にだけ実行する初期化処理"
+  },
+  "Checked initializer": {
+    "prefix": "checkedinit",
+    "body": [
+      "public bool init(${1:int initial});",
+      "\tif(${2:initial < 0});",
+      "\t\treturn false",
+      "\t${3:this.count = initial}",
+      "\treturn true",
+      "$0"
+    ],
+    "description": "入力検証と生成拒否を持つ初期化処理"
   }
 }

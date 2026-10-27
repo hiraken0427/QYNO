@@ -1,0 +1,21 @@
+// QYNO 0.26.3: private fields, checked init and value copies.
+model Rectangle;
+	private double width
+	private double height
+
+	public bool init(double width, double height);
+		if(not(width > 0.0 and height > 0.0));
+			return false
+		this.width = width
+		this.height = height
+		return true
+
+	public readonly double area() = this.width * this.height
+
+int main();
+	Rectangle rect = {width=3.0, height=4.0}
+	io.print(rect.area())  // 12.0
+
+	Rectangle copy = rect // init を実行しない、独立したコピー
+	io.print(copy.area()) // 12.0
+	return 0
