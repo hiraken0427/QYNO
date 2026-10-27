@@ -5,7 +5,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#define QYC_VERSION "0.26.8"
+#define QYC_VERSION "0.26.9"
 
 typedef struct SourceFile SourceFile;
 typedef struct Module Module;
@@ -135,6 +135,7 @@ typedef enum {
 #define MAX_ARRAY_RANK 32
 #define MAX_PLACE_DEPTH 128
 #define MAX_CONST_DEPTH 256
+#define MAX_FUNCTION_DEPTH 256
 typedef struct ArrayDim ArrayDim;
 
 /* ---------- 構文解析（AST） ---------- */
@@ -362,6 +363,8 @@ struct Function {
     int name_len;
     Token *tok;         /* 関数名の位置 */
     Type ret;           /* 戻り値の型（void は TY_VOID） */
+    int infer_return;    /* auto / 戻り値型の省略 */
+    int check_state;     /* 関数本体の検査（0:未、1:検査中、2:済み） */
     ArrayDim *return_dims;
     Var *params;        /* 引数（宣言順、next でつながる。locals とは別に並べる） */
     int param_count;

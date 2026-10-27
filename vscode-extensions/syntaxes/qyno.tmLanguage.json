@@ -139,6 +139,20 @@
       ]
     },
     {
+      "match": "^\\s*(?:(public|private)\\s+)?(?:(readonly)\\s+)?((?!(?:if|while|for|print|input|return|int|float|double|bool|str|char|file|void|auto)\\b)[A-Za-z_]\\w*)(?=\\s*\\([^\\n]*\\)\\s*(?:;|=))",
+      "captures": {
+        "1": {
+          "name": "storage.modifier.qyno"
+        },
+        "2": {
+          "name": "storage.modifier.qyno"
+        },
+        "3": {
+          "name": "entity.name.function.qyno"
+        }
+      }
+    },
+    {
       "match": "^\\s*(?:(implements|public|private)\\s+)?(?:(readonly)\\s+)?([A-Za-z_]\\w*(?:\\.[A-Za-z_]\\w*)*)\\s+([A-Za-z_]\\w*)(?=\\s*\\()",
       "captures": {
         "1": {

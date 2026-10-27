@@ -17,6 +17,7 @@ Python を指定する場合は `make test PYTHON=/path/to/python3` とする。
 | `make test-auto` | ローカル auto・const auto、型固定、配列・モデルのコピー、入力、readonly・interface・明示 close の制約 |
 | `make test-implicit-declarations` | 型名省略の宣言と既存変数への代入、ブロック・同名宣言、名前衝突、未使用警告・候補名、コピー・所有権 |
 | `make test-global-const-inference` | ファイル先頭の推論付き定数、前方・モジュール参照、循環・依存深さ、配列上限・モデル既定値・readonly |
+| `make test-return-inference` | 関数・メソッドの戻り値推論、複数 return の統一、前方参照・再帰・深さ、interface 契約・コピー・所有権 |
 | `make test-rounding` | Decimal を正解値とした丸め、正負の中間値、桁指定、整数精度・範囲外 |
 | `make test-semantics` | 短絡評価、比較連鎖の評価回数、スコープ、再帰、値渡し・参照、診断 |
 | `make test-text` | Unicode スカラー値、NUL、char、コピー、文字置換、不正 UTF-8、添字エラー |
@@ -167,3 +168,11 @@ readonly / interface の所有制限と、file・file 配列の明示 close の�
 配列・モデルの定数、readonlyの借用、コピーの独立性、配列上限やモデル既定値からの早期参照も確認する。
 自己・相互参照とモデル既定値を含む循環、深すぎる依存、実行時操作・変更操作・名前衝突を診断し、
 依存モジュールのエラーではそのファイルの位置を検証する。未導入の関数の型推論は含めない。
+
+## 0.26.9 の戻り値型推論
+
+`make test-return-inference` は34メソッドで、autoと型名省略の関数・メソッド、
+複数returnの型統一と順序独立性、void・配列・モデル・file、前方・モジュール参照を確認する。
+型注釈で解決できる相互再帰、推論の循環・依存深さ、全経路のreturn、interface契約との一致も検証する。
+呼び出し側の評価順、一時変数の所属、initの評価回数、戻り値のコピーとclose責任、
+readonly・private・interfaceの所有制限を維持し、未導入の引数の型推論はエラーにする。

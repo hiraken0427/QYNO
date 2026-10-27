@@ -112,7 +112,7 @@ class AutoTests(QynoTestCase):
                 self.compile_source(program('void noop();', '\treturn', 'int main();',
                     '\tint n = 1', '\tauto value = ' + value), error='エラー')
 
-    def test_field_parameter_return_and_loop_auto_are_deferred(self):
+    def test_field_parameter_main_and_loop_auto_restrictions(self):
         for source in [program('auto main() = 0'),
                        program('int f(auto n) = n', 'int main();', '\treturn 0'),
                        program('model Point;', '\tauto x = 0', 'int main();', '\treturn 0'),

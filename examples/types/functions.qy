@@ -1,0 +1,29 @@
+using io
+
+auto square(int x) = x^2
+twice(int x) = x * 2
+numbers(int n) = [n, n + 1]
+
+choose(bool first);
+	if(first);
+		return 3
+	return 2.5
+
+model Point;
+	int x
+	int y
+
+	readonly length_squared() = this.x^2 + this.y^2
+
+make_point(int x, int y);
+	Point point = {x=x, y=y}
+	return point
+
+int main();
+	point = make_point(3, 4)
+	values = numbers(5)
+	print("{square(3)} {twice(4)}")
+	print("{choose(true)} {choose(false)}")
+	print(values)
+	print(point.length_squared())
+	return 0

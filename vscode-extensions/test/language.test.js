@@ -14,6 +14,51 @@ function labels(text, modules) { return items(text, modules).map(i => i.label); 
 function at(text, modules) { const f = fixture(text, modules); return symbolAt(f.project, f.line, f.character); }
 function hint(text, modules) { const f = fixture(text, modules); return signature(f.project, f.line, f.character); }
 
+test('auto and omitted return functions support forward completion and signatures', () => {
+    const source = 'int main();\n\t¦\nauto square(int x) = x^2\ntwice(int n) = n * 2';
+    const result = items(source);
+    assert.equal(result.find(i => i.label === 'square').detail, 'auto square(int x)');
+    assert.equal(result.find(i => i.label === 'twice').detail, 'auto twice(int n)');
+    assert.equal(hint('twice(int n) = n * 2\nint main();\n\ttwice(¦').label, 'auto twice(int n)');
+    assert.equal(at('int main();\n\tprint(twi¦ce(3))\ntwice(int n) = n * 2').line, 2);
+});
+
+test('inferred return block functions retain typed ref parameters and local scope', () => {
+    const source = 'sum(ref readonly int values[]);\n\ttotal = values[0]\n\treturn total\nint main();\n\t¦';
+    assert.ok(!labels(source).includes('total'));
+    assert.ok(!labels(source).includes('values'));
+    const candidate = items(source).find(i => i.label === 'sum');
+    assert.equal(candidate.detail, 'auto sum(ref readonly int values[])');
+    assert.equal(candidate.insertText, 'sum(ref ${1:values})');
+    assert.equal(at('sum(int value);\n\treturn val¦ue').line, 0);
+});
+
+test('ordinary call statements do not introduce inferred function declarations', () => {
+    const model = analyze('int main();\n\tconsume(1)\n\tif(true);\n\t\tconsume(2)');
+    assert.deepEqual(model.symbols.filter(s => s.kind === 'function').map(s => s.name), ['main']);
+});
+
+test('inferred method declarations retain visibility readonly and this type', () => {
+    const source = 'model Point;\n\tprivate int n\n\tprivate readonly get() = this.n\n\tpublic readonly auto read() = this.get()\nint main();\n\tPoint p\n\tp.¦';
+    const result = items(source);
+    assert.ok(result.some(i => i.label === 'read' && i.detail === 'public readonly auto read()'));
+    assert.ok(!result.some(i => i.label === 'get'));
+    assert.ok(labels('model Point;\n\tprivate int n\n\treadonly get();\n\t\tthis.¦').includes('n'));
+});
+
+test('imported inferred functions support aliases definitions and argument hints', () => {
+    const modules = {helper:'square(int n) = n^2\nauto twice(int n) = n * 2'};
+    assert.deepEqual(labels('import helper\nusing helper as h\nint main();\n\th.¦', modules).sort(), ['square','twice']);
+    assert.equal(at('import helper\nint main();\n\thelper.squ¦are(3)', modules).uri, 'file:///helper.qy');
+    assert.equal(hint('import helper\nint main();\n\thelper.square(¦', modules).label, 'auto helper.square(int n)');
+});
+
+test('inferred expression functions do not leak parameters into later declarations', () => {
+    const source = 'square(int secret) = secret^2\ntwice(int value) = value * 2\nint main();\n\t¦';
+    assert.ok(!labels(source).includes('secret'));
+    assert.ok(!labels(source).includes('value'));
+});
+
 test('global inferred constants are available before their declarations', () => {
     const result = items('int main();\n\t¦\nconst auto LIMIT = 3\nconst LABEL = "QYNO"');
     assert.equal(result.find(i => i.label === 'LIMIT').detail, 'const auto LIMIT');

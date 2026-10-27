@@ -5,7 +5,7 @@
  * import   = "import" path ("," path)* NEWLINE
  * using    = "using" path ("as" ident)? ("," path ("as" ident)?)* NEWLINE
  * path     = ident ("." ident)*
- * function = rtype ident "(" params? ")" dimensions (";" block | "=" expr NEWLINE)
+ * function = (rtype | "auto")? ident "(" params? ")" dimensions (";" block | "=" expr NEWLINE)
  * rtype    = type | "void"
  * params   = ("ref" | "val")? type ident dimensions ("," params)?
  * dimensions = ("[" expr? "]")*
@@ -1771,23 +1771,27 @@ static Function *function_def(int is_readonly)
     Type ty;
     int i;
     int count;
+    int omitted = tok->kind == TK_IDENT && !is_keyword(tok) && equal(tok->next, "(");
 
     fn = calloc(1, sizeof(Function));
     if (fn == NULL) {
         fatal("メモリを確保できません");
     }
     fn->is_readonly = is_readonly;
-    fn->ret = return_type(tok);
-    if (fn->ret == TY_NONE) {
+    fn->infer_return = omitted || equal(tok, "auto");
+    fn->ret = fn->infer_return ? TY_NONE : return_type(tok);
+    if (fn->ret == TY_NONE && !fn->infer_return) {
         error_tok(tok, "ファイルの先頭に書けるのは const 定数と関数の定義だけです（関数は 戻り値の型 名前(引数); の形で書きます）");
     }
-    skip_type();
+    if (!omitted) skip_type();
     if (tok->kind != TK_IDENT || is_keyword(tok)) {
         error_tok(tok, "関数名が必要です");
     }
     name = tok;
     fn->model = parsing_model;
     fn->contract = parsing_interface;
+    if (parsing_interface && fn->infer_return)
+        error_tok(name, "interface の契約には戻り値の型を明示してください");
     if (parsing_interface && equal(name, "init")) error_tok(name, "interface に init は宣言できません");
     fn->is_initializer = parsing_model && equal(name, "init");
     if (fn->is_initializer && (is_readonly || (fn->ret != TY_VOID && fn->ret != TY_BOOL)))
@@ -1856,6 +1860,8 @@ static Function *function_def(int is_readonly)
     }
     expect(")");
     fn->params = head.next;
+    if (fn->infer_return && equal(tok, "["))
+        error_tok(tok, "戻り値の推論では配列の次元も推論します。関数名の後の [] は省略してください");
     fn->return_dims = dimensions(&fn->ret);
     if (fn->is_initializer && fn->return_dims) error_tok(name, "init の戻り値は void / bool のみです。配列は返せません");
     i = 0;
@@ -1932,7 +1938,7 @@ static Model *model_def(Function **tail)
     fields = &m->fields;
     parsing_model = m;
     while (tok->kind != TK_DEDENT && tok->kind != TK_EOF) {
-        Type ty; Token *name; int is_private = 0, is_readonly;
+        Type ty; Token *name; int is_private = 0, is_readonly, inferred;
         if (equal(tok, "public") || equal(tok, "private")) {
             is_private = equal(tok, "private"); tok = tok->next;
             if (equal(tok, "public") || equal(tok, "private"))
@@ -1942,11 +1948,15 @@ static Model *model_def(Function **tail)
         if (equal(tok, "readonly") || equal(tok, "public") || equal(tok, "private"))
             error_tok(tok, "公開指定の後に readonly を1つだけ書いてください");
         ty = return_type(tok); name = tok;
-        if (ty == TY_NONE) error_tok(tok, "モデルにはフィールドまたはメソッドを定義してください");
-        tok = tok->next;
-        while (equal(tok, ".") && tok->next->kind == TK_IDENT) tok = tok->next->next;
-        if (tok->kind != TK_IDENT || is_keyword(tok)) error_tok(tok, "メンバー名が必要です");
-        if (equal(tok->next, "(")) {
+        inferred = equal(tok, "auto") || (tok->kind == TK_IDENT && !is_keyword(tok) && equal(tok->next, "("));
+        if (!inferred) {
+            if (ty == TY_NONE) error_tok(tok, "モデルにはフィールドまたはメソッドを定義してください");
+            skip_type();
+            if (tok->kind != TK_IDENT || is_keyword(tok)) error_tok(tok, "メンバー名が必要です");
+        } else if (equal(tok, "auto") && !(tok->next->kind == TK_IDENT && equal(tok->next->next, "("))) {
+            error_tok(tok, "モデルの auto はメソッドの戻り値に使用してください。フィールドの型は明示してください");
+        }
+        if (inferred || equal(tok->next, "(")) {
             tok = name;
             (*tail)->next = function_def(is_readonly); *tail = (*tail)->next;
             (*tail)->is_private = is_private;
