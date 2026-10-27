@@ -170,7 +170,7 @@
       }
     },
     {
-      "match": "(\\b(?:int|float|double|bool|str|char|file|void)\\b)\\s+([A-Za-z_]\\w*)",
+      "match": "(\\b(?:int|float|double|bool|str|char|file|void|auto)\\b)\\s+([A-Za-z_]\\w*)",
       "captures": {
         "1": {
           "name": "storage.type.qyno"
@@ -247,7 +247,7 @@
     "types": {
       "patterns": [
         {
-          "match": "\\b(?:int|float|double|bool|str|char|file|void)\\b",
+          "match": "\\b(?:int|float|double|bool|str|char|file|void|auto)\\b",
           "name": "storage.type.qyno"
         }
       ]

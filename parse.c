@@ -21,10 +21,11 @@
  *          | "continue" NEWLINE
  *          | using
  *          | const_decl
+ *          | "auto" ident "=" expr NEWLINE
  *          | type ident dimensions ("=" expr)? NEWLINE
  *          | postfix update NEWLINE | postfix（配列操作）NEWLINE
  * update   = "=" expr | "+=" expr | "-=" expr | "++" | "--"
- * const_decl = "const" type ident "=" expr NEWLINE
+ * const_decl = "const" (type | "auto"（ローカルのみ）) ident "=" expr NEWLINE
  * type     = "int" | "float" | "double" | "bool" | "str" | "char"
  * str      = 文字列リテラル（エスケープと {expr} の埋め込みを含む）
  * expr     = or
@@ -70,7 +71,7 @@ static Node *stmt(void);
 
 /* 変数名などに使えない予約語 */
 static const char *keywords[] = {
-    "int", "float", "double", "bool", "str", "char", "void", "file", "const",
+    "int", "float", "double", "bool", "str", "char", "void", "file", "const", "auto",
     "true", "false", "return", "print", "if", "else", "for", "while",
     "break", "continue", "and", "or", "xor", "bnot", "not", "struct", "enum", "import", "of", "using", "input",
     "ref", "val", "none", "as", "interface", "implements", "model", "public", "private", "readonly",
@@ -1236,9 +1237,13 @@ static Node *declaration_ref(Token *start, int is_const, int is_ref)
     Token *name;
     Type ty;
     ArrayDim *dims;
+    int infer = equal(tok, "auto");
 
-    ty = type_keyword(tok);
-    if (ty == TY_NONE) {
+    ty = infer ? TY_NONE : type_keyword(tok);
+    if (infer && (cur_fn == NULL || is_ref)) {
+        error_tok(tok, "auto はローカルの値変数・const の宣言に使用してください（ref・関数引数・戻り値は未対応です）");
+    }
+    if (!infer && ty == TY_NONE) {
         error_tok(tok, "型（int・float・double・bool・str・char）が必要です");
     }
     skip_type();
@@ -1248,10 +1253,15 @@ static Node *declaration_ref(Token *start, int is_const, int is_ref)
     name = tok;
     tok = tok->next;
 
-    dims = dimensions(&ty);
+    if (infer && equal(tok, "[")) {
+        error_tok(tok, "auto の配列は初期値から次元も推論します（例：auto values = [1, 2, 3]）");
+    }
+    dims = infer ? NULL : dimensions(&ty);
     node = new_node(ND_DECL, start);
     if (consume("=")) {
         node->lhs = expr();
+    } else if (infer) {
+        error_tok(tok, "auto には初期値が必要です（例：auto value = 3）");
     } else if (is_const) {
         error_tok(tok, "const には初期値が必要です（例：const float PI = 3.141592）");
     }
@@ -1260,6 +1270,7 @@ static Node *declaration_ref(Token *start, int is_const, int is_ref)
     node->var->dims = dims;
     node->var->decl = node;
     node->var->is_ref = is_ref;
+    node->var->is_inferred = infer;
     expect_kind(TK_NEWLINE, "文の終わりには改行が必要です");
     return node;
 }
@@ -1636,7 +1647,7 @@ static Node *stmt(void)
     if (consume("const")) {
         return declaration(start, 1);
     }
-    if (equal(tok, "ref") && type_keyword(tok->next) != TY_NONE) {
+    if (equal(tok, "ref") && (equal(tok->next, "auto") || type_keyword(tok->next) != TY_NONE)) {
         tok = tok->next;
         return declaration_ref(start, 0, 1);
     }
@@ -1671,6 +1682,7 @@ static Node *stmt(void)
         }
         return node;
     }
+    if (equal(tok, "auto")) return declaration(start, 0);
     ty = type_keyword(tok);
     if (ty != TY_NONE && !(ty == TY_FILE && equal(tok->next, "."))) {
         return declaration(start, 0);

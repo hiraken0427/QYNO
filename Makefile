@@ -29,6 +29,10 @@ test: qyc
 	$(PYTHON) tests/interfaces_test.py ./qyc
 	$(PYTHON) tests/bitwise_test.py ./qyc
 	$(PYTHON) tests/integer_bases_test.py ./qyc
+	$(PYTHON) tests/auto_test.py ./qyc
+
+test-auto: qyc
+	$(PYTHON) tests/auto_test.py ./qyc
 
 test-bitwise: qyc
 	$(PYTHON) tests/bitwise_test.py ./qyc
@@ -84,4 +88,4 @@ test-arrays: qyc
 clean:
 	rm -f qyc qyc.exe *.o tmp tmp.exe tmp.qy tmp.s
 
-.PHONY: test test-bitwise test-integer-bases test-interfaces test-initialization test-readonly test-visibility test-model test-file test-input-refs test-for test-io test-modules test-lineedit test-rounding test-semantics test-text test-arrays clean
+.PHONY: test test-auto test-bitwise test-integer-bases test-interfaces test-initialization test-readonly test-visibility test-model test-file test-input-refs test-for test-io test-modules test-lineedit test-rounding test-semantics test-text test-arrays clean

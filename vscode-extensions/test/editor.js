@@ -160,6 +160,19 @@ async function run() {
     assert.ok(conversionHover.some(h=>h.contents.some(c=>c.value?.includes('str')))); checks++;
     const radixHover=await radixQuery(5,'{num','vscode.executeHoverProvider');
     assert.ok(radixHover.some(h=>h.contents.some(c=>c.value?.includes('int numbers')))); checks++;
+    const autoDoc=await vscode.workspace.openTextDocument({language:'qyno',content:
+        'int main();\n\tauto count = 3\n\tconst auto LIMIT = 10\n\tprint(count + LIMIT)\n'});
+    await vscode.window.showTextDocument(autoDoc);
+    const autoPosition=new vscode.Position(3,autoDoc.lineAt(3).text.indexOf('count')+2);
+    const autoItems=await vscode.commands.executeCommand('vscode.executeCompletionItemProvider',autoDoc.uri,autoPosition);
+    assert.ok(autoItems.items.some(i=>i.label==='count' && i.detail==='auto count')); checks++;
+    const autoDefinition=await vscode.commands.executeCommand('vscode.executeDefinitionProvider',autoDoc.uri,autoPosition);
+    assert.ok(autoDefinition.some(d=>(d.range || d.targetSelectionRange).start.line===1)); checks++;
+    const autoHover=await vscode.commands.executeCommand('vscode.executeHoverProvider',autoDoc.uri,autoPosition);
+    assert.ok(autoHover.some(h=>h.contents.some(c=>c.value?.includes('auto count')))); checks++;
+    const autoConstantPosition=new vscode.Position(3,autoDoc.lineAt(3).text.indexOf('LIMIT')+2);
+    const autoConstantHover=await vscode.commands.executeCommand('vscode.executeHoverProvider',autoDoc.uri,autoConstantPosition);
+    assert.ok(autoConstantHover.some(h=>h.contents.some(c=>c.value?.includes('const auto LIMIT')))); checks++;
     console.log(`QYNO VS Code integration: ${checks} checks passed`);
 }
 module.exports={run};
