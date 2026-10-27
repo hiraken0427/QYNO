@@ -215,6 +215,7 @@ static void gen_array_add_runtime(void)
     int limited = rt_label("add.limited");
     int allocate = rt_label("add.allocate");
     int append = rt_label("add.append");
+    int model_done = rt_label("add.model.done");
     rt_enter(array_add_label, 6);
     array_require_unborrowed();
     rt_save(1, RAX); rt_save(2, RDI);
@@ -237,6 +238,7 @@ static void gen_array_add_runtime(void)
     rt_save(2, RAX);
     x64_bind(scalar);
     rt_load(RAX, 1); x64_load(RDX, RAX, 16); x64_load(RCX, RDX, 8);
+    x64_load(RSI, RDX, 0); rt_cmp(RSI, 1); x64_jcc(CC_NZ, model_done);
     { Model *m;
       for (m = emitting_models; m; m = m->next) {
           int next_model = rt_label("add.not.model");
@@ -246,6 +248,7 @@ static void gen_array_add_runtime(void)
           rt_load(RAX, 1); x64_load(RDX, RAX, 16); x64_load(RCX, RDX, 8);
       }
     }
+    x64_bind(model_done);
     rt_load(RAX, 1);
     x64_load(RCX, RAX, 0);
     x64_load(RDX, RAX, 8);

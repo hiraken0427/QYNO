@@ -72,7 +72,7 @@ static const char *keywords[] = {
     "int", "float", "double", "bool", "str", "char", "void", "file", "const",
     "true", "false", "return", "print", "if", "else", "for", "while",
     "break", "continue", "and", "or", "not", "struct", "enum", "import", "of", "using", "input",
-    "ref", "val", "none", "as", "model", "public", "private",
+    "ref", "val", "none", "as", "model", "public", "private", "readonly",
     NULL
 };
 
@@ -1681,7 +1681,7 @@ static Type return_type(Token *t)
  * 「= 式」の形（数式形式）は、本体が return 式 だけのブロックと同じ意味になる。
  * 引数は呼び出し側が左から順に積むので、i 番目（0 始まり）は [rbp + 16 + 8 * (n - 1 - i)] にある。
  */
-static Function *function_def(void)
+static Function *function_def(int is_readonly)
 {
     Function *fn;
     Var head;
@@ -1698,6 +1698,7 @@ static Function *function_def(void)
     if (fn == NULL) {
         fatal("メモリを確保できません");
     }
+    fn->is_readonly = is_readonly;
     fn->ret = return_type(tok);
     if (fn->ret == TY_NONE) {
         error_tok(tok, "ファイルの先頭に書けるのは const 定数と関数の定義だけです（関数は 戻り値の型 名前(引数); の形で書きます）");
@@ -1727,14 +1728,15 @@ static Function *function_def(void)
         Token *self = calloc(1, sizeof(*self));
         if (!self) fatal("this を確保できません");
         *self = *name; self->loc = "this"; self->len = 4;
-        v = new_var(self, parsing_model->ty); v->is_param = 1; v->is_ref = 1;
+        v = new_var(self, parsing_model->ty); v->is_param = 1; v->is_ref = 1; v->is_readonly = is_readonly;
         cur = cur->next = v; fn->param_count++;
     }
     if (!equal(tok, ")")) {
         for (;;) {
-            int param_ref = 0;
+            int param_ref = 0, param_readonly = 0;
             if (consume("ref")) {
                 param_ref = 1;
+                param_readonly = consume("readonly");
             } else {
                 consume("val");         /* val は既定（値渡し）なので、書いても書かなくてもよい */
             }
@@ -1754,6 +1756,7 @@ static Function *function_def(void)
             v = new_var(tok, ty);
             v->is_param = 1;
             v->is_ref = param_ref;
+            v->is_readonly = param_readonly;
             cur = cur->next = v;
             fn->param_count++;
             tok = tok->next;
@@ -1821,12 +1824,15 @@ static Model *model_def(Function **tail)
     fields = &m->fields;
     parsing_model = m;
     while (tok->kind != TK_DEDENT && tok->kind != TK_EOF) {
-        Type ty; Token *name; int is_private = 0;
+        Type ty; Token *name; int is_private = 0, is_readonly;
         if (equal(tok, "public") || equal(tok, "private")) {
             is_private = equal(tok, "private"); tok = tok->next;
             if (equal(tok, "public") || equal(tok, "private"))
                 error_tok(tok, "公開指定 public / private は1つだけ書いてください");
         }
+        is_readonly = consume("readonly");
+        if (equal(tok, "readonly") || equal(tok, "public") || equal(tok, "private"))
+            error_tok(tok, "公開指定の後に readonly を1つだけ書いてください");
         ty = return_type(tok); name = tok;
         if (ty == TY_NONE) error_tok(tok, "モデルにはフィールドまたはメソッドを定義してください");
         tok = tok->next;
@@ -1834,10 +1840,11 @@ static Model *model_def(Function **tail)
         if (tok->kind != TK_IDENT || is_keyword(tok)) error_tok(tok, "メンバー名が必要です");
         if (equal(tok->next, "(")) {
             tok = name;
-            (*tail)->next = function_def(); *tail = (*tail)->next;
+            (*tail)->next = function_def(is_readonly); *tail = (*tail)->next;
             (*tail)->is_private = is_private;
         } else {
             ModelField *f = calloc(1, sizeof(*f));
+            if (is_readonly) error_tok(name, "readonly はメソッドと ref 引数に指定してください");
             if (!f) fatal("フィールドを確保できません");
             if (ty == TY_VOID) error_tok(name, "フィールドに void は使えません");
             if (equal(tok, "this") || equal(tok, "addr") || equal(tok, "value") || equal(tok, "length"))
@@ -1915,7 +1922,7 @@ Ast *parse(Token *t)
             }
             continue;
         }
-        fcur = fcur->next = function_def();
+        fcur = fcur->next = function_def(0);
     }
     ast->globals = head.next;
     ast->funcs = fhead.next;

@@ -5,7 +5,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#define QYC_VERSION "0.26.1"
+#define QYC_VERSION "0.26.2"
 
 typedef struct SourceFile SourceFile;
 typedef struct Module Module;
@@ -201,6 +201,7 @@ struct Var {
     int offset;         /* rbp からの距離（[rbp - offset] に置く）。const は 0 */
     int is_const;       /* const 定数なら 1 */
     int is_param;       /* 関数の引数なら 1（[rbp + 16 + ...] に置かれる） */
+    int is_readonly;    /* read-only borrow; independent of nominal type */
     int is_ref;         /* ref の変数なら 1（置き場には値ではなく、使う場所が入る） */
     int is_loop;        /* for 文の繰り返しの変数なら 1 */
     int depth;          /* 宣言したブロックの深さ（関数の引数は 0） */
@@ -321,6 +322,8 @@ struct Node {
     int end_literal;    /* ND_PRINT の end= が文字列リテラル直書きなら 1 */
     Token *tok;         /* エラー表示用 */
     char *name;         /* 未解決の名前（修飾名を含む） */
+    int constant_value; /* canonical evaluated aggregate, not a user initializer */
+    Var *ref_temp;      /* const root materialized for a readonly ref call */
     ModelField *field;
     Model *access_model; /* lexical owner of user-written expressions; survives lowering */
     Using *usings;      /* 式の位置のブロック内 using */
@@ -330,6 +333,7 @@ struct Function {
     Function *next;
     Model *model;       /* implicit ref this receiver for model methods */
     int is_private;
+    int is_readonly;
     const char *name;
     int name_len;
     Token *tok;         /* 関数名の位置 */
@@ -363,10 +367,12 @@ struct Model {
     ModelField *fields;
     int field_count;
     int state;
+    int file_state;    /* memoized contains_file: visiting / no / yes */
     int copy_label;
     int equal_label;
     int print_label;
     Node *default_value;
+    Node *constant_default;
 };
 
 /* input の形の中の {変数} 1つ分 */

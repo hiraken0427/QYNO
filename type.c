@@ -93,6 +93,7 @@ static void check_dims(ArrayDim *dims);
 static Node *copy_array(Node *source, ArrayDim *dims, int pad);
 static void check_model_init(Node *node, Type expected);
 static Node *copy_model(Node *source);
+static Node *model_default(Type ty, ArrayDim *dims, Token *tok);
 static void validate_const_array(Node *where, Value source, ArrayDim *dims);
 
 /*
@@ -332,6 +333,7 @@ static void require_bool(Node *node, const char *what)
     }
 }
 
+#include "readonly_type.inc"
 #include "arrays_type.inc"
 #include "models_type.inc"
 
@@ -351,7 +353,11 @@ static void check_file_builtin(Node *node)
     check_expr(first);
     if (b == BI_FILE_OPEN || b == BI_FILE_EXISTS) {
         if (!type_is_text(first->ty)) error_tok(first->tok, "ファイルのパスは str・char にしてください");
-    } else if (first->ty != TY_FILE) error_tok(first->tok, "io.file.%s には file が必要です", builtin_name(b));
+    } else {
+        if (first->ty != TY_FILE) error_tok(first->tok, "io.file.%s には file が必要です", builtin_name(b));
+        if (b != BI_FILE_IS_OPEN && readonly_place(first) && place_root(first)->var->is_readonly)
+            error_tok(first->tok, "readonly の file に %s は使えません（共有状態が変化します）", builtin_name(b));
+    }
     if (b == BI_FILE_OPEN) {
         if (second == NULL) {
             second = calloc(1, sizeof(*second));
@@ -561,7 +567,7 @@ static void check_ref_arg(Node *arg, Var *param, int index)
     Node *root;
     int rank = 0;
     check_expr(arg->lhs);
-    v = check_place(arg->lhs);
+    v = param->is_readonly ? check_read_place(arg->lhs) : check_place(arg->lhs);
     root = arg->lhs;
     while (root->kind == ND_INDEX) {
         if (!type_is_array(root->lhs->ty) && !type_is_model(root->lhs->ty))
@@ -574,6 +580,7 @@ static void check_ref_arg(Node *arg, Var *param, int index)
         error_tok(arg->tok, "%d 番目の引数：ref の引数の型は %s です（%s は渡せません。ref では型を変換しません）",
                   index, type_name(param->ty), type_name(arg->lhs->ty));
     if (rank == 0) check_ref_limits(param, v, arg->tok);
+    if (param->is_readonly && v->is_const) materialize_const_ref(arg, v);
     arg->ty = TY_ADDR;
     arg->cmp_ty = arg->lhs->ty;
 }
@@ -595,6 +602,9 @@ static void check_call(Node *node)
     allow_void = 0;
 
     if (!node->func) resolve_module_name(node);
+    if (node->kind == ND_MODEL_METHOD) {
+        allow_void = allow; check_model_method(node); allow_void = 0; return;
+    }
     if (node->kind == ND_MODEL_INIT) { check_model_init(node, node->cmp_ty); return; }
     if (node->kind == ND_BUILTIN) {
         allow_void = allow;
@@ -629,6 +639,7 @@ static void check_call(Node *node)
                 error_tok(arg->tok, "%d 番目の引数は値渡しの引数なので、ref は付けられません", i);
             }
             check_expected(arg, param->ty);
+            check_value_transfer(arg);
             snprintf(what, sizeof(what), "%d 番目の引数", i);
             cur = cur->next = coerce(arg, param->ty, arg->tok, what);
             if (type_is_model(param->ty)) {
@@ -742,6 +753,8 @@ static void check_expr(Node *node)
         return;
     case ND_ADDR:
         check_expr(node->lhs);
+        if (node->lhs->var->is_readonly)
+            error_tok(node->tok, "readonly の参照から addr を取り出せません");
         if (node->lhs->var->is_const) {
             error_tok(node->tok, "定数 %.*s は場所（addr）を持ちません",
                      node->lhs->var->name_len, node->lhs->var->name);
@@ -906,15 +919,16 @@ static int compare_values(Value l, Value r, CmpKind kind)
     Node *a;
     Node *b;
 
-    if (type_is_array(l.ty)) {
+    if (type_is_array(l.ty) || type_is_model(l.ty)) {
         eq = l.len == r.len;
         for (a = l.items, b = r.items; eq && a != NULL; a = a->next, b = b->next) {
-            eq = compare_values(eval_const(a), eval_const(b), CMP_EQ);
+            eq = compare_values(eval_const(type_is_model(l.ty) ? a->lhs : a),
+                                eval_const(type_is_model(l.ty) ? b->lhs : b), CMP_EQ);
         }
         return kind == CMP_EQ ? eq : !eq;
     }
 
-    if (l.ty == TY_STR) {
+    if (type_is_text(l.ty)) {
         eq = l.len == r.len && (l.len == 0 || memcmp(l.s, r.s, (size_t)l.len) == 0);
         return kind == CMP_EQ ? eq : !eq;
     }
@@ -1302,8 +1316,10 @@ static Value eval_builtin(Node *node)
     }
 }
 
+#include "const_models.inc"
+
 /* 式の値をコンパイル時に計算する（リテラル・他の const・演算のみ） */
-static Value eval_const(Node *node)
+static Value eval_const_inner(Node *node)
 {
     Value v;
     Value l;
@@ -1315,8 +1331,14 @@ static Value eval_const(Node *node)
     memset(&v, 0, sizeof(v));
     v.ty = node->ty;
     switch (node->kind) {
+    case ND_MODEL_INIT:
+    case ND_MODEL_NEW:
+        return constant_model(node);
+    case ND_MODEL_COPY:
+        return eval_const(node->lhs);
     case ND_ARRAY_LITERAL:
         {
+            if (node->constant_value) { v.items = node->lhs; v.len = node->nargs; return v; }
             Node head = {0};
             Node *tail = &head;
             for (cmp = node->lhs; cmp != NULL; cmp = cmp->next) {
@@ -1358,6 +1380,12 @@ static Value eval_const(Node *node)
     case ND_INDEX:
         l = eval_const(node->lhs);
         r = eval_const(node->rhs);
+        if (type_is_model(l.ty)) {
+            if (r.i < 0 || r.i >= l.len) const_error(node, "モデルのフィールド番号が範囲外です");
+            cmp = l.items;
+            while (r.i-- > 0) cmp = cmp->next;
+            return eval_const(cmp->lhs);
+        }
         if (type_is_array(l.ty)) {
             if (r.i < 0 || r.i >= l.len) const_error(node, "配列の添字が範囲外です");
             cmp = l.items;
@@ -1431,9 +1459,17 @@ static Value eval_const(Node *node)
 static int is_const_expr(Node *node)
 {
     Node *cmp;
-    if (type_is_model(array_base(node->ty))) return 0;
+    if (type_is_model(array_base(node->ty)) && contains_file(node->ty)) return 0;
 
     switch (node->kind) {
+    case ND_MODEL_NEW:
+        return 1;
+    case ND_MODEL_INIT:
+        for (cmp = node->lhs; cmp; cmp = cmp->next)
+            if (!is_const_expr(cmp->lhs)) return 0;
+        return 1;
+    case ND_MODEL_COPY:
+        return is_const_expr(node->lhs);
     case ND_ARRAY_NEW:
         return 1;
     case ND_ARRAY_LITERAL:
@@ -1497,7 +1533,12 @@ static Node *value_node(Value v, Token *tok)
     }
     node->ty = v.ty;
     node->tok = tok;
+    if (type_is_model(v.ty)) {
+        node->kind = ND_MODEL_INIT; node->lhs = v.items; node->nargs = v.len; node->constant_value = 1;
+        return node;
+    }
     if (type_is_array(v.ty)) {
+        node->constant_value = 1;
         node->kind = ND_ARRAY_LITERAL;
         node->lhs = v.items;
         node->nargs = v.len;
@@ -1673,7 +1714,8 @@ static void check_stmt(Node *node)
             return;
         }
         if (node->var->is_const) {
-            if (type_is_model(array_base(node->var->ty))) error_tok(node->tok, "model を含む const は未対応です");
+            if (type_is_model(array_base(node->var->ty)) && contains_file(node->var->ty))
+                error_tok(node->tok, "file を含むモデルは const にできません");
             if (node->var->const_state == 2) {
                 return;         /* ほかの const から参照されて計算済み */
             }
@@ -1686,6 +1728,7 @@ static void check_stmt(Node *node)
         check_dims(node->var->dims);
         if (node->lhs != NULL) {
             check_expected(node->lhs, node->var->ty);
+            check_value_transfer(node->lhs);
             node->lhs = coerce(node->lhs, node->var->ty, node->lhs->tok, "初期値");
             if (type_is_array(node->var->ty)) node->lhs = copy_array(node->lhs, node->var->dims, 1);
             if (type_is_model(node->var->ty)) node->lhs = copy_model(node->lhs);
@@ -1700,7 +1743,9 @@ static void check_stmt(Node *node)
             node->lhs->tok = node->tok;
         }
         if (node->var->is_const) {
+            long long budget = 1000000;
             node->var->const_val = value_node(eval_const(node->lhs), node->lhs->tok);
+            constant_size(node, node->var->const_val, &budget);
             node->var->const_state = 2;
         }
         return;
@@ -1749,7 +1794,10 @@ static void check_stmt(Node *node)
     case ND_CONTINUE:
         return;
     case ND_ASSIGN:
+        if (node->var->is_const || node->var->is_readonly)
+            error_tok(node->tok, "const / readonly の値は変更できません");
         check_expected(node->lhs, node->var->ty);
+        check_value_transfer(node->lhs);
         node->lhs = coerce(node->lhs, node->var->ty, node->lhs->tok, "代入");
         if (type_is_array(node->var->ty) && is_const_expr(node->lhs)) {
             validate_const_array(node, eval_const(node->lhs), node->var->dims);
@@ -1771,6 +1819,7 @@ static void check_stmt(Node *node)
                      cur_func->name_len, cur_func->name, type_name(cur_func->ret));
         }
         check_expected(node->lhs, cur_func->ret);
+        check_value_transfer(node->lhs);
         node->lhs = coerce(node->lhs, cur_func->ret, node->lhs->tok, "戻り値");
         if (type_is_array(cur_func->ret)) node->lhs = copy_array(node->lhs, cur_func->return_dims, 0);
         if (type_is_model(cur_func->ret)) node->lhs = copy_model(node->lhs);

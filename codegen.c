@@ -5485,7 +5485,7 @@ static void gen_expr(Node *node)
     case ND_REFARG:
         if (node->rhs) {
             gen_expr(node->rhs);
-            x64_store(RBP, -node->lhs->var->offset, RAX);
+            x64_store(RBP, -(node->ref_temp ? node->ref_temp : node->lhs->var)->offset, RAX);
         }
         if (node->lhs->kind == ND_INDEX) gen_element_ref(node);
         else gen_var_addr(node->lhs->var, node->tok, 1);

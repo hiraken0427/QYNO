@@ -1,7 +1,7 @@
 'use strict';
 
 const TYPES = new Set(['int', 'float', 'double', 'bool', 'str', 'char', 'file', 'void']);
-const KEYWORDS = new Set([...TYPES, 'const', 'ref', 'val', 'return', 'if', 'else', 'for', 'while', 'break', 'continue', 'and', 'or', 'not', 'true', 'false', 'none', 'import', 'using', 'as', 'print', 'input', 'struct', 'enum', 'of', 'model', 'public', 'private']);
+const KEYWORDS = new Set([...TYPES, 'const', 'ref', 'val', 'return', 'if', 'else', 'for', 'while', 'break', 'continue', 'and', 'or', 'not', 'true', 'false', 'none', 'import', 'using', 'as', 'print', 'input', 'struct', 'enum', 'of', 'model', 'public', 'private', 'readonly']);
 const identifierStart = c => /[A-Za-z_]/.test(c || '');
 const identifierPart = c => /[A-Za-z0-9_]/.test(c || '');
 
@@ -82,9 +82,9 @@ function closing(tokens, begin) {
 }
 function rankOf(tokens) { return tokens.filter(t => t.value === '[').length; }
 function visibilityLabel(symbol) { return symbol.declaringModelId ? `${symbol.visibility || 'public'} ` : ''; }
-function typeLabel(symbol) { return `${visibilityLabel(symbol)}${symbol.ref ? 'ref ' : ''}${symbol.type} ${symbol.name}${'[]'.repeat(symbol.rank || 0)}`; }
+function typeLabel(symbol) { return `${visibilityLabel(symbol)}${symbol.kind === 'constant' ? 'const ' : ''}${symbol.ref ? `ref ${symbol.readonly ? 'readonly ' : ''}` : ''}${symbol.type} ${symbol.name}${'[]'.repeat(symbol.rank || 0)}${symbol.kind === 'field' && symbol.readonly ? ' (readonly)' : ''}`; }
 function functionLabel(symbol, name = symbol.name) {
-    return `${visibilityLabel(symbol)}${symbol.type} ${name}(${symbol.params.map(typeLabel).join(', ')})${'[]'.repeat(symbol.rank || 0)}`;
+    return `${visibilityLabel(symbol)}${symbol.readonly ? 'readonly ' : ''}${symbol.type} ${name}(${symbol.params.map(typeLabel).join(', ')})${'[]'.repeat(symbol.rank || 0)}`;
 }
 
 function readType(tokens, start) {
@@ -135,7 +135,8 @@ function analyze(text, uri = '') {
             body.owner = model; stack.push(body); continue;
         }
         let index = 0;
-        const visibility = ['public', 'private'].includes(ts[index]?.value) ? ts[index++].value : 'public';
+        const visibility = ['public', 'private', 'readonly'].includes(ts[index]?.value) ? ts[index++].value : 'public';
+        const readonly = ts[index]?.value === 'readonly'; if (readonly) index++;
         const member = scope.kind === 'model' ? { visibility, declaringModelId: scope.owner?.modelId } : {};
         const constant = ts[index]?.value === 'const'; if (constant) index++;
         const modifier = ['ref', 'val'].includes(ts[index]?.value) ? ts[index++].value : null;
@@ -151,17 +152,18 @@ function analyze(text, uri = '') {
                 for (const part of split(ts.slice(index + 3, end < 0 ? ts.length : end))) {
                     let p = 0; const ref = part[p]?.value === 'ref';
                     if (['ref', 'val'].includes(part[p]?.value)) p++;
+                    const readonly = ref && part[p]?.value === 'readonly'; if (readonly) p++;
                     const parameterType = readType(part, p);
                     if (!parameterType) continue;
                     p = parameterType.end - 1;
-                    const parameter = declare(part[p + 1], { kind: 'parameter', type: parameterType.name, rank: rankOf(part.slice(p + 2)), ref, scopeId: body.id, visibleAfter: part[p + 1]?.end || 0 });
+                    const parameter = declare(part[p + 1], { kind: 'parameter', type: parameterType.name, rank: rankOf(part.slice(p + 2)), ref, readonly, scopeId: body.id, visibleAfter: part[p + 1]?.end || 0 });
                     if (parameter) params.push(parameter);
                 }
-                const fn = declare(name, { ...member, kind: 'function', type, rank: end < 0 ? 0 : rankOf(ts.slice(end + 1).filter(t => t.value !== '=')), params, scopeId: scope.id, bodyScopeId: body.id, visibleAfter: 0 });
+                const fn = declare(name, { ...member, readonly, kind: 'function', type, rank: end < 0 ? 0 : rankOf(ts.slice(end + 1).filter(t => t.value !== '=')), params, scopeId: scope.id, bodyScopeId: body.id, visibleAfter: 0 });
                 body.owner = fn;
                 if (scope.kind === 'model') {
                     scope.owner?.members.push(fn);
-                    symbols.push({ name: 'this', type: scope.owner?.name, rank: 0, ref: true, kind: 'parameter', scopeId: body.id, line, start: -1, end: -1, visibleAfter: 0 });
+                    symbols.push({ name: 'this', type: scope.owner?.name, rank: 0, ref: true, readonly, kind: 'parameter', scopeId: body.id, line, start: -1, end: -1, visibleAfter: 0 });
                 }
                 // Return dimensions end at '=' or ';', not at an array in the body.
                 if (fn && end >= 0) { const suffix = ts.slice(end + 1); const stop = suffix.findIndex(t => ['=', ';'].includes(t.value)); fn.rank = rankOf(stop < 0 ? suffix : suffix.slice(0, stop)); }
@@ -171,7 +173,7 @@ function analyze(text, uri = '') {
                 continue;
             }
             const end = ts.findIndex((t, n) => n > index + 1 && t.value === '=');
-            const variable = declare(name, { ...member, kind: scope.kind === 'model' ? 'field' : constant ? 'constant' : 'variable', type, rank: rankOf(ts.slice(index + 2, end < 0 ? ts.length : end)), ref: modifier === 'ref', scopeId: scope.id });
+            const variable = declare(name, { ...member, kind: scope.kind === 'model' ? 'field' : constant ? 'constant' : 'variable', type, rank: rankOf(ts.slice(index + 2, end < 0 ? ts.length : end)), ref: modifier === 'ref', readonly: constant, scopeId: scope.id });
             if (scope.kind === 'model' && variable) scope.owner?.members.push(variable);
         }
         if (ts[0].value === 'for') {

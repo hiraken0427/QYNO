@@ -598,6 +598,31 @@ void resolve_module_name(Node *node)
         error_tok(node->tok, "%s は io.%s を参照していません。using と名前空間を確認してください",
                   name, builtin_name((Builtin)expected));
     }
+    /* Qualified constant aggregates (including forward declarations and using
+     * aliases) share the ordinary field/method checker and its permissions. */
+    if (symbol.kind == SYM_NONE && (node->kind == ND_VAR || node->kind == ND_CALL)) {
+        char *dot, *last = strrchr(name, '.'); int has_constant = 0;
+        for (dot = strchr(name, '.'); dot; dot = strchr(dot + 1, '.')) {
+            char *prefix = copy_name(name, (size_t)(dot - name));
+            Symbol base_symbol = scoped_symbol(owner, prefix, node->usings, NULL, node->tok);
+            free(prefix);
+            if (base_symbol.kind == SYM_CONSTANT) { has_constant = 1; break; }
+        }
+        if (has_constant && last && (node->kind == ND_CALL ||
+            (strcmp(last + 1, "length") && strcmp(last + 1, "addr") && strcmp(last + 1, "value")))) {
+            Node *base = allocate(sizeof(*base)); Token *member = node->tok;
+            size_t component = 0; char *p;
+            for (p = name; p <= last; p++) if (*p == '.') component++;
+            while (component-- && member->next && member->next->next) member = member->next->next;
+            *base = *node; base->kind = ND_VAR; base->name = copy_name(name, (size_t)(last - name));
+            base->lhs = base->rhs = base->next = NULL; base->nargs = 0;
+            resolve_module_name(base);
+            if (node->kind == ND_CALL) { node->kind = ND_MODEL_METHOD; node->rhs = node->lhs; }
+            else node->kind = ND_FIELD;
+            node->lhs = base; node->name = copy_name(last + 1, strlen(last + 1)); node->tok = member;
+            return;
+        }
+    }
     if (symbol.kind == SYM_NONE && node->kind == ND_VAR) {
         char *dot = strrchr(name, '.');
         if (dot != NULL && (strcmp(dot + 1, "length") == 0 || strcmp(dot + 1, "addr") == 0 || strcmp(dot + 1, "value") == 0)) {

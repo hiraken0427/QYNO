@@ -90,5 +90,22 @@
       "$0"
     ],
     "description": "値としてコピーされるモデル型"
+  },
+  "Readonly method": {
+    "prefix": "readonlymethod",
+    "body": [
+      "public readonly ${1:double} ${2:distance}();",
+      "\treturn ${3:this.x}",
+      "$0"
+    ],
+    "description": "this を変更しないメソッド"
+  },
+  "Readonly reference function": {
+    "prefix": "readonlyref",
+    "body": [
+      "${1:int} ${2:total}(ref readonly ${3:int} ${4:items}[]);",
+      "\t${0:return items.length}"
+    ],
+    "description": "配列をコピーせず読み取り専用で受け取る関数"
   }
 }

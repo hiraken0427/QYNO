@@ -91,10 +91,13 @@ function receiverSymbol(env, text, includePrivate = false) {
         if (part.startsWith('[')) {
             if (!symbol.rank) return undefined;
             symbol = { ...symbol, rank: symbol.rank - 1 };
-        } else if (part === 'value') { /* same value type */ }
+        } else if (symbol.kind === 'namespace') { symbol = env.resolve(symbol.path + '.' + part); }
+        else if (part === 'value') { /* same value type */ }
         else {
+            const receiverReadonly = symbol.readonly;
             symbol = env.modelType(symbol)?.members.find(m => m.name === part);
-            if (symbol && !includePrivate && !env.canAccess(symbol)) return undefined;
+            if (symbol && !includePrivate && (!env.canAccess(symbol) || receiverReadonly && symbol.kind === 'function' && !symbol.readonly)) return undefined;
+            if (symbol?.kind === 'field' && receiverReadonly) symbol = { ...symbol, readonly: true };
         }
     }
     return symbol;
@@ -103,11 +106,14 @@ function receiverMembers(project, env, text) {
     const symbol = receiverSymbol(env, text.slice(0, -1));
     if (!symbol || !['variable', 'constant', 'parameter', 'field'].includes(symbol.kind)) return [];
     const rank = symbol.rank || 0, result = [];
-    if (/^[A-Za-z_]\w*\.$/.test(text)) result.push(properties.addr, { ...properties.value, type: symbol.type });
+    if (/^[A-Za-z_]\w*\.$/.test(text.trim())) {
+        if (!symbol.readonly) result.push(properties.addr);
+        result.push({ ...properties.value, type: symbol.type });
+    }
     const model = env.modelType(symbol);
-    if (model) result.push(...model.members.filter(env.canAccess));
+    if (model) result.push(...model.members.filter(m => env.canAccess(m) && (!symbol.readonly || m.kind !== 'function' || m.readonly)).map(m => m.kind === 'field' && symbol.readonly ? { ...m, readonly: true } : m));
     if (rank || ['str', 'char'].includes(symbol.type)) result.push(properties.length);
-    if (rank && symbol.kind !== 'constant') result.push(properties.add, properties.remove_at, properties.clear);
+    if (rank && !symbol.readonly) result.push(properties.add, properties.remove_at, properties.clear);
     return result;
 }
 function complete(project, line, character) {
@@ -137,7 +143,7 @@ function complete(project, line, character) {
         if (!items.length) items = receiverMembers(project, env, before).map(s => completion(s));
     } else {
         items = [...env.names].map(([label, s]) => completion(s, label));
-        for (const keyword of KEYWORD_COMPLETIONS) if (!env.names.has(keyword)) items.push({ label: keyword, kind: TYPES.has(keyword) ? 'type' : 'keyword', insertText: keyword, detail: 'QYNO 0.26.1' });
+        for (const keyword of KEYWORD_COMPLETIONS) if (!env.names.has(keyword)) items.push({ label: keyword, kind: TYPES.has(keyword) ? 'type' : 'keyword', insertText: keyword, detail: 'QYNO 0.26.2' });
     }
     // A completion immediately before '(' must not insert a second argument list.
     const next = project.model.lines[line].slice(character).match(/^\s*\(/);
