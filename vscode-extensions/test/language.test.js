@@ -342,3 +342,42 @@ test('top-level init remains an ordinary function and identifier', () => {
     assert.ok(labels('int init(int n) = n\nint main();\n\tin¦').includes('init'));
     assert.equal(hint('int init(int n) = n\nint main();\n\tinit(¦').label,'int init(int n)');
 });
+
+const interfaceSource = 'interface Shape;\n\treadonly double area();\n\tvoid move(double dx, double dy);';
+test('interfaces expose contract methods without addr/value and keep readonly declarations', () => {
+    assert.deepEqual(labels(interfaceSource+'\nvoid use(ref Shape value);\n\tvalue.¦').sort(),['area','move']);
+    assert.deepEqual(labels(interfaceSource+'\nvoid use(ref readonly Shape value);\n\tvalue.¦'),['area']);
+    const type=analyze(interfaceSource).symbols.find(s=>s.name==='Shape');
+    assert.equal(type.kind,'interface'); assert.equal(type.members[0].readonly,true);
+});
+test('contract member definition hover and signature point to interface, not implementation', () => {
+    const source=interfaceSource+'\nmodel Circle implements Shape;\n\treadonly double area() = 1.0\nvoid use(ref readonly Shape value);\n\t';
+    assert.equal(at(source+'value.ar¦ea()').line,1);
+    assert.equal(at(source+'value.ar¦ea()').declaringModelId,analyze(interfaceSource,'file:///main.qy').symbols[0].modelId);
+    assert.equal(hint(source+'value.area(¦').label,'public readonly double value.area()');
+    assert.equal(at(source+'val¦ue').ref,true); assert.equal(at(source+'val¦ue').readonly,true);
+});
+test('interface parameters and signature methods do not leak to module completions', () => {
+    const source='interface Operations;\n\tint act(int secret);\n\tint other();\nint main();\n\t¦';
+    const values=labels(source);
+    assert.ok(values.includes('Operations')); assert.ok(!values.includes('act')); assert.ok(!values.includes('secret'));
+});
+test('implements name navigates to contract and multiple contracts remain ordinary type names', () => {
+    const source=interfaceSource+'\nmodel Circle implements Sha¦pe;\n\tint n';
+    assert.equal(at(source).kind,'interface'); assert.equal(at(source).line,0);
+});
+test('imported interface types work with aliases selected and whole using', () => {
+    const modules={'geometry.circle':interfaceSource};
+    for (const [using,type] of [['using geometry.circle as geo','geo.Shape'],['using geometry.circle.Shape','Shape'],['using geometry.circle','Shape']]) {
+        assert.deepEqual(labels(`import geometry.circle\n${using}\nvoid show(ref readonly ${type} value);\n\tvalue.¦`,modules),['area']);
+        assert.equal(at(`import geometry.circle\n${using}\nvoid show(ref readonly ${type} value);\n\tvalue.ar¦ea()`,modules).uri,'file:///geometry.circle.qy');
+    }
+});
+test('interfaces cannot regain value operations or constructor keys in completion', () => {
+    assert.deepEqual(labels(interfaceSource+'\nvoid use(ref Shape value);\n\tvalue.value.¦'),[]);
+    assert.deepEqual(labels(interfaceSource+'\nint main();\n\tShape value={¦}'),[]);
+});
+test('plain readonly model methods retain their modifier without explicit public', () => {
+    const prefix='model Counter;\n\treadonly int get() = 1\n\tvoid change();\n\t\treturn\nvoid inspect(ref readonly Counter value);\n\tvalue.¦';
+    assert.deepEqual(labels(prefix),['value','get']);
+});

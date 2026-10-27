@@ -5,7 +5,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#define QYC_VERSION "0.26.3"
+#define QYC_VERSION "0.26.4"
 
 typedef struct SourceFile SourceFile;
 typedef struct Module Module;
@@ -13,6 +13,8 @@ typedef struct ModuleImport ModuleImport;
 typedef struct Ast Ast;
 typedef struct Model Model;
 typedef struct ModelField ModelField;
+typedef struct Interface Interface;
+typedef struct Implementation Implementation;
 
 struct SourceFile {
     const char *filename;
@@ -126,7 +128,7 @@ typedef enum {
     TY_FILE,    /* 共有されるファイル管理領域。0 は未オープン */
     TY_VOID,    /* 戻り値なし（関数の戻り値の型のみ） */
     TY_ADDR,    /* 変数の場所（x.addr・none。指す先の型は cmp_ty） */
-    TY_ARRAY    /* この値以降は types.c で管理する配列・モデル・未解決の名前付き型のID */
+    TY_ARRAY    /* この値以降は types.c で管理する配列・モデル・interface・未解決の名前付き型のID */
 } Type;
 
 #define MAX_ARRAY_RANK 32
@@ -185,6 +187,7 @@ struct Using {
     Using *all_next;
     Var *locals;        /* 宣言位置で見える変数 */
     Model *target_model;
+    Interface *target_interface;
     Module *target_module;
     Function *target_function;
     Var *target_constant;
@@ -325,6 +328,7 @@ struct Node {
     int end_literal;    /* ND_PRINT の end= が文字列リテラル直書きなら 1 */
     Token *tok;         /* エラー表示用 */
     char *name;         /* 未解決の名前（修飾名を含む） */
+    int explicit_value; /* user-written .value, not plain variable access */
     int init_store;    /* first whole-field assignment may target an empty slot */
     int constant_value; /* canonical evaluated aggregate, not a user initializer */
     Var *ref_temp;      /* const root materialized for a readonly ref call */
@@ -335,6 +339,9 @@ struct Node {
 
 struct Function {
     Function *next;
+    Interface *contract; /* signature-only interface method */
+    int is_template;
+    Function *template_origin;
     Model *model;       /* implicit ref this receiver for model methods */
     int is_private;
     int is_readonly;
@@ -367,12 +374,25 @@ struct ModelField {
     int index;
     int pending;
 };
+struct Interface {
+    Interface *next;
+    Token *tok;
+    char *name;
+    Type ty;
+    Function *methods;
+};
+struct Implementation {
+    Implementation *next;
+    Type ty;
+    Token *tok;
+};
 struct Model {
     Model *next;
     Token *tok;
     char *name;
     Type ty;
     ModelField *fields;
+    Implementation *implements;
     int field_count;
     int state;
     Function *initializer;
@@ -401,6 +421,7 @@ struct InputField {
 /* プログラム全体 */
 struct Ast {
     Model *models;
+    Interface *interfaces;
     Function *funcs;    /* すべての関数（main を含む） */
     Node *globals;      /* ファイル先頭の const 宣言（ND_DECL の並び） */
     Var *global_vars;   /* ファイル先頭の const */
@@ -467,6 +488,9 @@ void typecheck(Ast *ast);
 int type_is_model(Type ty);
 Model *type_model(Type ty);
 Type model_type(Model *model);
+int type_is_interface(Type ty);
+Interface *type_interface(Type ty);
+Type interface_type(Interface *contract);
 Type named_type(Token *tok, const char *name, Using *scope);
 Type resolve_type(Type ty);
 void resolve_model_types(Ast *ast);

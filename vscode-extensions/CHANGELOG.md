@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.26.4
+
+- interface / implements の宣言とハイライト、型名・契約メソッドの補完に対応。
+- ref readonly の契約を補完へ反映し、定義・ホバー・引数ヒント・アウトラインを追加。
+- public を省略した readonly メソッドの解析を修正。
+- `0.26.4_VSCode_option.vsix` を同梱。
+
 ## 0.26.3
 
 - init と既定引数の解析、生成式内の引数名補完を追加。

@@ -128,5 +128,13 @@
       "$0"
     ],
     "description": "入力検証と生成拒否を持つ初期化処理"
+  },
+  "Interface contract": {
+    "prefix": "interface",
+    "body": [
+      "interface ${1:Shape};",
+      "\treadonly ${2:double} ${3:area}();"
+    ],
+    "description": "Borrowed interface contract"
   }
 }

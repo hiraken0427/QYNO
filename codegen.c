@@ -6017,6 +6017,7 @@ void codegen(Ast *ast, Program *out_prog, FILE *out_text, Target out_target)
     /* 関数のラベルは先に作っておく（後ろで定義された関数も呼べるように） */
     main_label = -1;
     for (fn = ast->funcs; fn != NULL; fn = fn->next) {
+        if (fn->is_template) continue;
         snprintf(label_name, sizeof(label_name), ".L.module.%d.function.%d.%.*s", fn->tok->source->module->id, function_index++, fn->name_len, fn->name);
         fn->label = x64_new_label(label_name);
         if (!fn->model && fn->name_len == 4 && strncmp(fn->name, "main", 4) == 0) {
@@ -6143,7 +6144,7 @@ void codegen(Ast *ast, Program *out_prog, FILE *out_text, Target out_target)
 
     /* ユーザーのプログラム */
     for (fn = ast->funcs; fn != NULL; fn = fn->next) {
-        gen_function(fn);
+        if (!fn->is_template) gen_function(fn);
     }
 
     dump_data();

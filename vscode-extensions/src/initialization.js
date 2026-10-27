@@ -14,7 +14,7 @@ function initializationContext(project, env, line, character, receiver) {
         const text = model.lines[t.line].slice(0, t.end);
         return /([A-Za-z_]\w*(?:(?:\[[^\]\n]*\])|(?:\.[A-Za-z_]\w*))*)$/.exec(text)?.[1] || '';
     };
-    const named = frame => frame?.model?.initializer?.params || frame?.model?.members.filter(m => m.kind === 'field') || [];
+    const named = frame => frame?.model?.kind === 'interface' ? [] : frame?.model?.initializer?.params || frame?.model?.members.filter(m => m.kind === 'field') || [];
     const expected = index => {
         const parent = stack.at(-1);
         if (parent?.kind === '{' && parent.stage === 'value') return named(parent).find(p => p.name === parent.key?.value);

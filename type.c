@@ -35,6 +35,7 @@ const char *type_name(Type ty)
 {
     if (type_is_array(ty)) return array_type_name(ty);
     if (type_is_model(ty)) return type_model(ty)->name;
+    if (type_is_interface(ty)) return type_interface(ty)->name;
     switch (ty) {
     case TY_INT:
         return "int";
@@ -340,6 +341,7 @@ static void require_bool(Node *node, const char *what)
     }
 }
 
+#include "interfaces_type.inc"
 #include "readonly_type.inc"
 #include "arrays_type.inc"
 #include "models_type.inc"
@@ -574,6 +576,8 @@ static void check_ref_arg(Node *arg, Var *param, int index)
     Var *v;
     Node *root;
     int rank = 0;
+    Node *saved_interface_use = allowed_interface_use;
+    allowed_interface_use = arg->lhs;
     check_expr(arg->lhs);
     v = param->is_readonly ? check_read_place(arg->lhs) : check_place(arg->lhs);
     root = arg->lhs;
@@ -584,13 +588,17 @@ static void check_ref_arg(Node *arg, Var *param, int index)
         root = root->lhs;
     }
     if (v->is_loop) error_tok(arg->tok, "%d 番目の引数：for 文の繰り返しの変数は ref で渡せません", index);
-    if (arg->lhs->ty != param->ty)
+    if (type_is_interface(param->ty)) {
+        if (!implements_type(arg->lhs->ty, param->ty))
+            error_tok(arg->tok, "%s は interface %s を implements していません。同じ契約の ref を渡してください", type_name(arg->lhs->ty), type_name(param->ty));
+    } else if (arg->lhs->ty != param->ty)
         error_tok(arg->tok, "%d 番目の引数：ref の引数の型は %s です（%s は渡せません。ref では型を変換しません）",
                   index, type_name(param->ty), type_name(arg->lhs->ty));
     if (rank == 0) check_ref_limits(param, v, arg->tok);
     if (param->is_readonly && v->is_const) materialize_const_ref(arg, v);
     arg->ty = TY_ADDR;
     arg->cmp_ty = arg->lhs->ty;
+    allowed_interface_use = saved_interface_use;
 }
 
 /* 関数呼び出し：呼び出し先を探し、引数の数と型を確かめて、引数を引数の型に変換する */
@@ -621,7 +629,7 @@ static void check_call(Node *node)
         return;
     }
     fn = node->func;
-    if (!fn->model && same_name(fn->name, fn->name_len, "main", 4)) {
+    if (!fn->model && !fn->contract && same_name(fn->name, fn->name_len, "main", 4)) {
         error_tok(node->tok, "main は呼び出せません");
     }
     if (node->nargs != fn->param_count) {
@@ -683,6 +691,10 @@ static void check_expr(Node *node)
     Type ty;
     Node *cmp;
 
+    if (node->kind == ND_VAR && node->var && type_is_interface(node->var->ty) &&
+        (allowed_interface_use != node || node->explicit_value))
+        error_tok(node->tok, "interface 引数は契約メソッドの呼び出しと同じ契約への ref 転送にだけ使用できます");
+
     /* 比較の連鎖では同じ式を2つの比較から参照するので、確認済みなら何もしない */
     if (node->ty != TY_NONE) {
         return;
@@ -715,8 +727,8 @@ static void check_expr(Node *node)
         check_array_literal(node, TY_NONE);
         return;
     case ND_METHOD:
-        { int allow = allow_void; allow_void = 0; check_expr(node->lhs); allow_void = allow;
-          if (type_is_model(node->lhs->ty)) { check_model_method(node); return; } }
+        { int allow = allow_void; allow_void = 0; check_interface_receiver(node->lhs); allow_void = allow;
+          if (type_is_model(node->lhs->ty) || type_is_interface(node->lhs->ty)) { check_model_method(node); return; } }
         check_method(node);
         return;
     case ND_LENGTH:
@@ -1799,6 +1811,7 @@ static void check_stmt(Node *node)
     case ND_CONTINUE:
         return;
     case ND_ASSIGN:
+        if (type_is_interface(node->var->ty)) error_tok(node->tok, "interface 引数全体には代入できません");
         if (node->var->is_const || node->var->is_readonly)
             error_tok(node->tok, "const / readonly の値は変更できません");
         check_expected(node->lhs, node->var->ty);
@@ -1904,6 +1917,7 @@ static void check_names(Ast *ast)
 
 #include "initialization_flow.inc"
 #include "file_close_analysis.inc"
+#include "interfaces_specialize.inc"
 
 void typecheck(Ast *ast)
 {
@@ -1914,6 +1928,7 @@ void typecheck(Ast *ast)
     allow_void = 0;
     check_names(ast);
     resolve_model_types(ast);
+    check_interface_positions(ast);
     prepare_builders(ast);
     { Model *m, *other; Function *f;
       for (m = ast->models; m; m = m->next) {
@@ -1936,6 +1951,7 @@ void typecheck(Ast *ast)
         for (param = fn->params; param != NULL; param = param->next) check_dims(param->dims);
     }
 
+    check_implementations(ast);
     for (fn = ast->funcs; fn != NULL; fn = fn->next) {
         if (fn->is_internal) continue;
         cur_func = fn;
@@ -1946,6 +1962,7 @@ void typecheck(Ast *ast)
         }
     }
     for (fn = ast->funcs; fn; fn = fn->next) if (fn->is_initializer) check_initializer_completion(fn);
+    specialize_interfaces(ast);
     check_file_closes(ast);
     cur_func = NULL;
 }

@@ -92,15 +92,21 @@ static void check_model_field(Node *node)
 static void check_model_method(Node *node)
 {
     Function *fn; Node *self; int allow = allow_void;
-    allow_void = 0; check_expr(node->lhs); allow_void = allow;
+    allow_void = 0; check_interface_receiver(node->lhs); allow_void = allow;
+    if (type_is_interface(node->lhs->ty)) {
+        for (fn = type_interface(node->lhs->ty)->methods; fn; fn = fn->next)
+            if (same_name(fn->name, fn->name_len, node->tok->loc, node->tok->len)) break;
+        if (!fn) error_tok(node->tok, "interface %s に契約メソッド %.*s はありません", type_name(node->lhs->ty), node->tok->len, node->tok->loc);
+    } else {
     if (!type_is_model(node->lhs->ty)) error_tok(node->tok, "%s にはこのメソッドはありません", type_name(node->lhs->ty));
     for (fn = cur_ast->funcs; fn; fn = fn->next)
         if (fn->model == type_model(node->lhs->ty) && same_name(fn->name, fn->name_len, node->tok->loc, node->tok->len)) break;
     if (!fn) error_tok(node->tok, "モデル %s にメソッド %.*s はありません", type_name(node->lhs->ty), node->tok->len, node->tok->loc);
+    }
     if (fn->is_initializer) error_tok(node->tok, "init は生成専用です。型の文脈で {名前=値} と書いてください");
     check_member_access(node, fn->model, fn->is_private, fn->name, fn->tok);
     if (readonly_place(node->lhs) && !fn->is_readonly)
-        error_tok(node->tok, "const / readonly の %s から呼べません。このメソッドは readonly ではありません", fn->model->name);
+        error_tok(node->tok, "const / readonly の %s から呼べません。このメソッドは readonly ではありません", type_name(node->lhs->ty));
     self = calloc(1, sizeof(*self)); if (!self) fatal("メソッドの対象を確保できません");
     { Node *root = node->lhs;
       while (root->kind == ND_INDEX) root = root->lhs;

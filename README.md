@@ -1,4 +1,4 @@
-# QYNO 0.26.3
+# QYNO 0.26.4
 
 C99 で実装した、Linux x64 / Windows x64 向けのコンパイラ。
 UTF-8 の `.qy` ソースから実行ファイルを直接生成する。
@@ -35,9 +35,9 @@ int main();
 
 ## VS Code 拡張
 
-[VSCode Option](vscode-extensions/README.md) は QYNO 0.26.3 のハイライト、
+[VSCode Option](vscode-extensions/README.md) は QYNO 0.26.4 のハイライト、
 ユーザー定義の関数名・変数名の補完、定義への移動、引数ヒントに対応する。
-[vscode-extensions/0.26.3_VSCode_option.vsix](vscode-extensions/0.26.3_VSCode_option.vsix) を
+[vscode-extensions/0.26.4_VSCode_option.vsix](vscode-extensions/0.26.4_VSCode_option.vsix) を
 VS Code の「VSIX からのインストール…」で指定する。
 
 ## モデル型
@@ -80,6 +80,34 @@ const の値はコンパイル時に確定し、readonly の経路からは入�
 コピーでは init を再実行せず、必須引数・未完了フィールド・file の close 責任も検査する。
 [カスタム初期化の仕様](docs/model-initialization-design.md) と
 [実行例](examples/models/initialization.qy) を参照。
+
+## インターフェース
+
+0.26.4 では `interface Shape;` と `model Rectangle implements Shape;` に対応する。
+`ref Shape` / `ref readonly Shape` 引数で異なるモデルを共通の操作から利用できる。
+具体型へコンパイル時に特殊化し、値コピー・readonly・file の明示 close の規則を維持する。
+
+```text
+interface Shape;
+	readonly double area();
+
+model Rectangle implements Shape;
+	double width
+	double height
+	readonly double area() = this.width * this.height
+
+void print_area(ref readonly Shape shape);
+	io.print(shape.area())
+
+int main();
+	Rectangle rect = {width=3.0, height=4.0}
+	print_area(ref rect)
+	return 0
+```
+
+interface は参照引数の契約に限定し、interface 型の変数・異種配列は導入しない。
+詳細は [インターフェースの仕様](docs/interfaces-design.md)、
+実行例は [examples/models/interfaces.qy](examples/models/interfaces.qy) を参照。
 
 ## モジュール
 

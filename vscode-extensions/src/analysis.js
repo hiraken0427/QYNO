@@ -1,7 +1,7 @@
 'use strict';
 
 const TYPES = new Set(['int', 'float', 'double', 'bool', 'str', 'char', 'file', 'void']);
-const KEYWORDS = new Set([...TYPES, 'const', 'ref', 'val', 'return', 'if', 'else', 'for', 'while', 'break', 'continue', 'and', 'or', 'not', 'true', 'false', 'none', 'import', 'using', 'as', 'print', 'input', 'struct', 'enum', 'of', 'model', 'public', 'private', 'readonly']);
+const KEYWORDS = new Set([...TYPES, 'const', 'ref', 'val', 'return', 'if', 'else', 'for', 'while', 'break', 'continue', 'and', 'or', 'not', 'true', 'false', 'none', 'import', 'using', 'as', 'print', 'input', 'struct', 'enum', 'of', 'model', 'interface', 'implements', 'public', 'private', 'readonly']);
 const identifierStart = c => /[A-Za-z_]/.test(c || '');
 const identifierPart = c => /[A-Za-z0-9_]/.test(c || '');
 
@@ -128,16 +128,16 @@ function analyze(text, uri = '') {
             }
             continue;
         }
-        if (ts[0].value === 'model' && ts[1]?.kind === 'id') {
-            const body = newScope(line, indent + 1, 'model', scope, true);
-            const model = declare(ts[1], { kind: 'model', type: ts[1].value, scopeId: scope.id, bodyScopeId: body.id, members: [], visibleAfter: 0 });
+        if (['model', 'interface'].includes(ts[0].value) && ts[1]?.kind === 'id') {
+            const body = newScope(line, indent + 1, ts[0].value, scope, true);
+            const model = declare(ts[1], { kind: ts[0].value, type: ts[1].value, scopeId: scope.id, bodyScopeId: body.id, members: [], visibleAfter: 0 });
             if (model) model.modelId = `${uri}:${model.line}:${model.start}`;
             body.owner = model; stack.push(body); continue;
         }
         let index = 0;
-        const visibility = ['public', 'private', 'readonly'].includes(ts[index]?.value) ? ts[index++].value : 'public';
+        const visibility = ['public', 'private'].includes(ts[index]?.value) ? ts[index++].value : 'public';
         const readonly = ts[index]?.value === 'readonly'; if (readonly) index++;
-        const member = scope.kind === 'model' ? { visibility, declaringModelId: scope.owner?.modelId } : {};
+        const member = ['model', 'interface'].includes(scope.kind) ? { visibility, declaringModelId: scope.owner?.modelId } : {};
         const constant = ts[index]?.value === 'const'; if (constant) index++;
         const modifier = ['ref', 'val'].includes(ts[index]?.value) ? ts[index++].value : null;
         const declaredType = readType(ts, index);
@@ -145,7 +145,7 @@ function analyze(text, uri = '') {
             const type = declaredType.name;
             index = declaredType.end - 1;
             const name = ts[index + 1];
-            if ((indent === 0 || scope.kind === 'model') && ts[index + 2]?.value === '(') {
+            if ((indent === 0 || ['model', 'interface'].includes(scope.kind)) && ts[index + 2]?.value === '(') {
                 const end = closing(ts, index + 2);
                 const body = newScope(line, indent + 1, 'function', scope, true);
                 const params = [];
@@ -163,7 +163,7 @@ function analyze(text, uri = '') {
                 }
                 const fn = declare(name, { ...member, readonly, initializer: scope.kind === 'model' && name.value === 'init', kind: 'function', type, rank: end < 0 ? 0 : rankOf(ts.slice(end + 1).filter(t => t.value !== '=')), params, scopeId: scope.id, bodyScopeId: body.id, visibleAfter: 0 });
                 body.owner = fn;
-                if (scope.kind === 'model') {
+                if (['model', 'interface'].includes(scope.kind)) {
                     scope.owner?.members.push(fn);
                     if (fn?.initializer && scope.owner) scope.owner.initializer = fn;
                     symbols.push({ name: 'this', type: scope.owner?.name, rank: 0, ref: true, readonly, kind: 'parameter', scopeId: body.id, line, start: -1, end: -1, visibleAfter: 0 });
@@ -171,7 +171,7 @@ function analyze(text, uri = '') {
                 // Return dimensions end at '=' or ';', not at an array in the body.
                 if (fn && end >= 0) { const suffix = ts.slice(end + 1); const stop = suffix.findIndex(t => ['=', ';'].includes(t.value)); fn.rank = rankOf(stop < 0 ? suffix : suffix.slice(0, stop)); }
                 if (end >= 0 && ts[end + 1]?.value === '=') body.endLine = line;
-                else if (ts.some(t => t.value === ';')) stack.push(body);
+                else if (scope.kind !== 'interface' && ts.some(t => t.value === ';')) stack.push(body);
                 else body.endLine = line;
                 continue;
             }
@@ -207,7 +207,7 @@ function scopeContains(model, scopeId, line, character) {
     return scope.parent === null || scopeContains(model, scope.parent, line, character);
 }
 function visibleSymbols(model, line, character) {
-    return model.symbols.filter(s => s.kind !== 'field' && model.scopes[s.scopeId]?.kind !== 'model' && scopeContains(model, s.scopeId, line, character) &&
+    return model.symbols.filter(s => s.kind !== 'field' && !['model', 'interface'].includes(model.scopes[s.scopeId]?.kind) && scopeContains(model, s.scopeId, line, character) &&
         (s.scopeId === 0 || s.line < line || s.line === line && s.visibleAfter <= character));
 }
 function visibleUsings(model, line, character) {

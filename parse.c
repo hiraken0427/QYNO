@@ -61,6 +61,7 @@ static Var *visible;        /* 今見えている変数（内側のブロック�
 static int loop_depth;      /* 今いるループ（for・while）の深さ */
 static int block_depth;     /* 今いるブロックの深さ（関数の本体が 1） */
 static Model *parsing_model;
+static Interface *parsing_interface;
 static Using *local_usings; /* 関数の中で今見えている using */
 
 static Node *expr(void);
@@ -72,7 +73,7 @@ static const char *keywords[] = {
     "int", "float", "double", "bool", "str", "char", "void", "file", "const",
     "true", "false", "return", "print", "if", "else", "for", "while",
     "break", "continue", "and", "or", "not", "struct", "enum", "import", "of", "using", "input",
-    "ref", "val", "none", "as", "model", "public", "private", "readonly",
+    "ref", "val", "none", "as", "interface", "implements", "model", "public", "private", "readonly",
     NULL
 };
 
@@ -782,6 +783,7 @@ static Node *postfix(void)
                 if (equal(field, "addr")) {
                     node = new_unary(ND_ADDR, node, field);
                 }
+                if (equal(field, "value")) node->explicit_value = 1;
                 variable_member = 1;
             } else {
                 Node *access;
@@ -1709,6 +1711,8 @@ static Function *function_def(int is_readonly)
     }
     name = tok;
     fn->model = parsing_model;
+    fn->contract = parsing_interface;
+    if (parsing_interface && equal(name, "init")) error_tok(name, "interface に init は宣言できません");
     fn->is_initializer = parsing_model && equal(name, "init");
     if (fn->is_initializer && (is_readonly || (fn->ret != TY_VOID && fn->ret != TY_BOOL)))
         error_tok(name, "init は public void / bool のブロック形式で定義してください");
@@ -1727,11 +1731,11 @@ static Function *function_def(int is_readonly)
     expect("(");
     memset(&head, 0, sizeof(head));
     cur = &head;
-    if (parsing_model) {
+    if (parsing_model || parsing_interface) {
         Token *self = calloc(1, sizeof(*self));
         if (!self) fatal("this を確保できません");
         *self = *name; self->loc = "this"; self->len = 4;
-        v = new_var(self, parsing_model->ty); v->is_param = 1; v->is_ref = 1; v->is_readonly = is_readonly;
+        v = new_var(self, parsing_model ? parsing_model->ty : parsing_interface->ty); v->is_param = 1; v->is_ref = 1; v->is_readonly = is_readonly;
         cur = cur->next = v; fn->param_count++;
     }
     if (!equal(tok, ")")) {
@@ -1786,6 +1790,12 @@ static Function *function_def(int is_readonly)
         i++;
     }
 
+    if (parsing_interface) {
+        expect(";");
+        expect_kind(TK_NEWLINE, "interface のメソッド宣言の終わりには改行が必要です");
+        cur_fn = NULL; visible = NULL; return fn;
+    }
+
     /* 本体：数式形式（= 式）またはブロック */
     start = tok;
     if (consume("=")) {
@@ -1828,7 +1838,19 @@ static Model *model_def(Function **tail)
     m->tok = tok; m->name = calloc((size_t)tok->len + 1, 1);
     if (!m->name) fatal("モデル名を確保できません");
     memcpy(m->name, tok->loc, (size_t)tok->len); m->ty = model_type(m);
-    tok = tok->next; expect(";");
+    tok = tok->next;
+    if (consume("implements")) {
+        Implementation **end = &m->implements;
+        do {
+            Implementation *im = calloc(1, sizeof(*im));
+            if (!im) fatal("implements を確保できません");
+            im->tok = tok;
+            if (tok->kind != TK_IDENT || is_keyword(tok)) error_tok(tok, "implements には interface の型名が必要です");
+            { char *path = name_path(); im->ty = named_type(im->tok, path, NULL); free(path); }
+            *end = im; end = &im->next;
+        } while (consume(","));
+    }
+    expect(";");
     expect_kind(TK_NEWLINE, "モデル定義には改行が必要です");
     expect_kind(TK_INDENT, "モデルの中はタブで1段インデントしてください");
     fields = &m->fields;
@@ -1880,6 +1902,30 @@ static Model *model_def(Function **tail)
     parsing_model = NULL; (void)start; return m;
 }
 
+static Interface *interface_def(void)
+{
+    Interface *in = calloc(1, sizeof(*in)); Function **end;
+    if (!in) fatal("interface を確保できません");
+    expect("interface");
+    if (tok->kind != TK_IDENT || is_keyword(tok)) error_tok(tok, "interface 名が必要です");
+    in->tok = tok; in->name = calloc((size_t)tok->len + 1, 1);
+    if (!in->name) fatal("interface 名を確保できません");
+    memcpy(in->name, tok->loc, (size_t)tok->len); in->ty = interface_type(in);
+    tok = tok->next; expect(";");
+    expect_kind(TK_NEWLINE, "interface 定義には改行が必要です");
+    expect_kind(TK_INDENT, "interface には1つ以上のメソッド宣言が必要です");
+    parsing_interface = in; end = &in->methods;
+    while (tok->kind != TK_DEDENT && tok->kind != TK_EOF) {
+        int ro;
+        if (equal(tok, "private")) error_tok(tok, "interface のメソッドは public にしてください");
+        consume("public"); ro = consume("readonly");
+        *end = function_def(ro); end = &(*end)->next;
+    }
+    expect_kind(TK_DEDENT, "interface 定義を閉じてください");
+    if (!in->methods) error_tok(in->tok, "空の interface は定義できません");
+    parsing_interface = NULL; return in;
+}
+
 /* program = (const_decl | function)* EOF */
 Ast *parse(Token *t)
 {
@@ -1907,10 +1953,15 @@ Ast *parse(Token *t)
     memset(&uhead, 0, sizeof(uhead));
     ucur = &uhead;
     local_usings = NULL;
-    parsing_model = NULL;
+    parsing_model = NULL; parsing_interface = NULL;
     while (tok->kind != TK_EOF) {
         if (tok->kind == TK_INDENT) {
             error_tok(tok, "余分なインデントがあります");
+        }
+        if (equal(tok, "interface")) {
+            Interface *in = interface_def(), **end = &ast->interfaces;
+            while (*end) end = &(*end)->next;
+            *end = in; continue;
         }
         if (equal(tok, "model")) {
             Model *m = model_def(&fcur); Model **end = &ast->models;

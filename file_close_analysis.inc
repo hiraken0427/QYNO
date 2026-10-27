@@ -571,7 +571,7 @@ static void check_file_closes(Ast *ast)
     Function *fn; FcInfo *i; int changed;
     fc_infos = NULL;
     for (fn = ast->funcs; fn; fn = fn->next) {
-        Var *p; i = fc_new(sizeof(*i)); i->fn = fn; i->next = fc_infos; fc_infos = i;
+        Var *p; if (fn->is_template) continue; i = fc_new(sizeof(*i)); i->fn = fn; i->next = fc_infos; fc_infos = i;
         if (fc_file_type(fn->ret)) i->relevant = 1;
         for (p = fn->params; p; p = p->next) if (fc_file_type(p->ty)) i->relevant = 1;
     }

@@ -123,3 +123,10 @@ Windows / アセンブリ出力を検証する。`make test` にも含む。
 必須引数・未完了フィールド・分岐・配列、生成循環・拒否時の診断、file の所有責任・別名を検証する。
 モジュール・GC多発時の生成・再帰・Windows / アセンブリ出力も対象。`make test` に含む。
 実行例は `examples/models/initialization.qy`。
+
+## 0.26.4 のインターフェース検証
+
+`make test-interfaces` は interface / implements、コンパイル時の特殊化と参照権限を検証する。
+40件で複数モデル・再帰・型と配列制約・別モジュール・未使用の契約違反・未完了の this・file の close 責任を確認する。
+特殊化4096件の成功・再利用と4097件の診断も検証する。Windows 出力とアセンブリ出力を含む。
+全体テストにも含める。実行例は [examples/models/interfaces.qy](../examples/models/interfaces.qy)。
