@@ -74,6 +74,7 @@ static Ast *cur_ast;
 static Function *cur_func;
 static int allow_void;          /* 次に調べる呼び出しが文として使われるなら 1 */
 static int const_check_depth;
+static int function_check_depth;
 
 /* const の計算に使う値 */
 typedef struct {
@@ -104,6 +105,7 @@ static void check_padding(Node *source, Type ty, ArrayDim *dims);
 static void check_array_capacity(Node *source, Type ty, ArrayDim *dims);
 static void check_construction(Node *node, Model *m);
 static void check_initializer_defaults(Model *m);
+static void ensure_function(Function *fn, Token *site);
 
 /*
  * リテラルだけでできた式か（3.14、-0.5、100 * 3.14、2.0^2 など）。
@@ -643,6 +645,7 @@ static void check_call(Node *node)
         error_tok(node->tok, "関数 %.*s の引数は %d 個です（%d 個渡しています）",
                  fn->name_len, fn->name, fn->param_count, node->nargs);
     }
+    if (fn->infer_return) ensure_function(fn, node->tok);
 
     memset(&head, 0, sizeof(head));
     cur = &head;
@@ -1895,6 +1898,16 @@ static void check_stmt(Node *node)
         check_store(node);
         return;
     case ND_RETURN:
+        if (cur_func->infer_return && cur_func->ret == TY_NONE) {
+            if (node->lhs) {
+                check_expr(node->lhs);
+                check_value_transfer(node->lhs);
+                concrete_only(node->lhs->ty, node->lhs->tok);
+                if (node->lhs->ty == TY_NONE || node->lhs->ty == TY_VOID || array_base(node->lhs->ty) == TY_ADDR)
+                    error_tok(node->lhs->tok, "推論する戻り値には具体的な値型が必要です（addr・void は値として返せません）");
+            }
+            return;
+        }
         if (cur_func->ret == TY_VOID) {
             if (node->lhs != NULL) {
                 error_tok(node->lhs->tok, "void の関数 %.*s は値を返せません",
@@ -1928,6 +1941,8 @@ static void check_stmts(Node *list)
         check_stmt(node);
     }
 }
+
+#include "return_inference.inc"
 
 static void ensure_const(Var *v)
 {
@@ -1986,7 +2001,7 @@ static void check_names(Ast *ast)
     if (main_fn == NULL) {
         fatal("main 関数がありません（int main(); が必要です）");
     }
-    if (main_fn->ret != TY_INT || main_fn->param_count != 0) {
+    if (main_fn->infer_return || main_fn->ret != TY_INT || main_fn->param_count != 0) {
         error_tok(main_fn->tok, "main 関数は int main(); の形（戻り値 int、引数なし）で定義してください");
     }
 }
@@ -2004,6 +2019,7 @@ void typecheck(Ast *ast)
     cur_func = NULL;
     allow_void = 0;
     const_check_depth = 0;
+    function_check_depth = 0;
     check_names(ast);
     resolve_model_types(ast);
     prepare_builders(ast);
@@ -2029,16 +2045,11 @@ void typecheck(Ast *ast)
         for (param = fn->params; param != NULL; param = param->next) check_dims(param->dims);
     }
 
-    check_implementations(ast);
     for (fn = ast->funcs; fn != NULL; fn = fn->next) {
         if (fn->is_internal) continue;
-        cur_func = fn;
-        check_stmts(fn->body);
-        if (fn->ret != TY_VOID && (fn->model || !same_name(fn->name, fn->name_len, "main", 4)) && !stmts_return(fn->body)) {
-            error_tok(fn->tok, "関数 %.*s には、最後まで進んだときの return がありません（すべての道筋で値を返してください）",
-                     fn->name_len, fn->name);
-        }
+        ensure_function(fn, fn->tok);
     }
+    check_implementations(ast);
     for (fn = ast->funcs; fn; fn = fn->next) if (fn->is_initializer) check_initializer_completion(fn);
     specialize_interfaces(ast);
     check_file_closes(ast);

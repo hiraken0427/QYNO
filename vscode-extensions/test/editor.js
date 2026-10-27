@@ -205,6 +205,32 @@ async function run() {
     const dependencyPosition=new vscode.Position(2,constantsDoc.lineAt(2).text.indexOf('BASE')+2);
     const dependencyDefinition=await vscode.commands.executeCommand('vscode.executeDefinitionProvider',constantsDoc.uri,dependencyPosition);
     assert.ok(dependencyDefinition.some(d=>(d.range || d.targetSelectionRange).start.line===3)); checks++;
+    const functionsDoc=await vscode.workspace.openTextDocument({language:'qyno',content:
+        'square(int x) = x^2\nauto twice(int n) = n * 2\nint main();\n\tprint(square(3))\n\tprint(twice(4))\n'});
+    await vscode.window.showTextDocument(functionsDoc);
+    const functionsQuery=(line,part,command)=>vscode.commands.executeCommand(command,functionsDoc.uri,
+        new vscode.Position(line,functionsDoc.lineAt(line).text.indexOf(part)+part.length));
+    const functionsItems=await functionsQuery(3,'squ','vscode.executeCompletionItemProvider');
+    assert.ok(functionsItems.items.some(i=>i.label==='square' && i.detail==='auto square(int x)')); checks++;
+    const functionsDefinition=await functionsQuery(3,'squ','vscode.executeDefinitionProvider');
+    assert.ok(functionsDefinition.some(d=>(d.range || d.targetSelectionRange).start.line===0)); checks++;
+    const functionsHover=await functionsQuery(4,'twi','vscode.executeHoverProvider');
+    assert.ok(functionsHover.some(h=>h.contents.some(c=>c.value?.includes('auto twice(int n)')))); checks++;
+    const functionsHint=await functionsQuery(3,'square(','vscode.executeSignatureHelpProvider');
+    assert.equal(functionsHint.signatures[0].label,'auto square(int x)'); checks++;
+    const functionsOutline=await vscode.commands.executeCommand('vscode.executeDocumentSymbolProvider',functionsDoc.uri);
+    assert.ok(functionsOutline.some(s=>s.name==='square' && s.detail==='auto square(int x)')); checks++;
+    const inferredMethodDoc=await vscode.workspace.openTextDocument({language:'qyno',content:
+        'model Counter;\n\tprivate int n = 3\n\treadonly get() = this.n\nint main();\n\tCounter c\n\tprint(c.get())\n'});
+    await vscode.window.showTextDocument(inferredMethodDoc);
+    const methodPosition=new vscode.Position(5,inferredMethodDoc.lineAt(5).text.indexOf('c.')+2);
+    const inferredMethodItems=await vscode.commands.executeCommand('vscode.executeCompletionItemProvider',inferredMethodDoc.uri,methodPosition);
+    assert.ok(inferredMethodItems.items.some(i=>i.label==='get' && i.detail==='public readonly auto get()')); checks++;
+    const methodNamePosition=new vscode.Position(5,methodPosition.character+2);
+    const inferredMethodHover=await vscode.commands.executeCommand('vscode.executeHoverProvider',inferredMethodDoc.uri,methodNamePosition);
+    assert.ok(inferredMethodHover.some(h=>h.contents.some(c=>c.value?.includes('public readonly auto get()')))); checks++;
+    const inferredMethodDefinition=await vscode.commands.executeCommand('vscode.executeDefinitionProvider',inferredMethodDoc.uri,methodNamePosition);
+    assert.ok(inferredMethodDefinition.some(d=>(d.range || d.targetSelectionRange).start.line===2)); checks++;
     console.log(`QYNO VS Code integration: ${checks} checks passed`);
 }
 module.exports={run};

@@ -185,7 +185,9 @@ function analyze(text, uri = '') {
             declare(ts[index], { kind: 'constant', type: 'auto', readonly: true, scopeId: scope.id });
             continue;
         }
-        const declaredType = readType(ts, index);
+        const omittedReturn = (indent === 0 || ['model', 'interface'].includes(scope.kind)) &&
+            ts[index]?.kind === 'id' && !KEYWORDS.has(ts[index].value) && ts[index + 1]?.value === '(';
+        const declaredType = omittedReturn ? { name: 'auto', end: index } : readType(ts, index);
         if (declaredType) {
             const type = declaredType.name;
             index = declaredType.end - 1;
