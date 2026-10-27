@@ -22,6 +22,7 @@
  *          | using
  *          | const_decl
  *          | "auto" ident "=" expr NEWLINE
+ *          | ident "=" expr NEWLINE          （未宣言なら推論付きローカル宣言）
  *          | type ident dimensions ("=" expr)? NEWLINE
  *          | postfix update NEWLINE | postfix（配列操作）NEWLINE
  * update   = "=" expr | "+=" expr | "-=" expr | "++" | "--"
@@ -299,7 +300,7 @@ static int same_name(Var *v, Token *t)
 }
 
 /*
- * 変数を宣言する。外側のブロックと同じ名前（隠す形の宣言）も禁止する。
+ * 同じブロックの二重宣言は禁止し、明示的な内側の宣言は外側を隠す。
  * const は値をコンパイル時に決めるので、スタックの領域を使わない。
  * 関数の外（cur_fn が NULL）ではファイル先頭の const として登録する。
  * ファイル先頭の const と同じ名前のローカル変数は、型検査で検出する。
@@ -325,7 +326,9 @@ static Var *declare_var(Token *t, Type ty, int is_const)
     }
 
     prev = find_var(t);
-    if (prev != NULL) {
+    if (prev != NULL && (prev->depth == block_depth ||
+        (prev->is_param && (block_depth == (cur_fn->model ? 2 : 1) ||
+            (cur_fn->model && equal(t, "this")))))) {
         error_tok(t, "%.*s はすでに %d 行目で宣言されています", t->len, t->loc, prev->tok->line);
     }
     v = new_var(t, ty);
@@ -717,6 +720,7 @@ static Node *primary(void)
         if (v != NULL && !equal(start->next, "(")) {
             node = new_node(ND_VAR, start);
             node->var = v;
+            v->is_used = 1;
             tok = tok->next;
             return node;
         }
@@ -1331,6 +1335,7 @@ static Node *update(Token *name, Node **inc, int *inc_sign)
     } else {
         error_tok(tok, "=、+=、-=、++、-- のいずれかが必要です");
     }
+    if (!equal(op, "=")) v->is_used = 1;
     if (inc != NULL) {
         *inc = amount;
     }
@@ -1348,7 +1353,17 @@ static Node *assignment(void)
 
     name = tok;
     tok = tok->next;
-    node = update(name, NULL, NULL);
+    if (equal(tok, "=") && find_var(name) == NULL) {
+        node = new_node(ND_DECL, name);
+        tok = tok->next;
+        node->lhs = expr();
+        node->var = declare_var(name, TY_NONE, 0);
+        node->var->is_inferred = 1;
+        node->var->is_implicit = 1;
+        node->var->decl = node;
+    } else {
+        node = update(name, NULL, NULL);
+    }
     expect_kind(TK_NEWLINE, "文の終わりには改行が必要です");
     return node;
 }
@@ -1499,6 +1514,7 @@ static Node *for_stmt(Token *start)
     Var *v;
     Type ty;
     int increasing;
+    int explicit_type;
 
     node = new_node(ND_FOR, start);
     expect("(");
@@ -1515,6 +1531,7 @@ static Node *for_stmt(Token *start)
 
     /* ループ変数（型を省略すると int） */
     ty = type_keyword(tok);
+    explicit_type = ty != TY_NONE;
     if (ty != TY_NONE) {
         tok = tok->next;
     } else {
@@ -1524,6 +1541,8 @@ static Node *for_stmt(Token *start)
         error_tok(tok, "ループ変数の名前が必要です");
     }
     name = tok;
+    if (!explicit_type && find_var(name) != NULL)
+        error_tok(name, "外側の変数と同名のループ変数を宣言する場合は、型を明示してください");
     tok = tok->next;
 
     /* 終了側の比較 */

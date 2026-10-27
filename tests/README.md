@@ -15,6 +15,7 @@ Python を指定する場合は `make test PYTHON=/path/to/python3` とする。
 | コマンド | 主な検証内容 |
 | --- | --- |
 | `make test-auto` | ローカル auto・const auto、型固定、配列・モデルのコピー、入力、readonly・interface・明示 close の制約 |
+| `make test-implicit-declarations` | 型名省略の宣言と既存変数への代入、ブロック・同名宣言、名前衝突、未使用警告・候補名、コピー・所有権 |
 | `make test-rounding` | Decimal を正解値とした丸め、正負の中間値、桁指定、整数精度・範囲外 |
 | `make test-semantics` | 短絡評価、比較連鎖の評価回数、スコープ、再帰、値渡し・参照、診断 |
 | `make test-text` | Unicode スカラー値、NUL、char、コピー、文字置換、不正 UTF-8、添字エラー |
@@ -148,3 +149,12 @@ print/end=/file.writeの書式、inputの自動/固定基数・失敗時の全�
 コピーの独立性、初期値の評価回数、init 内と interface 特殊化内の宣言も実行して検証する。
 空配列・型文脈のないモデル初期化子・自己参照・未導入の構文はコンパイルエラーとし、
 readonly / interface の所有制限と、file・file 配列の明示 close の検査を維持する。
+
+## 0.26.7 の型名省略とスコープ
+
+`make test-implicit-declarations` の33メソッドで、型名を省略した宣言・既存変数への代入、
+初期値の評価回数、型固定、ブロックとパラメータの同名宣言、型付き for の同名カウンターを検証する。
+名前空間・定数・関数・型との衝突、コピー・ref の寿命・readonly・file の close 責任も確認する。
+未使用警告ではコンパイル成功と副作用の保持、似た名前の候補、ソース位置、具体化時の重複防止を検証する。
+旧テストの「未宣言の単純代入」「内側の明示的な同名宣言」は、新仕様の成功例へ更新し、
+未宣言の複合代入と同一スコープでの二重宣言は引き続きエラーとして検証する。

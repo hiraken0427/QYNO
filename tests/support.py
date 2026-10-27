@@ -23,7 +23,7 @@ class QynoTestCase(unittest.TestCase):
         self.directory = Path(temporary.name)
         self.sequence = 0
 
-    def compile_source(self, source, *, error=None):
+    def compile_source(self, source, *, error=None, warnings=()):
         self.sequence += 1
         path = self.directory / f"case{self.sequence}.qy"
         path.write_bytes(source.encode("utf-8") if isinstance(source, str) else source)
@@ -40,12 +40,19 @@ class QynoTestCase(unittest.TestCase):
             self.assertIn(str(path), diagnostic)
             return result
         self.assertEqual(result.returncode, 0, diagnostic)
-        self.assertEqual(result.stderr, b"")
+        if warnings:
+            self.assertEqual(diagnostic.count(': 警告: '), len(warnings), diagnostic)
+            self.assertNotIn(': エラー: ', diagnostic)
+            for warning in warnings:
+                self.assertIn(warning, diagnostic)
+            self.assertIn(str(path), diagnostic)
+        else:
+            self.assertEqual(result.stderr, b"")
         self.assertTrue(binary.is_file())
         return binary
 
-    def check_program(self, source, expected, *, stdin="", status=0, error=None):
-        binary = self.compile_source(source)
+    def check_program(self, source, expected, *, stdin="", status=0, error=None, warnings=()):
+        binary = self.compile_source(source, warnings=warnings) if warnings else self.compile_source(source)
         result = subprocess.run(
             [str(binary)],
             input=stdin.encode("utf-8") if isinstance(stdin, str) else stdin,

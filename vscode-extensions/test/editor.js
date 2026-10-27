@@ -173,6 +173,23 @@ async function run() {
     const autoConstantPosition=new vscode.Position(3,autoDoc.lineAt(3).text.indexOf('LIMIT')+2);
     const autoConstantHover=await vscode.commands.executeCommand('vscode.executeHoverProvider',autoDoc.uri,autoConstantPosition);
     assert.ok(autoConstantHover.some(h=>h.contents.some(c=>c.value?.includes('const auto LIMIT')))); checks++;
+    const implicitDoc=await vscode.workspace.openTextDocument({language:'qyno',content:
+        'int main();\n\tcount = 3\n\tif(true);\n\t\tcount = 4\n\t\tauto count = str(count)\n\t\tprint(count)\n\tprint(count)\n'});
+    await vscode.window.showTextDocument(implicitDoc);
+    const implicitQuery=(line,part,command)=>vscode.commands.executeCommand(command,implicitDoc.uri,
+        new vscode.Position(line,implicitDoc.lineAt(line).text.indexOf(part)+part.length));
+    const implicitItems=await implicitQuery(6,'cou','vscode.executeCompletionItemProvider');
+    assert.ok(implicitItems.items.some(i=>i.label==='count' && i.detail==='auto count')); checks++;
+    const implicitAssignment=await implicitQuery(3,'cou','vscode.executeDefinitionProvider');
+    assert.ok(implicitAssignment.some(d=>(d.range || d.targetSelectionRange).start.line===1)); checks++;
+    const shadowInitializer=await implicitQuery(4,'str(cou','vscode.executeDefinitionProvider');
+    assert.ok(shadowInitializer.some(d=>(d.range || d.targetSelectionRange).start.line===1)); checks++;
+    const shadowDefinition=await implicitQuery(5,'cou','vscode.executeDefinitionProvider');
+    assert.ok(shadowDefinition.some(d=>(d.range || d.targetSelectionRange).start.line===4)); checks++;
+    const outerDefinition=await implicitQuery(6,'cou','vscode.executeDefinitionProvider');
+    assert.ok(outerDefinition.some(d=>(d.range || d.targetSelectionRange).start.line===1)); checks++;
+    const implicitHover=await implicitQuery(6,'cou','vscode.executeHoverProvider');
+    assert.ok(implicitHover.some(h=>h.contents.some(c=>c.value?.includes('auto count')))); checks++;
     console.log(`QYNO VS Code integration: ${checks} checks passed`);
 }
 module.exports={run};

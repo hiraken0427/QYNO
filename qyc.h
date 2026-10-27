@@ -5,7 +5,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#define QYC_VERSION "0.26.6"
+#define QYC_VERSION "0.26.7"
 
 typedef struct SourceFile SourceFile;
 typedef struct Module Module;
@@ -203,6 +203,8 @@ struct Var {
     Type ty;
     ArrayDim *dims;
     int is_inferred;    /* auto のローカル宣言。初期値の検査後に ty が確定する */
+    int is_implicit;    /* 型名のない name = 初期値 による宣言 */
+    int is_used;        /* 読み取り・場所の参照・複合更新がある */
     int offset;         /* rbp からの距離（[rbp - offset] に置く）。const は 0 */
     int is_const;       /* const 定数なら 1 */
     int is_param;       /* 関数の引数なら 1（[rbp + 16 + ...] に置かれる） */
@@ -468,6 +470,7 @@ extern SourceFile *current_file;
 void select_source(SourceFile *source);
 void error_at(int line, int col, const char *fmt, ...);
 void error_tok(Token *tok, const char *fmt, ...);
+void warning_tok(Token *tok, const char *fmt, ...);
 void fatal(const char *fmt, ...);
 
 /* modules.c：読み込み・モジュール単位の名前解決 */

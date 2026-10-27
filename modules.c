@@ -607,6 +607,13 @@ void validate_module_names(Ast *program)
         for (v = fn->params; v != NULL; v = v->next) validate_declaration(v->tok, v->usings);
         for (v = fn->locals; v != NULL; v = v->next) {
             if (v->name_len != 0) validate_declaration(v->tok, v->usings);
+            if (v->is_implicit) {
+                char *name = copy_name(v->name, (size_t)v->name_len);
+                Symbol target = scoped_symbol(v->tok->source->module, name, v->usings, NULL, v->tok);
+                if (target.kind != SYM_NONE)
+                    error_tok(v->tok, "%s は既存の定数・関数・型・名前空間です。型名を省略した宣言で置き換えることはできません", name);
+                free(name);
+            }
         }
     }
     for (v = program->global_vars; v != NULL; v = v->next) validate_declaration(v->tok, NULL);

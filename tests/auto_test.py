@@ -120,10 +120,10 @@ class AutoTests(QynoTestCase):
                        program('int main();', '\tfor(0 <= auto i < 2, i++);', '\t\tprint(i)')]:
             with self.subTest(source=source): self.compile_source(source, error='エラー')
 
-    def test_implicit_declaration_and_shadowing_are_deferred(self):
-        self.compile_source(program('int main();', '\tn = 3'), error='宣言されていません')
-        self.compile_source(program('int main();', '\tint n = 1', '\tif(true);',
-            '\t\tauto n = 2'), error='すでに')
+    def test_implicit_declaration_and_explicit_nested_shadowing(self):
+        self.check_program(program('int main();', '\tn = 3', '\tprint(n)'), '3\n')
+        self.check_program(program('int main();', '\tint n = 1', '\tif(true);',
+            '\t\tauto n = 2', '\t\tprint(n)', '\tprint(n)'), '2\n1\n')
 
     def test_readonly_owned_values_can_be_copied(self):
         self.check_program(program('void inspect(ref readonly int values[]);', '\tauto copy = values',

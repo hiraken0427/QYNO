@@ -164,7 +164,7 @@ printf 'int main();\n\tint a = 3\n\ta = a * 5\n\treturn a\n' > tmp.qy
 ./qyc tmp.qy && ./tmp
 if [ "$?" = "15" ]; then echo "OK  代入と return"; pass=$((pass + 1)); else echo "NG  代入と return"; exit 1; fi
 
-expected_version=$'QYNO version 0.26.6 (PROTOTYPE)\nPlease note that this product is a prototype. No warranties of any kind exist,\nincluding implied warranties of merchantability or fitness for a particular purpose.'
+expected_version=$'QYNO version 0.26.7 (PROTOTYPE)\nPlease note that this product is a prototype. No warranties of any kind exist,\nincluding implied warranties of merchantability or fitness for a particular purpose.'
 if [ "$(./qyc --version)" = "$expected_version" ]; then echo "OK  --version"; pass=$((pass + 1)); else echo "NG  --version"; exit 1; fi
 
 echo "--- 比較・論理演算・if・const ---"
@@ -426,7 +426,7 @@ assert_error 'str と int の連結' 'int main();\n\tstr s = "a" + 1\n'
 assert_error 'bool の計算' 'int main();\n\tint x = true + 1\n'
 assert_error 'return に double' 'int main();\n\treturn 1.5\n'
 assert_error '変数の二重宣言' 'int main();\n\tint a = 1\n\tint a = 2\n'
-assert_error '未宣言の変数' 'int main();\n\tb = 1\n'
+assert_error '未宣言の変数の複合代入' 'int main();\n\tb += 1\n'
 assert_error '予約語を変数名に' 'int main();\n\tint int = 1\n'
 assert_error '式の中の埋め込み' 'int main();\n\tstr s = "x{1}"\n'
 assert_error '初期値での自己参照' 'int main();\n\tint a = a\n'
@@ -443,7 +443,7 @@ assert_error 'const の初期値なし' 'int main();\n\tconst int A\n'
 assert_error 'const の初期値に変数' 'int main();\n\tint x = 1\n\tconst int A = x\n'
 assert_error 'const の計算で 0 除算' 'const int A = 1\nconst int B = 10 / (A - 1)\nint main();\n\treturn 0\n'
 assert_error 'ブロックの外から変数' 'int main();\n\tif(true);\n\t\tint y = 1\n\tprint("{y}")\n'
-assert_error '外側と同じ名前' 'int main();\n\tint x = 1\n\tif(true);\n\t\tint x = 2\n'
+assert_output $'2\n1\n' '内側の明示的な同名宣言' 'int main();\n\tint x = 1\n\tif(true);\n\t\tint x = 2\n\t\tprint(x)\n\tprint(x)\n'
 assert_error 'if のない else' 'int main();\n\telse;\n\t\treturn 1\n'
 assert_error 'if の括弧なし' 'int main();\n\tif true;\n\t\treturn 1\n'
 assert_error 'if の ; なし' 'int main();\n\tif(true)\n\t\treturn 1\n'

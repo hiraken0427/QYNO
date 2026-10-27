@@ -1,4 +1,4 @@
-# QYNO 0.26.6
+# QYNO 0.26.7
 
 C99 で実装した、Linux x64 / Windows x64 向けのコンパイラ。
 UTF-8 の `.qy` ソースから実行ファイルを直接生成する。
@@ -35,9 +35,9 @@ int main();
 
 ## VS Code 拡張
 
-[VSCode Option](vscode-extensions/README.md) は QYNO 0.26.6 のハイライト、
+[VSCode Option](vscode-extensions/README.md) は QYNO 0.26.7 のハイライト、
 ユーザー定義の関数名・変数名の補完、定義への移動、引数ヒントに対応する。
-[vscode-extensions/0.26.6_VSCode_option.vsix](vscode-extensions/0.26.6_VSCode_option.vsix) を
+[vscode-extensions/0.26.7_VSCode_option.vsix](vscode-extensions/0.26.7_VSCode_option.vsix) を
 VS Code の「VSIX からのインストール…」で指定する。
 
 ## ローカル変数の型推論
@@ -45,9 +45,13 @@ VS Code の「VSIX からのインストール…」で指定する。
 `auto count = 3`、`auto text = "QYNO"`、`auto values = [1, 2]` のように、
 初期値から型を推論できる。ローカルの `const auto LIMIT = 10` にも対応する。
 推論後の型は固定され、配列・モデルのコピーと file の明示 close の規則も維持する。
-この段階の int は従来どおり64bit。型名を省略した `y = 3` や、関数の型推論は後続の段階で実装する。
+未宣言の名前への `y = 3` も、`auto y = 3` と同様にローカル変数を宣言する。
+既存の名前への代入では型と参照先を維持し、内側で別変数を作る場合は `auto y = ...` または型を明示する。
+型名を省略した宣言が未使用の場合は警告し、似た名前の既存変数があれば候補を示す。
+この段階の int は従来どおり64bit。ファイル先頭の const と関数の型推論は後続の段階で実装する。
 詳細は [型拡張の実装順と現時点の仕様](docs/types-roadmap.md)、
 実行例は [examples/types/auto.qy](examples/types/auto.qy) を参照。
+型名省略とスコープの例は [examples/types/implicit.qy](examples/types/implicit.qy) を参照。
 
 ## モデル型
 
