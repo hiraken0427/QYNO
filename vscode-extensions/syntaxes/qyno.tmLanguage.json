@@ -156,6 +156,17 @@
       }
     },
     {
+      "match": "\\b(const)\\s+([A-Za-z_]\\w*)(?=\\s*=)",
+      "captures": {
+        "1": {
+          "name": "storage.modifier.qyno"
+        },
+        "2": {
+          "name": "variable.other.constant.qyno"
+        }
+      }
+    },
+    {
       "match": "\\b(const)\\s+([A-Za-z_]\\w*(?:\\.[A-Za-z_]\\w*)*)\\s+([A-Za-z_]\\w*)",
       "captures": {
         "1": {

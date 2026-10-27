@@ -26,7 +26,7 @@
  *          | type ident dimensions ("=" expr)? NEWLINE
  *          | postfix update NEWLINE | postfix（配列操作）NEWLINE
  * update   = "=" expr | "+=" expr | "-=" expr | "++" | "--"
- * const_decl = "const" (type | "auto"（ローカルのみ）) ident "=" expr NEWLINE
+ * const_decl = "const" (type | "auto")? ident "=" expr NEWLINE
  * type     = "int" | "float" | "double" | "bool" | "str" | "char"
  * str      = 文字列リテラル（エスケープと {expr} の埋め込みを含む）
  * expr     = or
@@ -1241,16 +1241,17 @@ static Node *declaration_ref(Token *start, int is_const, int is_ref)
     Token *name;
     Type ty;
     ArrayDim *dims;
-    int infer = equal(tok, "auto");
+    int short_const = is_const && tok->kind == TK_IDENT && !is_keyword(tok) && equal(tok->next, "=");
+    int infer = short_const || equal(tok, "auto");
 
     ty = infer ? TY_NONE : type_keyword(tok);
-    if (infer && (cur_fn == NULL || is_ref)) {
-        error_tok(tok, "auto はローカルの値変数・const の宣言に使用してください（ref・関数引数・戻り値は未対応です）");
+    if (infer && is_ref) {
+        error_tok(tok, "auto は値変数・const の宣言に使用してください（ref・関数引数・戻り値は未対応です）");
     }
     if (!infer && ty == TY_NONE) {
         error_tok(tok, "型（int・float・double・bool・str・char）が必要です");
     }
-    skip_type();
+    if (!short_const) skip_type();
     if (tok->kind != TK_IDENT) {
         error_tok(tok, "%sが必要です", is_const ? "定数名" : "変数名");
     }

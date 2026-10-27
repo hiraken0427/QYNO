@@ -31,6 +31,10 @@ test: qyc
 	$(PYTHON) tests/integer_bases_test.py ./qyc
 	$(PYTHON) tests/auto_test.py ./qyc
 	$(PYTHON) tests/implicit_declarations_test.py ./qyc
+	$(PYTHON) tests/global_const_inference_test.py ./qyc
+
+test-global-const-inference: qyc
+	$(PYTHON) tests/global_const_inference_test.py ./qyc
 
 test-implicit-declarations: qyc
 	$(PYTHON) tests/implicit_declarations_test.py ./qyc
@@ -92,4 +96,4 @@ test-arrays: qyc
 clean:
 	rm -f qyc qyc.exe *.o tmp tmp.exe tmp.qy tmp.s
 
-.PHONY: test test-auto test-implicit-declarations test-bitwise test-integer-bases test-interfaces test-initialization test-readonly test-visibility test-model test-file test-input-refs test-for test-io test-modules test-lineedit test-rounding test-semantics test-text test-arrays clean
+.PHONY: test test-auto test-implicit-declarations test-global-const-inference test-bitwise test-integer-bases test-interfaces test-initialization test-readonly test-visibility test-model test-file test-input-refs test-for test-io test-modules test-lineedit test-rounding test-semantics test-text test-arrays clean

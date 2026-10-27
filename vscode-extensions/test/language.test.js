@@ -14,6 +14,35 @@ function labels(text, modules) { return items(text, modules).map(i => i.label); 
 function at(text, modules) { const f = fixture(text, modules); return symbolAt(f.project, f.line, f.character); }
 function hint(text, modules) { const f = fixture(text, modules); return signature(f.project, f.line, f.character); }
 
+test('global inferred constants are available before their declarations', () => {
+    const result = items('int main();\n\t¦\nconst auto LIMIT = 3\nconst LABEL = "QYNO"');
+    assert.equal(result.find(i => i.label === 'LIMIT').detail, 'const auto LIMIT');
+    assert.equal(result.find(i => i.label === 'LABEL').detail, 'const auto LABEL');
+    assert.equal(at('int main();\n\tprint(LA¦BEL)\nconst LABEL = "QYNO"').line, 2);
+});
+
+test('local shorthand constants obey their declaration position and block', () => {
+    assert.ok(!labels('int main();\n\t¦\n\tconst LIMIT = 3').includes('LIMIT'));
+    assert.equal(at('int main();\n\tconst LIMIT = 3\n\tprint(LI¦MIT)').line, 1);
+    assert.ok(!labels('int main();\n\tif(true);\n\t\tconst INNER = 3\n\t¦').includes('INNER'));
+    assert.ok(!labels('int main();\n\tconst SELF = SE¦').includes('SELF'));
+});
+
+test('imported inferred constants retain namespace completion and definition targets', () => {
+    const modules = {settings:'const LIMIT = 3\nconst auto LABEL = "QYNO"'};
+    assert.deepEqual(labels('import settings\nusing settings as cfg\nint main();\n\tcfg.¦', modules).sort(), ['LABEL','LIMIT']);
+    assert.equal(at('import settings\nint main();\n\tprint(settings.LI¦MIT)', modules).uri, 'file:///settings.qy');
+    const result = items('import settings\nusing settings\nint main();\n\tLA¦', modules);
+    assert.equal(result.find(i => i.label === 'LABEL').detail, 'const auto LABEL');
+});
+
+test('shorthand constants remain readonly in member completion and outline data', () => {
+    const model = analyze('const VALUES = [1, 2]\nint main();\n\treturn 0');
+    const constant = model.symbols.find(s => s.name === 'VALUES');
+    assert.equal(constant.kind, 'constant'); assert.equal(constant.readonly, true); assert.equal(constant.scopeId, 0);
+    assert.ok(!labels('const VALUE = 3\nint main();\n\tVALUE.¦').includes('addr'));
+});
+
 test('implicit local declarations are completed and located with auto labels', () => {
     const result = items('int main();\n\tcount = 3\n\t¦');
     assert.equal(result.find(i => i.label === 'count').detail, 'auto count');

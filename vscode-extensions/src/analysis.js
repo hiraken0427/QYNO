@@ -180,6 +180,11 @@ function analyze(text, uri = '') {
         const member = ['model', 'interface'].includes(scope.kind) ? { visibility, declaringModelId: scope.owner?.modelId } : {};
         const constant = ts[index]?.value === 'const'; if (constant) index++;
         const modifier = ['ref', 'val'].includes(ts[index]?.value) ? ts[index++].value : null;
+        if (constant && !['model', 'interface'].includes(scope.kind) && ts[index]?.kind === 'id' &&
+            !KEYWORDS.has(ts[index].value) && ts[index + 1]?.value === '=') {
+            declare(ts[index], { kind: 'constant', type: 'auto', readonly: true, scopeId: scope.id });
+            continue;
+        }
         const declaredType = readType(ts, index);
         if (declaredType) {
             const type = declaredType.name;
