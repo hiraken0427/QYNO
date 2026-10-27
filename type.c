@@ -95,6 +95,13 @@ static void check_model_init(Node *node, Type expected);
 static Node *copy_model(Node *source);
 static Node *model_default(Type ty, ArrayDim *dims, Token *tok);
 static void validate_const_array(Node *where, Value source, ArrayDim *dims);
+static int contains_initializer(Type ty);
+static int defaultable(Type ty, ArrayDim *dims);
+static void require_default(Type ty, ArrayDim *dims, Token *tok);
+static void check_padding(Node *source, Type ty, ArrayDim *dims);
+static void check_array_capacity(Node *source, Type ty, ArrayDim *dims);
+static void check_construction(Node *node, Model *m);
+static void check_initializer_defaults(Model *m);
 
 /*
  * リテラルだけでできた式か（3.14、-0.5、100 * 3.14、2.0^2 など）。
@@ -336,6 +343,7 @@ static void require_bool(Node *node, const char *what)
 #include "readonly_type.inc"
 #include "arrays_type.inc"
 #include "models_type.inc"
+#include "initialization_type.inc"
 
 static long long round_integer(Node *node, long long x, long long digits, Builtin mode);
 static void check_pow_domain(Node *node);
@@ -1459,6 +1467,7 @@ static Value eval_const_inner(Node *node)
 static int is_const_expr(Node *node)
 {
     Node *cmp;
+    if (contains_initializer(node->ty)) return 0;
     if (type_is_model(array_base(node->ty)) && contains_file(node->ty)) return 0;
 
     switch (node->kind) {
@@ -1714,6 +1723,7 @@ static void check_stmt(Node *node)
             return;
         }
         if (node->var->is_const) {
+            if (contains_initializer(node->var->ty)) error_tok(node->tok, "init を含むモデルは const にできません");
             if (type_is_model(array_base(node->var->ty)) && contains_file(node->var->ty))
                 error_tok(node->tok, "file を含むモデルは const にできません");
             if (node->var->const_state == 2) {
@@ -1735,12 +1745,7 @@ static void check_stmt(Node *node)
         } else if (type_is_model(node->var->ty)) {
             node->lhs = model_default(node->var->ty, NULL, node->tok);
         } else if (type_is_array(node->var->ty)) {
-            node->lhs = calloc(1, sizeof(Node));
-            if (node->lhs == NULL) fatal("配列の初期化を作成できません");
-            node->lhs->kind = ND_ARRAY_NEW;
-            node->lhs->ty = node->var->ty;
-            node->lhs->dims = node->var->dims;
-            node->lhs->tok = node->tok;
+            node->lhs = model_default(node->var->ty, node->var->dims, node->tok);
         }
         if (node->var->is_const) {
             long long budget = 1000000;
@@ -1897,6 +1902,7 @@ static void check_names(Ast *ast)
     }
 }
 
+#include "initialization_flow.inc"
 #include "file_close_analysis.inc"
 
 void typecheck(Ast *ast)
@@ -1908,6 +1914,7 @@ void typecheck(Ast *ast)
     allow_void = 0;
     check_names(ast);
     resolve_model_types(ast);
+    prepare_builders(ast);
     { Model *m, *other; Function *f;
       for (m = ast->models; m; m = m->next) {
           for (other = ast->models; other != m; other = other->next)
@@ -1916,12 +1923,8 @@ void typecheck(Ast *ast)
           for (f = ast->funcs; f; f = f->next) if (!f->model && f->tok->source->module == m->tok->source->module && same_name(f->name, f->name_len, m->name, (int)strlen(m->name))) error_tok(m->tok, "モデル名が関数と重複しています");
           check_model_definition(m);
       }
-      for (m = ast->models; m; m = m->next) {
-          m->default_value = calloc(1, sizeof(*m->default_value));
-          if (!m->default_value) fatal("モデルの既定値を確保できません");
-          m->default_value->kind = ND_MODEL_INIT; m->default_value->tok = m->tok;
-          check_model_init(m->default_value, m->ty);
-      }
+      finish_builders(ast);
+      for (m = ast->models; m; m = m->next) visit_default_dependencies(m);
     }
 
     /* ファイル先頭の const（ほかの const から参照されたものは、その時点で計算済み） */
@@ -1934,6 +1937,7 @@ void typecheck(Ast *ast)
     }
 
     for (fn = ast->funcs; fn != NULL; fn = fn->next) {
+        if (fn->is_internal) continue;
         cur_func = fn;
         check_stmts(fn->body);
         if (fn->ret != TY_VOID && (fn->model || !same_name(fn->name, fn->name_len, "main", 4)) && !stmts_return(fn->body)) {
@@ -1941,6 +1945,7 @@ void typecheck(Ast *ast)
                      fn->name_len, fn->name);
         }
     }
+    for (fn = ast->funcs; fn; fn = fn->next) if (fn->is_initializer) check_initializer_completion(fn);
     check_file_closes(ast);
     cur_func = NULL;
 }

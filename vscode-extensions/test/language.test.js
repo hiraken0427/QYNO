@@ -273,3 +273,72 @@ test('qualified imported constant models preserve readonly across aliases and fi
     }
     assert.ok(labels('int main();\n\tread¦').includes('readonly'));
 });
+
+const initSource='model Rectangle;\n\tprivate double stored_width\n\tprivate double stored_height\n\tpublic bool init(double width, double height=1.0);\n\t\tthis.stored_width = width\n\t\tthis.stored_height = height\n\tpublic readonly double area() = this.stored_width * this.stored_height';
+test('initializers and default argument recipes are analysed separately from methods', () => {
+    const m=analyze(initSource+'\nmodel Container;\n\tvoid init(int values[]=[1,2], Rectangle r={width=3.0});\n\t\treturn');
+    const rect=m.symbols.find(s=>s.kind==='model' && s.name==='Rectangle');
+    assert.equal(rect.initializer.initializer,true);
+    assert.equal(rect.initializer.params[1].defaultText,'1.0');
+    const container=m.symbols.find(s=>s.kind==='model' && s.name==='Container');
+    assert.equal(container.initializer.params[0].rank,1); assert.equal(container.initializer.params[1].rank,0);
+    assert.equal(container.initializer.params[1].defaultText,'{width=3.0}');
+    assert.ok(!labels(initSource+'\nint main();\n\tRectangle r = {width=1.0}\n\tr.¦').includes('init'));
+});
+test('initializer keys use public parameter names and show required/default contracts', () => {
+    const result=items(initSource+'\nint main();\n\tRectangle r = {¦');
+    assert.deepEqual(result.map(s=>s.label).sort(),['height','width']);
+    assert.equal(result.find(s=>s.label==='width').insertText,'width=');
+    assert.match(result.find(s=>s.label==='width').documentation,/必須/);
+    assert.match(result.find(s=>s.label==='height').detail,/double height=1.0/);
+    assert.match(result.find(s=>s.label==='height').documentation,/省略可能/);
+    assert.ok(!result.some(s=>s.label==='stored_width'));
+});
+test('initializer completion removes supplied keys and does not duplicate equals', () => {
+    assert.deepEqual(labels(initSource+'\nint main();\n\tRectangle r = {height=2.0, ¦'),['width']);
+    assert.equal(items(initSource+'\nint main();\n\tRectangle r = {wi¦=3.0}')[0].insertText,'width');
+    assert.ok(labels(initSource+'\nint main();\n\tRectangle r = {width=math.¦').includes('sqrt'));
+});
+test('multiline initializer return assignment and array elements infer the target model', () => {
+    const bodies=['Rectangle r = {\n\t\t¦','Rectangle r = {width=1.0}\n\tr = {¦',
+        'Rectangle rs[] = [{¦','Rectangle rows[][] = [[{¦', 'Rectangle rs[] = []\n\trs.add({¦'];
+    for (const body of bodies) assert.ok(labels(initSource+'\nint main();\n\t'+body).includes('width'),body);
+    assert.ok(labels(initSource+'\nRectangle create();\n\treturn {¦').includes('width'));
+});
+test('nested initializer keys resolve model-valued parameters in their defining module', () => {
+    const source=initSource+'\nmodel Panel;\n\tprivate Rectangle frame\n\tvoid init(Rectangle bounds);\n\t\tthis.frame = bounds';
+    assert.deepEqual(labels(source+'\nint main();\n\tPanel p = {¦'),['bounds']);
+    assert.ok(labels(source+'\nint main();\n\tPanel p = {bounds={¦').includes('width'));
+    assert.ok(labels(source+'\n\tvoid other();\n\t\tthis.frame = {¦').includes('width'));
+});
+test('ordinary call and method parameter contexts support model initializer keys', () => {
+    const source=initSource+'\nvoid consume(Rectangle r, int n);\n\treturn\nmodel Box;\n\tvoid consume(Rectangle r);\n\t\treturn';
+    assert.ok(labels(source+'\nint main();\n\tconsume({¦').includes('width'));
+    assert.ok(labels(source+'\nint main();\n\tBox b\n\tb.consume({¦').includes('width'));
+    assert.deepEqual(labels(source+'\nint main();\n\tunknown({wi¦'),[]);
+});
+test('constructor signatures and key definitions target the initializer parameters', () => {
+    const prefix=initSource+'\nint main();\n\tRectangle r = {';
+    assert.equal(hint(prefix+'height=¦').label,'public bool Rectangle.init(double width, double height=1.0)');
+    assert.equal(hint(prefix+'height=¦').activeParameter,1);
+    const target=at(prefix+'wi¦dth=3.0}');
+    assert.equal(target.name,'width'); assert.equal(target.line,3); assert.equal(target.kind,'parameter');
+    const inner=initSource+'\nint main();\n\tRectangle r = {width=math.sqrt(¦';
+    assert.match(hint(inner).label,/sqrt/);
+    const after=initSource+'\nvoid consume(Rectangle r, int second, int third);\n\treturn\nint main();\n\tconsume({width=3.0, height=4.0}, ¦';
+    assert.equal(hint(after).activeParameter,1);
+});
+test('initializer keys honour imported model aliases and field-based models without init', () => {
+    const modules={'geometry.circle':initSource};
+    for (const type of ['geometry.circle.Rectangle','geo.Rectangle','Rectangle']) {
+        const result=labels('import geometry.circle\nusing geometry.circle as geo\nusing geometry.circle.Rectangle\nint main();\n\t'+type+' r = {¦',modules);
+        assert.ok(result.includes('width')); assert.ok(!result.includes('stored_width'));
+    }
+    const source='model Data;\n\tint n\n\tprivate int secret\n';
+    assert.deepEqual(labels(source+'int main();\n\tData d = {¦'),['n']);
+    assert.deepEqual(labels(source+'\tData create();\n\t\treturn {¦').sort(),['n','secret']);
+});
+test('top-level init remains an ordinary function and identifier', () => {
+    assert.ok(labels('int init(int n) = n\nint main();\n\tin¦').includes('init'));
+    assert.equal(hint('int init(int n) = n\nint main();\n\tinit(¦').label,'int init(int n)');
+});

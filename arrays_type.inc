@@ -124,6 +124,8 @@ static Node *copy_array(Node *source, ArrayDim *dims, int pad)
     node->tok = source->tok;
     node->dims = dims;
     node->val = pad;
+    check_array_capacity(source, source->ty, dims);
+    if (pad) check_padding(source, source->ty, dims);
     if (is_const_expr(source)) validate_const_array(node, eval_const(source), dims);
     return node;
 }
@@ -183,6 +185,11 @@ static void check_method(Node *node)
             long long limit = expression_max_length(node->lhs);
             if (limit >= 0 && eval_const(node->rhs).i >= limit) const_error(node, "配列の添字が範囲外です");
         }
+    }
+    if (node->val == AM_ADD && node->nargs == 0 &&
+        (type_is_model(array_element(node->lhs->ty)) || type_is_array(array_element(node->lhs->ty)))) {
+        ArrayDim *dims = expression_dims(node->lhs);
+        node->rhs = model_default(array_element(node->lhs->ty), dims ? dims->next : NULL, node->tok);
     }
     node->ty = TY_VOID;
     if (!allow) error_tok(node->tok, "配列の追加・削除は値を返しません");

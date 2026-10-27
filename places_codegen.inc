@@ -123,7 +123,10 @@ static void gen_index_store(Node *node)
         place_resolve(&plan, plan.count);
         if (type_is_model(node->lhs->ty)) {
             x64_load(RAX, RAX, 0);
+            int empty = rt_label("init.model.empty");
+            if (node->init_store) { x64_test(RAX, RAX); x64_jcc(CC_Z, empty); }
             array_require_unborrowed();
+            x64_bind(empty);
             place_load(&plan, RAX, value);
             x64_call(type_model(node->lhs->ty)->copy_label);
             place_save(&plan, value, RAX);
@@ -131,11 +134,20 @@ static void gen_index_store(Node *node)
         }
         if (type_is_array(node->lhs->ty)) {
             x64_load(RAX, RAX, 0);
+            int empty = rt_label("init.array.empty"), copy = rt_label("init.array.copy");
+            if (node->init_store) { x64_test(RAX, RAX); x64_jcc(CC_Z, empty); }
             array_require_unborrowed();
             x64_mov(RDI, RAX);
             x64_load(RDI, RDI, 16);
             place_load(&plan, RAX, value);
             x64_xor(RSI, RSI);
+            x64_jmp(copy);
+            x64_bind(empty);
+            if (node->init_store) {
+                collection_shape(node->lhs->ty, node->lhs->field->dims, RDI);
+                place_load(&plan, RAX, value); x64_mov_imm(RSI, 1);
+            }
+            x64_bind(copy);
             x64_call(array_copy_label);
             place_save(&plan, value, RAX);
             place_resolve(&plan, plan.count);

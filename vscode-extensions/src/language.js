@@ -1,6 +1,7 @@
 'use strict';
 const { STANDARD, KEYWORD_COMPLETIONS, properties } = require('./catalog');
 const { TYPES, codeContext, visibleSymbols, visibleUsings, functionLabel, typeLabel, scopeContains } = require('./analysis');
+const { initializationContext } = require('./initialization');
 
 function environment(project, line, character) {
     const model = project.model;
@@ -111,7 +112,7 @@ function receiverMembers(project, env, text) {
         result.push({ ...properties.value, type: symbol.type });
     }
     const model = env.modelType(symbol);
-    if (model) result.push(...model.members.filter(m => env.canAccess(m) && (!symbol.readonly || m.kind !== 'function' || m.readonly)).map(m => m.kind === 'field' && symbol.readonly ? { ...m, readonly: true } : m));
+    if (model) result.push(...model.members.filter(m => !m.initializer && env.canAccess(m) && (!symbol.readonly || m.kind !== 'function' || m.readonly)).map(m => m.kind === 'field' && symbol.readonly ? { ...m, readonly: true } : m));
     if (rank || ['str', 'char'].includes(symbol.type)) result.push(properties.length);
     if (rank && !symbol.readonly) result.push(properties.add, properties.remove_at, properties.clear);
     return result;
@@ -123,6 +124,14 @@ function complete(project, line, character) {
     const word = /[A-Za-z_0-9]*$/.exec(text)[0];
     const before = text.slice(0, text.length - word.length);
     const range = { start: character - word.length, end: character };
+    const init = context.start === 0 && initializationContext(project, env, line, character, receiverSymbol);
+    if (init?.stage === 'key') {
+        const equal = project.model.lines[line].slice(character).match(/^\s*=/);
+        return init.candidates.filter(p => (!init.used.has(p.name) || p.name === init.key?.value) && p.name.startsWith(word)).map(p => ({
+            ...completion(p), kind: 'property', range, insertText: p.name + (equal ? '' : '='), snippet: false,
+            documentation: init.model.initializer ? `${init.model.name}.init の${p.defaultText === undefined ? '必須' : '省略可能な'}引数` : 'モデルのフィールド初期値'
+        }));
+    }
     let items;
     const clause = /^\s*(import|using)\s+([^\n]*)$/.exec(text);
     if (clause) {
@@ -143,7 +152,7 @@ function complete(project, line, character) {
         if (!items.length) items = receiverMembers(project, env, before).map(s => completion(s));
     } else {
         items = [...env.names].map(([label, s]) => completion(s, label));
-        for (const keyword of KEYWORD_COMPLETIONS) if (!env.names.has(keyword)) items.push({ label: keyword, kind: TYPES.has(keyword) ? 'type' : 'keyword', insertText: keyword, detail: 'QYNO 0.26.2' });
+        for (const keyword of KEYWORD_COMPLETIONS) if (!env.names.has(keyword)) items.push({ label: keyword, kind: TYPES.has(keyword) ? 'type' : 'keyword', insertText: keyword, detail: 'QYNO 0.26.3' });
     }
     // A completion immediately before '(' must not insert a second argument list.
     const next = project.model.lines[line].slice(character).match(/^\s*\(/);
@@ -154,6 +163,8 @@ function symbolAt(project, line, character) {
     const context = codeContext(project.model, line, character);
     if (!context) return undefined;
     const text = project.model.lines[line];
+    const init = context.start === 0 && initializationContext(project, environment(project, line, character), line, character, receiverSymbol);
+    if (init?.keySymbol && init.key.line === line && character >= init.key.start && character <= init.key.end) return init.keySymbol;
     const declaration = project.model.symbols.find(s => s.line === line && character >= s.start && character <= s.end);
     if (declaration) return declaration;
     let start = character, end = character;
@@ -182,16 +193,21 @@ function callAt(model, line, character) {
             const prefix = model.lines[line].slice(context.start, ts[i].start);
             path = /([A-Za-z_]\w*(?:(?:\[[^\]\n]*\])|(?:\.[A-Za-z_]\w*))*)$/.exec(prefix)?.[1] || path;
             stack.push({ kind: '(', path, argument: 0 });
-        } else if (value === '[') stack.push({ kind: '[' });
-        else if (value === ')' || value === ']') stack.pop();
+        } else if (value === '[' || value === '{') stack.push({ kind: value });
+        else if (value === ')' || value === ']' || value === '}') stack.pop();
         else if (value === ',' && stack.at(-1)?.kind === '(') stack.at(-1).argument++;
     }
     return [...stack].reverse().find(s => s.kind === '(' && s.path);
 }
 function signature(project, line, character) {
+    const env = environment(project, line, character);
+    const init = initializationContext(project, env, line, character, receiverSymbol);
+    if (init?.model.initializer) {
+        const symbol = init.model.initializer;
+        return { symbol, label: functionLabel(symbol, `${init.model.name}.init`), activeParameter: Math.max(0, symbol.params.findIndex(p => p.name === init.key?.value)) };
+    }
     const call = callAt(project.model, line, character);
     if (!call) return undefined;
-    const env = environment(project, line, character);
     let symbol = env.resolve(call.path) || env.names.get(call.path) || receiverSymbol(env, call.path);
     if (!symbol && call.path.includes('.')) {
         const last = call.path.split('.').at(-1);

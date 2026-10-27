@@ -115,3 +115,11 @@ Python の失敗・例外・タイムアウトはコマンドの失敗として�
 入れ子・コピー・別名・GC下の実体化、file の共有と明示 close、モジュール、
 Windows / アセンブリ出力を検証する。`make test` にも含む。
 実行例は `examples/models/readonly.qy`。
+
+## 0.26.3 のカスタム初期化検証
+
+`make test-initialization` は専用スイート（39メソッド）を実行する。
+名前付き引数と既定値の評価順序、値のスナップショット、コピーとの分離、
+必須引数・未完了フィールド・分岐・配列、生成循環・拒否時の診断、file の所有責任・別名を検証する。
+モジュール・GC多発時の生成・再帰・Windows / アセンブリ出力も対象。`make test` に含む。
+実行例は `examples/models/initialization.qy`。

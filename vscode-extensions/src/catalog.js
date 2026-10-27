@@ -1,5 +1,5 @@
 'use strict';
-// Reference: QYNO 0.26.2. No runtime dependency on a compiler installation.
+// Reference: QYNO 0.26.3. No runtime dependency on a compiler installation.
 const callable = (path, type, params, documentation) => ({
     kind: 'function', name: path.split('.').at(-1), path, type, rank: 0,
     params: params.map(p => typeof p === 'string' ? { name: p, type: 'value', rank: 0 } : { rank: 0, ...p }),

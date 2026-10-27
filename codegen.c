@@ -5406,8 +5406,14 @@ static void gen_call(Node *node)
 static void gen_expr(Node *node)
 {
     switch (node->kind) {
+    case ND_CONSTRUCT:
+        gen_construction(node); return;
+    case ND_MODEL_SEED:
+        gen_model_init(node); return;
+    case ND_BUILD_CONTEXT:
+        gen_creation_context(node->tok); return;
     case ND_MODEL_NEW:
-        x64_xor(RAX, RAX); x64_call(type_model(node->ty)->copy_label); return;
+        gen_model_default(type_model(node->ty), node->tok); return;
     case ND_MODEL_INIT:
         gen_model_init(node); return;
     case ND_MODEL_COPY:
@@ -5835,6 +5841,12 @@ static void gen_for(Node *node)
 static void gen_stmt(Node *node)
 {
     switch (node->kind) {
+    case ND_BUILD_REJECT: {
+        char reason[256];
+        gen_creation_context(node->tok); x64_store(R14, COLLECTION_CONTEXT, RAX);
+        snprintf(reason, sizeof(reason), "%s の初期化が拒否されました\n", type_name((Type)node->val));
+        collection_fail(reason); return;
+    }
     case ND_IF:
         gen_if(node);
         return;

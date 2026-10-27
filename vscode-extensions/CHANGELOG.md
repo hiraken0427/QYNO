@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.26.3
+
+- init と既定引数の解析、生成式内の引数名補完を追加。
+- 配列・入れ子・戻り値・import / using を通じた生成型を補完に反映。
+- init 引数の定義参照・ホバー・引数ヒント、Constructor アウトライン、スニペットを追加。
+- `0.26.3_VSCode_option.vsix` を同梱。
+
 ## 0.26.2
 
 - const モデル・readonly メソッド・ref readonly 引数のハイライトと補完を追加。

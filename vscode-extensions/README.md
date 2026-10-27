@@ -1,16 +1,16 @@
-# QYNO 0.26.2 VSCode Option
+# QYNO 0.26.3 VSCode Option
 
-QYNO **0.26.2** 用の VS Code 拡張です。配布ファイルは同じフォルダの
-[`0.26.2_VSCode_option.vsix`](0.26.2_VSCode_option.vsix) です。
+QYNO **0.26.3** 用の VS Code 拡張です。配布ファイルは同じフォルダの
+[`0.26.3_VSCode_option.vsix`](0.26.3_VSCode_option.vsix) です。
 VS Code 1.85 以降に対応します。
 
 ## インストール
 
 VS Code の拡張機能画面右上の「…」から **VSIX からのインストール…** を選び、
-`0.26.2_VSCode_option.vsix` を指定してください。CLI でもインストールできます。
+`0.26.3_VSCode_option.vsix` を指定してください。CLI でもインストールできます。
 
 ```sh
-code --install-extension vscode-extensions/0.26.2_VSCode_option.vsix
+code --install-extension vscode-extensions/0.26.3_VSCode_option.vsix
 ```
 
 `.qy` ファイルを開くと有効になります。別の拡張が `.qy` を担当している場合は、
@@ -18,6 +18,10 @@ code --install-extension vscode-extensions/0.26.2_VSCode_option.vsix
 Marketplace への公開やコンパイラのインストールは行いません。
 
 ## 機能
+
+- init の名前付き引数を、宣言・代入・戻り値・関数引数・入れ子・配列・add の文脈で補完。
+- 必須引数と既定値の表示、引数名の定義参照・ホバー、生成用の引数ヒント。
+- init を通常のメソッド補完から除外し、アウトラインには生成処理として表示。
 
 - const モデル・readonly メソッド・ref readonly 引数のハイライトと型表示。
 - const / readonly の対象では readonly メソッドと読み取り候補を提示し、変更メソッド・配列の変更操作・addr を候補から除外。
@@ -83,7 +87,7 @@ int main();
 
 補完は編集支援用の軽量な構文解析です。コンパイラの完全な型検査や診断機能ではありません。
 未完成のコードでも候補を提示します。複雑な式の戻り値の型推論や、式に対するすべてのメンバー補完は行いません。
-ビルド・実行と、close 漏れなどの検査には別途 QYNO 0.26.2 の `qyc` を使用してください。
+ビルド・実行と、close 漏れなどの検査には別途 QYNO 0.26.3 の `qyc` を使用してください。
 拡張はユーザープログラムやコンパイラを自動実行しません。
 
 開発用のパッケージ作成には Node.js 22 以降が必要です。拡張自体に npm 実行時依存はありません。
@@ -100,5 +104,5 @@ npm run package
 `test:editor` は VS Code 1.85.2 を取得して実際の拡張ホスト上で補完・定義・ホバー・引数ヒント・
 アウトライン・未保存変更を検証します。Linux の GUI のない環境では Xvfb などが必要です。
 取得済みの VS Code を使う場合は `QYNO_VSCODE_EXECUTABLE` に実行ファイルのパスを設定できます。
-`npm run package` はこのフォルダに VSIX を出力します。内部の拡張バージョンは SemVer の `0.26.2`、
-配布ファイル名は `0.26.2_VSCode_option.vsix` です。
+`npm run package` はこのフォルダに VSIX を出力します。内部の拡張バージョンは SemVer の `0.26.3`、
+配布ファイル名は `0.26.3_VSCode_option.vsix` です。

@@ -5,7 +5,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#define QYC_VERSION "0.26.2"
+#define QYC_VERSION "0.26.3"
 
 typedef struct SourceFile SourceFile;
 typedef struct Module Module;
@@ -206,6 +206,8 @@ struct Var {
     int is_loop;        /* for 文の繰り返しの変数なら 1 */
     int depth;          /* 宣言したブロックの深さ（関数の引数は 0） */
     int is_global;      /* ファイル先頭の const なら 1 */
+    Node *default_arg;  /* initializer-only default recipe */
+    int parameter_index;
     Node *const_val;    /* const の値（コンパイル時に計算したリテラルのノード） */
     Node *decl;         /* const の宣言（ND_DECL）。値を必要になった時点で計算する */
     int const_state;    /* const の値の計算状況（0：未、1：計算中、2：済み） */
@@ -234,6 +236,7 @@ typedef enum {
     ND_LENGTH,  /* lhs.length（配列の要素数、またはUnicodeスカラー値の数） */
     ND_MODEL_INIT, /* named contextual initializer; lhs items carry field names */
     ND_MODEL_COPY,
+    ND_CONSTRUCT, ND_MODEL_SEED, ND_BUILD_CONTEXT, ND_BUILD_REJECT,
     ND_MODEL_NEW, /* default value via the per-model runtime helper */
     ND_MODEL_METHOD,
     ND_FIELD,
@@ -322,6 +325,7 @@ struct Node {
     int end_literal;    /* ND_PRINT の end= が文字列リテラル直書きなら 1 */
     Token *tok;         /* エラー表示用 */
     char *name;         /* 未解決の名前（修飾名を含む） */
+    int init_store;    /* first whole-field assignment may target an empty slot */
     int constant_value; /* canonical evaluated aggregate, not a user initializer */
     Var *ref_temp;      /* const root materialized for a readonly ref call */
     ModelField *field;
@@ -334,6 +338,9 @@ struct Function {
     Model *model;       /* implicit ref this receiver for model methods */
     int is_private;
     int is_readonly;
+    int is_initializer;
+    int is_internal;
+    Var *creation_context;
     const char *name;
     int name_len;
     Token *tok;         /* 関数名の位置 */
@@ -358,6 +365,7 @@ struct ModelField {
     ArrayDim *dims;
     Node *initial;
     int index;
+    int pending;
 };
 struct Model {
     Model *next;
@@ -367,6 +375,12 @@ struct Model {
     ModelField *fields;
     int field_count;
     int state;
+    Function *initializer;
+    Function *builder;
+    Function *default_builder;
+    int recipe_state;
+    int dependency_state;
+    int init_state;
     int file_state;    /* memoized contains_file: visiting / no / yes */
     int copy_label;
     int equal_label;

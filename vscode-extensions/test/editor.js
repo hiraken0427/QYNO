@@ -95,6 +95,27 @@ async function run() {
     const readonlyOutline = await vscode.commands.executeCommand('vscode.executeDocumentSymbolProvider',readonlyDoc.uri);
     const readonlyPoint = readonlyOutline.find(s=>s.name==='Point');
     assert.equal(readonlyPoint.children.find(s=>s.name==='inspect').detail,'public readonly void inspect(ref readonly Point other)'); checks++;
+    const initDoc = await vscode.workspace.openTextDocument({ language: 'qyno', content:
+        'model Rectangle;\n\tprivate double stored_width\n\tprivate double stored_height\n\tpublic bool init(double width, double height=1.0);\n\t\tthis.stored_width = width\n\t\tthis.stored_height = height\n\t\treturn true\n\tpublic readonly double area() = this.stored_width * this.stored_height\nint main();\n\tRectangle rect = {width=3.0, height=4.0}\n\trect.area()\n\treturn 0\n' });
+    await vscode.window.showTextDocument(initDoc);
+    const initQuery = (line, prefix, command) => vscode.commands.executeCommand(command,initDoc.uri,new vscode.Position(line,initDoc.lineAt(line).text.indexOf(prefix)+prefix.length));
+    const initKeys = await initQuery(9,'{','vscode.executeCompletionItemProvider');
+    assert.ok(initKeys.items.some(i=>i.label==='width' && i.insertText==='width='));
+    assert.ok(initKeys.items.some(i=>i.label==='height' && i.detail.includes('=1.0')));
+    assert.ok(!initKeys.items.some(i=>i.label==='stored_width')); checks++;
+    const initMethods = await initQuery(10,'rect.','vscode.executeCompletionItemProvider');
+    assert.ok(initMethods.items.some(i=>i.label==='area')); assert.ok(!initMethods.items.some(i=>i.label==='init')); checks++;
+    const initHelp = await initQuery(9,'height=','vscode.executeSignatureHelpProvider');
+    assert.equal(initHelp.signatures[0].label,'public bool Rectangle.init(double width, double height=1.0)');
+    assert.equal(initHelp.activeParameter,1); checks++;
+    const initDefinition = await initQuery(9,'{wi','vscode.executeDefinitionProvider');
+    assert.ok(initDefinition.some(d=>(d.range || d.targetSelectionRange).start.line===3)); checks++;
+    const initHover = await initQuery(9,'{wi','vscode.executeHoverProvider');
+    assert.ok(initHover.some(h=>h.contents.some(c=>c.value?.includes('double width')))); checks++;
+    const initOutline = await vscode.commands.executeCommand('vscode.executeDocumentSymbolProvider',initDoc.uri);
+    const initSymbol = initOutline.find(s=>s.name==='Rectangle').children.find(s=>s.name==='init');
+    assert.equal(initSymbol.kind,vscode.SymbolKind.Constructor);
+    assert.equal(initSymbol.detail,'public bool init(double width, double height=1.0)'); checks++;
     console.log(`QYNO VS Code integration: ${checks} checks passed`);
 }
 module.exports={run};
