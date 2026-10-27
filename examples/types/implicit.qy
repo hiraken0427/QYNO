@@ -1,0 +1,23 @@
+using io
+
+model Point;
+	int x
+	int y
+
+Point origin() = {x=3, y=4}
+
+int main();
+	count = 3
+	name = "QYNO"
+	point = origin()
+	matrix = [[1, 2], [3, 4]]
+	copied = matrix
+	copied[0][0] = 9
+	if(true);
+		count = count + 1
+		auto count = str(count)
+		print(count + "!")
+	print("{name}: {count}, {point.x}, {point.y}")
+	print(matrix)
+	print(copied)
+	return 0

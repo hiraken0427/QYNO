@@ -219,6 +219,15 @@ function analyze(text, uri = '') {
             const variable = declare(name, { ...member, kind: scope.kind === 'model' ? 'field' : constant ? 'constant' : 'variable', type, rank: rankOf(ts.slice(index + 2, end < 0 ? ts.length : end)), ref: modifier === 'ref', readonly: constant, scopeId: scope.id });
             if (scope.kind === 'model' && variable) scope.owner?.members.push(variable);
         }
+        if (!declaredType && ts[0]?.kind === 'id' && !KEYWORDS.has(ts[0].value) && ts[1]?.value === '=' &&
+            stack.some(s => s.kind === 'function')) {
+            const name = ts[0].value, ancestors = new Set(stack.map(s => s.id));
+            const bound = symbols.some(s => s.name === name && ancestors.has(s.scopeId) &&
+                ['variable', 'constant', 'parameter', 'function', 'model', 'interface'].includes(s.kind));
+            const namespace = ['io', 'math', ...imports.map(i => i.path.split('.')[0]),
+                ...usings.filter(u => ancestors.has(u.scopeId)).map(u => u.alias)].includes(name);
+            if (!bound && !namespace) declare(ts[0], { kind: 'variable', type: 'auto', implicit: true, scopeId: scope.id });
+        }
         if (ts[0].value === 'for') {
             let depth = 0, counter = -1;
             for (let i = 1; i < ts.length; i++) {

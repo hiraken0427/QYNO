@@ -1983,6 +1983,7 @@ static void check_names(Ast *ast)
 #include "initialization_flow.inc"
 #include "file_close_analysis.inc"
 #include "interfaces_specialize.inc"
+#include "inference_warnings.inc"
 
 void typecheck(Ast *ast)
 {
@@ -2029,5 +2030,6 @@ void typecheck(Ast *ast)
     for (fn = ast->funcs; fn; fn = fn->next) if (fn->is_initializer) check_initializer_completion(fn);
     specialize_interfaces(ast);
     check_file_closes(ast);
+    warn_unused_inferred_locals(ast);
     cur_func = NULL;
 }

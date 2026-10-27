@@ -14,6 +14,55 @@ function labels(text, modules) { return items(text, modules).map(i => i.label); 
 function at(text, modules) { const f = fixture(text, modules); return symbolAt(f.project, f.line, f.character); }
 function hint(text, modules) { const f = fixture(text, modules); return signature(f.project, f.line, f.character); }
 
+test('implicit local declarations are completed and located with auto labels', () => {
+    const result = items('int main();\n\tcount = 3\n\t¦');
+    assert.equal(result.find(i => i.label === 'count').detail, 'auto count');
+    assert.equal(at('int main();\n\tcount = 3\n\tprint(cou¦nt)').line, 1);
+});
+
+test('assignment to an existing outer binding does not create another declaration', () => {
+    const text = 'int main();\n\tcount = 3\n\tif(true);\n\t\tcount = 4\n\t\tprint(count)\n\tprint(count)';
+    assert.equal(analyze(text).symbols.filter(s => s.name === 'count').length, 1);
+    assert.equal(at(text.replace('count = 4', 'cou¦nt = 4')).line, 1);
+    assert.equal(at(text.replace('print(count)', 'print(cou¦nt)')).line, 1);
+});
+
+test('implicit names are not visible before or within their own initializer', () => {
+    assert.ok(!labels('int main();\n\t¦\n\tcount = 3').includes('count'));
+    assert.ok(!labels('int main();\n\tcount = cou¦').includes('count'));
+    assert.ok(!labels('int main();\n\tif(true);\n\t\tinside = 3\n\t¦').includes('inside'));
+});
+
+test('explicit nested shadowing resolves initializer and later reads separately', () => {
+    const prefix = 'int main();\n\tint count = 3\n\tif(true);\n\t\tauto count = count + 1\n\t\tprint(count)\n\tprint(count)';
+    assert.equal(at(prefix.replace('= count +', '= cou¦nt +')).line, 1);
+    assert.equal(at(prefix.replace('\t\tprint(count)', '\t\tprint(cou¦nt)')).line, 3);
+    assert.equal(at(prefix.replace('\n\tprint(count)', '\n\tprint(cou¦nt)')).line, 1);
+    assert.equal(items(prefix + '\n\tcou¦').filter(i => i.label === 'count').length, 1);
+});
+
+test('implicit declarations respect parameter and sibling block bindings', () => {
+    const source = 'int change(int count);\n\tcount = 3\n\tif(true);\n\t\tvalue = 4\n\telse;\n\t\tvalue = 5\n\treturn count';
+    const symbols = analyze(source).symbols;
+    assert.equal(symbols.filter(s => s.name === 'count').length, 1);
+    assert.equal(symbols.filter(s => s.name === 'value').length, 2);
+    assert.ok(!labels(source + '\nint main();\n\t¦').includes('value'));
+});
+
+test('only simple local assignments can introduce inferred names', () => {
+    for (const body of ['count += 1', 'count++', 'obj.field = 1', 'values[0] = 1'])
+        assert.ok(!analyze('int main();\n\t' + body).symbols.some(s => s.implicit));
+    assert.ok(!analyze('count = 1').symbols.some(s => s.implicit));
+    assert.ok(!analyze('model Data;\n\tcount = 1').symbols.some(s => s.implicit));
+    assert.ok(!analyze('int main();\n\tio = 1').symbols.some(s => s.implicit));
+});
+
+test('methods index inferred locals without introducing model fields', () => {
+    const model = analyze('model Data;\n\tint get();\n\t\tresult = 3\n\t\treturn result');
+    assert.ok(model.symbols.some(s => s.name === 'result' && s.implicit));
+    assert.ok(!model.symbols.find(s => s.name === 'Data').members.some(s => s.name === 'result'));
+});
+
 test('auto locals and constants support names, navigation and declared type labels', () => {
     const source = 'int main();\n\tauto count = 3\n\tconst auto LIMIT = 10\n\t¦';
     const result = items(source);

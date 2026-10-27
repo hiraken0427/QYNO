@@ -9,7 +9,7 @@ qyc: $(OBJS)
 
 $(OBJS): qyc.h
 codegen.o: collections_codegen.inc memory_codegen.inc places_codegen.inc models_codegen.inc file_runtime.inc integer_bases_codegen.inc
-type.o: arrays_type.inc models_type.inc readonly_type.inc const_models.inc initialization_type.inc initialization_flow.inc interfaces_type.inc interfaces_specialize.inc integer_bases_type.inc file_close_analysis.inc
+type.o: arrays_type.inc models_type.inc readonly_type.inc const_models.inc initialization_type.inc initialization_flow.inc interfaces_type.inc interfaces_specialize.inc integer_bases_type.inc file_close_analysis.inc inference_warnings.inc
 
 test: qyc
 	PYTHON="$(PYTHON)" bash ./test.sh
@@ -30,6 +30,10 @@ test: qyc
 	$(PYTHON) tests/bitwise_test.py ./qyc
 	$(PYTHON) tests/integer_bases_test.py ./qyc
 	$(PYTHON) tests/auto_test.py ./qyc
+	$(PYTHON) tests/implicit_declarations_test.py ./qyc
+
+test-implicit-declarations: qyc
+	$(PYTHON) tests/implicit_declarations_test.py ./qyc
 
 test-auto: qyc
 	$(PYTHON) tests/auto_test.py ./qyc
@@ -88,4 +92,4 @@ test-arrays: qyc
 clean:
 	rm -f qyc qyc.exe *.o tmp tmp.exe tmp.qy tmp.s
 
-.PHONY: test test-auto test-bitwise test-integer-bases test-interfaces test-initialization test-readonly test-visibility test-model test-file test-input-refs test-for test-io test-modules test-lineedit test-rounding test-semantics test-text test-arrays clean
+.PHONY: test test-auto test-implicit-declarations test-bitwise test-integer-bases test-interfaces test-initialization test-readonly test-visibility test-model test-file test-input-refs test-for test-io test-modules test-lineedit test-rounding test-semantics test-text test-arrays clean

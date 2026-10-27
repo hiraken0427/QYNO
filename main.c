@@ -28,8 +28,8 @@ void fatal(const char *fmt, ...)
     exit(1);
 }
 
-/* ソースの該当行と ^ で位置を示してエラー終了する */
-static void source_error(SourceFile *source, int line, int col, const char *fmt, va_list ap)
+/* ソースの該当行と ^ で診断位置を示す */
+static void source_diagnostic(SourceFile *source, int line, int col, const char *level, const char *fmt, va_list ap)
 {
     const char *line_start;
     const char *line_end;
@@ -49,7 +49,7 @@ static void source_error(SourceFile *source, int line, int col, const char *fmt,
         line_end++;
     }
 
-    fprintf(stderr, "%s:%d:%d: エラー: ", source->filename, line, col);
+    fprintf(stderr, "%s:%d:%d: %s: ", source->filename, line, col, level);
     vfprintf(stderr, fmt, ap);
     fprintf(stderr, "\n");
 
@@ -58,22 +58,31 @@ static void source_error(SourceFile *source, int line, int col, const char *fmt,
         fputc(line_start[i] == '\t' ? '\t' : ' ', stderr);
     }
     fprintf(stderr, "^\n");
-    exit(1);
 }
 
 void error_at(int line, int col, const char *fmt, ...)
 {
     va_list ap;
     va_start(ap, fmt);
-    source_error(current_file, line, col, fmt, ap);
+    source_diagnostic(current_file, line, col, "エラー", fmt, ap);
     va_end(ap);
+    exit(1);
 }
 
 void error_tok(Token *tok, const char *fmt, ...)
 {
     va_list ap;
     va_start(ap, fmt);
-    source_error(tok->source, tok->line, tok->col, fmt, ap);
+    source_diagnostic(tok->source, tok->line, tok->col, "エラー", fmt, ap);
+    va_end(ap);
+    exit(1);
+}
+
+void warning_tok(Token *tok, const char *fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    source_diagnostic(tok->source, tok->line, tok->col, "警告", fmt, ap);
     va_end(ap);
 }
 

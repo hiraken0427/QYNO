@@ -95,7 +95,7 @@ class SemanticsTests(QynoTestCase):
         cases = (
             ("const int A = B\nconst int B = A\nint main();\n\tprint(A)\n", "循環"),
             ("int main();\n\tif(true);\n\t\tint x = 1\n\tprint(x)\n", "変数"),
-            ("int main();\n\tint n = 1\n\tif(true);\n\t\tint n = 2\n", "すでに"),
+            ("int main();\n\tint n = 1\n\tint n = 2\n", "すでに"),
             ("int main();\n\tif(1);\n\t\treturn 0\n", "bool"),
             ("int main();\n\tbreak\n", "break"),
             ("int main();\n\tcontinue\n", "continue"),
