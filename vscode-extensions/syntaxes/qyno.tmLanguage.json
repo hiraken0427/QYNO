@@ -117,18 +117,24 @@
       ]
     },
     {
-      "match": "^\\s*(\\b(?:int|float|double|bool|str|char|file|void)\\b)\\s+([A-Za-z_]\\w*)(?=\\s*\\()",
+      "match": "^\\s*(?:(public|private)\\s+)?(?:(readonly)\\s+)?([A-Za-z_]\\w*(?:\\.[A-Za-z_]\\w*)*)\\s+([A-Za-z_]\\w*)(?=\\s*\\()",
       "captures": {
         "1": {
-          "name": "storage.type.qyno"
+          "name": "storage.modifier.qyno"
         },
         "2": {
+          "name": "storage.modifier.qyno"
+        },
+        "3": {
+          "name": "storage.type.qyno"
+        },
+        "4": {
           "name": "entity.name.function.qyno"
         }
       }
     },
     {
-      "match": "\\b(const)\\s+(\\b(?:int|float|double|bool|str|char|file|void)\\b)\\s+([A-Za-z_]\\w*)",
+      "match": "\\b(const)\\s+([A-Za-z_]\\w*(?:\\.[A-Za-z_]\\w*)*)\\s+([A-Za-z_]\\w*)",
       "captures": {
         "1": {
           "name": "storage.modifier.qyno"
@@ -161,7 +167,7 @@
       "name": "keyword.control.import.qyno"
     },
     {
-      "match": "\\b(?:ref|val|const|public|private)\\b",
+      "match": "\\b(?:ref|val|const|public|private|readonly)\\b",
       "name": "storage.modifier.qyno"
     },
     {

@@ -211,3 +211,65 @@ test('same spelling in two modules does not imply same nominal owner', () => {
     const result=labels('import geometry.circle\n'+privateSource+'\n\tvoid test(geometry.circle.Counter other);\n\t\tother.¦',{'geometry.circle':privateSource});
     assert.ok(result.includes('current')); assert.ok(!result.includes('count'));
 });
+
+const readonlySource='model Point;\n\tdouble x\n\tprivate readonly int secret() = 7\n\tpublic readonly double distance() = this.x\n\tpublic void move(double dx);\n\t\tthis.x += dx';
+test('readonly methods and ref readonly parameters are parsed and labelled', () => {
+    const model=analyze(readonlySource+'\ndouble measure(ref readonly Point p) = p.distance()');
+    const method=model.symbols.find(s=>s.name==='distance');
+    const fn=model.symbols.find(s=>s.name==='measure');
+    assert.equal(method.readonly,true); assert.equal(fn.params[0].readonly,true); assert.equal(fn.params[0].ref,true);
+    assert.equal(require('../src/analysis').functionLabel(method),'public readonly double distance()');
+    assert.equal(require('../src/analysis').functionLabel(fn),'double measure(ref readonly Point p)');
+    assert.equal(items(readonlySource+'\nint main();\n\tconst Point origin = {}\n\tori¦').find(s=>s.label==='origin').detail,'const Point origin');
+});
+test('const and readonly receivers complete fields and readonly methods only', () => {
+    for (const prefix of ['int main();\n\tconst Point p = {}\n\t', 'void inspect(ref readonly Point p);\n\t']) {
+        const result=items(readonlySource+'\n'+prefix+'p.¦');
+        assert.ok(result.some(s=>s.label==='x' && s.detail==='public double x (readonly)'));
+        assert.ok(result.some(s=>s.label==='distance')); assert.ok(!result.some(s=>['move','secret','addr'].includes(s.label)));
+        assert.ok(result.some(s=>s.label==='value'));
+    }
+    assert.ok(labels(readonlySource+'\nint main();\n\tPoint p\n\tp.¦').includes('move'));
+});
+test('readonly this includes private readonly methods and leaves mutable other instances writable', () => {
+    const prefix=readonlySource+'\n\tpublic readonly void inspect(ref Point other);\n\t\t';
+    const result=labels(prefix+'this.¦');
+    assert.ok(result.includes('secret')); assert.ok(result.includes('distance')); assert.ok(!result.includes('move'));
+    assert.ok(labels(prefix+'other.¦').includes('move'));
+});
+test('readonly propagates through nested fields arrays and value without changing copies', () => {
+    const prefix=readonlySource+'\nmodel Box;\n\tPoint child\n\tPoint children[]\n\tint numbers[]\nint main();\n\tconst Box box = {}\n\t';
+    for (const receiver of ['box.child','box.children[0]','box.value.child']) {
+        const result=labels(prefix+receiver+'.¦');
+        assert.ok(result.includes('distance')); assert.ok(!result.includes('move'));
+    }
+    for (const receiver of ['box.children','box.numbers']) {
+        const result=labels(prefix+receiver+'.¦');
+        assert.ok(result.includes('length')); assert.ok(!result.some(s=>['add','remove_at','clear'].includes(s)));
+    }
+    assert.ok(labels(prefix+'Point copy = box.child\n\tcopy.¦').includes('move'));
+});
+test('ref readonly arrays of every scalar type filter mutating operations', () => {
+    for (const type of ['int','float','double','bool','str','char','file']) {
+        const result=labels(`void inspect(ref readonly ${type} a[][]);\n\ta[0].¦`);
+        assert.ok(result.includes('length')); assert.ok(!result.includes('add')); assert.ok(!result.includes('clear'));
+    }
+});
+test('readonly signatures definitions and manually entered mutating method hover remain available', () => {
+    const prefix=readonlySource+'\nint main();\n\tconst Point p = {}\n\t';
+    assert.equal(hint(prefix+'p.distance(¦').label,'public readonly double p.distance()');
+    assert.equal(hint(prefix+'p.move(¦'),undefined);
+    assert.equal(at(prefix+'p.mo¦ve(1.0)').line,4);
+    const helper='double measure(ref readonly Point p) = p.distance()\n';
+    assert.equal(items(readonlySource+'\n'+helper+'int main();\n\tmea¦').find(s=>s.label==='measure').insertText,'measure(ref ${1:p})');
+});
+test('qualified imported constant models preserve readonly across aliases and fields', () => {
+    const modules={'geometry.circle':readonlySource+'\nconst Point ORIGIN = {}'};
+    for (const receiver of ['geometry.circle.ORIGIN','geo.ORIGIN']) {
+        const prefix='import geometry.circle\nusing geometry.circle as geo\nint main();\n\t';
+        const result=labels(prefix+receiver+'.¦',modules);
+        assert.ok(result.includes('distance')); assert.ok(!result.includes('move'));
+        assert.equal(hint(prefix+receiver+'.distance(¦',modules).label,`public readonly double ${receiver}.distance()`);
+    }
+    assert.ok(labels('int main();\n\tread¦').includes('readonly'));
+});

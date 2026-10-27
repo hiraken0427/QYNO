@@ -74,6 +74,27 @@ async function run() {
     const counterOutline = visibilityOutline.find(s=>s.name==='Counter');
     assert.equal(counterOutline.children.find(s=>s.name==='count').detail,'private int count');
     assert.equal(counterOutline.children.find(s=>s.name==='current').detail,'public int current()'); checks++;
+    const readonlyDoc = await vscode.workspace.openTextDocument({ language: 'qyno', content:
+        'model Point;\n\tprivate int secret = 7\n\tdouble x\n\tint items[]\n\tpublic void move(double dx);\n\t\tthis.x += dx\n\tpublic readonly double distance() = this.x\n\tprivate readonly int hidden() = this.secret\n\tpublic readonly void inspect(ref readonly Point other);\n\t\tthis.distance()\n\t\tother.distance()\nint main();\n\tconst Point p = {}\n\tp.distance()\n\tio.print(p.items.length)\n\treturn 0\n' });
+    await vscode.window.showTextDocument(readonlyDoc);
+    const query = (line, prefix, command) => vscode.commands.executeCommand(command,readonlyDoc.uri,new vscode.Position(line,readonlyDoc.lineAt(line).text.indexOf(prefix)+prefix.length));
+    const constMembers = await query(13,'p.','vscode.executeCompletionItemProvider');
+    assert.ok(constMembers.items.some(i=>i.label==='distance')); assert.ok(!constMembers.items.some(i=>['move','secret','addr'].includes(i.label))); checks++;
+    const readonlyThis = await query(9,'this.','vscode.executeCompletionItemProvider');
+    assert.ok(readonlyThis.items.some(i=>i.label==='hidden')); assert.ok(!readonlyThis.items.some(i=>i.label==='move')); checks++;
+    const readonlyOther = await query(10,'other.','vscode.executeCompletionItemProvider');
+    assert.ok(readonlyOther.items.some(i=>i.label==='hidden')); assert.ok(!readonlyOther.items.some(i=>i.label==='move')); checks++;
+    const arrayMembers = await query(14,'p.items.','vscode.executeCompletionItemProvider');
+    assert.ok(arrayMembers.items.some(i=>i.label==='length')); assert.ok(!arrayMembers.items.some(i=>['add','clear','remove_at'].includes(i.label))); checks++;
+    const readonlyHover = await query(13,'p.dis','vscode.executeHoverProvider');
+    assert.ok(readonlyHover.some(h=>h.contents.some(c=>c.value?.includes('public readonly double distance()')))); checks++;
+    const constHover = await query(13,'p','vscode.executeHoverProvider');
+    assert.ok(constHover.some(h=>h.contents.some(c=>c.value?.includes('const Point p')))); checks++;
+    const readonlyHelp = await query(13,'p.distance(','vscode.executeSignatureHelpProvider');
+    assert.equal(readonlyHelp.signatures[0].label,'public readonly double p.distance()'); checks++;
+    const readonlyOutline = await vscode.commands.executeCommand('vscode.executeDocumentSymbolProvider',readonlyDoc.uri);
+    const readonlyPoint = readonlyOutline.find(s=>s.name==='Point');
+    assert.equal(readonlyPoint.children.find(s=>s.name==='inspect').detail,'public readonly void inspect(ref readonly Point other)'); checks++;
     console.log(`QYNO VS Code integration: ${checks} checks passed`);
 }
 module.exports={run};

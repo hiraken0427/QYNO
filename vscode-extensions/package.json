@@ -1,8 +1,8 @@
 {
   "name": "qyno-vscode",
-  "displayName": "QYNO 0.26.1 VSCode Option",
-  "description": "QYNO 0.26.1 language support: highlighting, scope-aware completions, navigation and signatures.",
-  "version": "0.26.1",
+  "displayName": "QYNO 0.26.2 VSCode Option",
+  "description": "QYNO 0.26.2 language support: highlighting, scope-aware completions, navigation and signatures.",
+  "version": "0.26.2",
   "publisher": "hiraken0427",
   "author": "hiraken0427",
   "license": "UNLICENSED",
@@ -105,7 +105,7 @@
     "test": "node --test test/*.test.js",
     "check": "node --check src/extension.js && node --check src/analysis.js && node --check src/language.js",
     "test:editor": "node test/run-editor.js",
-    "package": "vsce package --skip-license --baseContentUrl https://github.com/hiraken0427/QYNO/blob/dev/vscode-extensions --out 0.26.1_VSCode_option.vsix"
+    "package": "vsce package --skip-license --baseContentUrl https://github.com/hiraken0427/QYNO/blob/dev/vscode-extensions --out 0.26.2_VSCode_option.vsix"
   },
   "devDependencies": {
     "@vscode/vsce": "4.0.0",

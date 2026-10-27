@@ -46,6 +46,7 @@ static void check_array_literal(Node *node, Type expected)
         next = item->next;
         item->next = NULL;
         check_expected(item, element);
+        check_value_transfer(item);
         tail = tail->next = coerce(item, element, item->tok, "配列の要素");
     }
     node->lhs = head.next;
@@ -127,7 +128,7 @@ static Node *copy_array(Node *source, ArrayDim *dims, int pad)
     return node;
 }
 
-static Var *check_place(Node *place)
+static Var *check_read_place(Node *place)
 {
     Node *root = place;
     int depth = 0;
@@ -142,10 +143,15 @@ static Var *check_place(Node *place)
         error_tok(root->tok, "更新先は変数、または変数から始まる添字にしてください");
     }
     check_expr(root);
-    if (root->var->is_const) {
-        error_tok(root->tok, "const の定数・配列・文字列とその要素は変更できません");
-    }
     return root->var;
+}
+
+static Var *check_place(Node *place)
+{
+    Var *v = check_read_place(place);
+    if (v->is_const || v->is_readonly)
+        error_tok(place->tok, "const の定数・readonly の値・配列・文字列とその要素は変更できません");
+    return v;
 }
 
 static void check_method(Node *node)
@@ -168,6 +174,7 @@ static void check_method(Node *node)
     if (expected) {
         Type to = node->val == AM_ADD ? array_element(node->lhs->ty) : TY_INT;
         check_expected(node->rhs, to);
+        if (node->val == AM_ADD) check_value_transfer(node->rhs);
         node->rhs = coerce(node->rhs, to, node->rhs->tok, "配列操作の引数");
         if (node->val == AM_REMOVE_AT && is_const_expr(node->rhs) && eval_const(node->rhs).i < 0) {
             const_error(node, "配列の添字が範囲外です");
@@ -195,6 +202,7 @@ static void check_store(Node *node)
     destination = type_is_text(node->lhs->lhs->ty) ? TY_CHAR : node->lhs->ty;
     if (node->val == UPDATE_SET) {
         check_expected(node->rhs, destination);
+        check_value_transfer(node->rhs);
         node->rhs = coerce(node->rhs, destination, node->rhs->tok, "要素への代入");
         if (type_is_array(destination) && is_const_expr(node->rhs)) {
             validate_const_array(node, eval_const(node->rhs), expression_dims(node->lhs));
@@ -240,7 +248,8 @@ static Value constant_array_build(Node *where, Value source, Type ty, ArrayDim *
         if (item != NULL) {
             value = eval_const(item);
             item = item->next;
-        } else if (element == TY_STR) value.s = "";
+        } else if (type_is_model(element)) value = eval_const(model_default(element, NULL, where->tok));
+        else if (element == TY_STR) value.s = "";
         else if (element == TY_CHAR) { value.s = "\0"; value.len = 1; }
         if (type_is_array(element)) {
             value = constant_array_build(where, value, element, dims != NULL ? dims->next : NULL, pad, budget);

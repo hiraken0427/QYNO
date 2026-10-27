@@ -1,4 +1,4 @@
-# モデル型（0.26.1）
+# モデル型（0.26.2）
 
 `model` は型付きフィールドとメソッドを持つ値型。代入・通常の引数・戻り値では
 独立した値を作り、変更したい変数は `ref` で渡す。型名が異なれば別の型であり、
@@ -181,8 +181,31 @@ int main();
 `geometry.Point`、`using geometry`、`using geometry.Point` にも対応する。
 別ファイルの同じ名前のモデルは別の型。モデルと通常の関数の前方参照も可能。
 
-0.26.1 では継承、カスタムコンストラクタ、静的メソッド、
-モデルを含む const、自己参照・相互参照するフィールド型は導入しない。
+0.26.2 では継承、カスタムコンストラクタ、静的メソッド、
+自己参照・相互参照するフィールド型は導入しない。
 配列を介するフィールド型の循環も診断する。モデルの入れ子と参照・更新パスは128段まで。
 
 実行例: [examples/models/main.qy](../examples/models/main.qy)
+
+## const と読み取り専用（0.26.2）
+
+モデルとモデル配列も `const Point origin = {x=3.0, y=4.0}` のように定数宣言できる。
+従来の const と同じく初期値はコンパイル時に確定する式に限り、関数・メソッド呼び出しは使えない。
+フィールドの既定値と他の const を利用でき、public フィールドは定数式として取り出せる。
+file を含むモデル型は const の対象から除外する。
+
+`public readonly double distance() = math.sqrt(this.x^2 + this.y^2)` のように、
+暗黙の this を読み取り専用にするメソッドを定義できる。数式・ブロック形式のどちらでも使える。
+const / readonly の対象からは readonly メソッドだけを呼べ、入れ子・配列・ref・入力・addr を通じた変更も禁止する。
+readonly は実行時の参照権限であり、コンパイル時実行や純粋関数を意味しない。
+
+補助関数の引数には `ref readonly Point point`、配列には `ref readonly int items[][]` と書く。
+呼び出しは従来どおり `inspect(ref point)`。const も渡せ、変更可能な参照へ権限を戻すことはできない。
+独立した値コピー・値引数・戻り値は、コピー先の宣言に従って変更できる。
+
+readonly の file は is_open・比較などの観測だけを許可する。read / readline も現在位置を変えるため禁止し、
+file を含むモデル・配列も値コピーや戻り値を介して共有ハンドルを持ち出せない。
+明示 close の責任を維持し、変更可能な所有元やメソッドから閉じる。
+
+詳細は [const モデルと読み取り専用の仕様](model-readonly-design.md)、
+実行例は [examples/models/readonly.qy](../examples/models/readonly.qy) を参照。

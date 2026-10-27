@@ -19,6 +19,10 @@ static void gen_model_init(Node *node)
     gen_model_allocate(type_model(node->ty)); push();
     for (item = node->lhs; item; item = item->next) {
         gen_expr(item->lhs);
+        if (node->constant_value && type_is_array(item->field->ty)) {
+            collection_shape(item->field->ty, item->field->dims, RDI);
+            x64_mov_imm(RSI, 1); x64_call(array_copy_label);
+        }
         x64_load(RDX, RSP, 0); x64_load(RDX, RDX, 24);
         x64_store(RDX, item->field->index * 8, RAX);
     }

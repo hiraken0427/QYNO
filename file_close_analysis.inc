@@ -264,7 +264,7 @@ static FcMap *fc_call(FcContext *ctx, FcState *s, Node *n)
     int i, id;
     args = fc_new((size_t)(n->nargs + 1) * sizeof(*args));
     i = 0; for (arg = n->lhs; arg; arg = arg->next) {
-        if (arg->kind == ND_REFARG && arg->rhs) fc_set(s, arg->lhs->var, fc_eval(ctx, s, arg->rhs));
+        if (arg->kind == ND_REFARG && arg->rhs) fc_set(s, arg->ref_temp ? arg->ref_temp : arg->lhs->var, fc_eval(ctx, s, arg->rhs));
         args[i++] = fc_eval(ctx, s, arg->kind == ND_REFARG ? arg->lhs : arg);
     }
     if (!callee->relevant) return fc_empty();

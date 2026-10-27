@@ -57,6 +57,7 @@ static void check_model_init(Node *node, Type expected)
         check_member_access(item, f->model, f->is_private, f->name, f->tok);
         item->field = f;
         check_expected(item->lhs, f->ty);
+        check_value_transfer(item->lhs);
         item->lhs = coerce(item->lhs, f->ty, item->tok, "フィールドの初期値");
         if (type_is_array(f->ty)) item->lhs = copy_array(item->lhs, f->dims, 1);
         if (type_is_model(f->ty)) item->lhs = copy_model(item->lhs);
@@ -95,6 +96,8 @@ static void check_model_method(Node *node)
         if (fn->model == type_model(node->lhs->ty) && same_name(fn->name, fn->name_len, node->tok->loc, node->tok->len)) break;
     if (!fn) error_tok(node->tok, "モデル %s にメソッド %.*s はありません", type_name(node->lhs->ty), node->tok->len, node->tok->loc);
     check_member_access(node, fn->model, fn->is_private, fn->name, fn->tok);
+    if (readonly_place(node->lhs) && !fn->is_readonly)
+        error_tok(node->tok, "const / readonly の %s から呼べません。このメソッドは readonly ではありません", fn->model->name);
     self = calloc(1, sizeof(*self)); if (!self) fatal("メソッドの対象を確保できません");
     { Node *root = node->lhs;
       while (root->kind == ND_INDEX) root = root->lhs;

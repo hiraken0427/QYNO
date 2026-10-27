@@ -1,5 +1,5 @@
 'use strict';
-// Reference: QYNO 0.26.1. No runtime dependency on a compiler installation.
+// Reference: QYNO 0.26.2. No runtime dependency on a compiler installation.
 const callable = (path, type, params, documentation) => ({
     kind: 'function', name: path.split('.').at(-1), path, type, rank: 0,
     params: params.map(p => typeof p === 'string' ? { name: p, type: 'value', rank: 0 } : { rank: 0, ...p }),
@@ -24,7 +24,7 @@ const STANDARD = [
     callable('io.file.write', 'int', [{ name: 'destination', type: 'file' }, { name: 'value', type: 'value', placeholder: '"text"' }], 'print と同じ書式で書き込み、UTF-8のバイト数を返します。改行は自動追加しません。'),
     callable('io.file.exists', 'bool', [{ name: 'path', type: 'str', placeholder: '"path.txt"' }], '通常ファイルの存在を確認します。相対パスは実行時の作業ディレクトリが基準です。')
 ];
-const KEYWORD_COMPLETIONS = ['int', 'float', 'double', 'bool', 'str', 'char', 'file', 'void', 'const', 'ref', 'val', 'return', 'if', 'else', 'for', 'while', 'break', 'continue', 'and', 'or', 'not', 'true', 'false', 'none', 'import', 'using', 'as', 'model', 'public', 'private'];
+const KEYWORD_COMPLETIONS = ['int', 'float', 'double', 'bool', 'str', 'char', 'file', 'void', 'const', 'ref', 'val', 'return', 'if', 'else', 'for', 'while', 'break', 'continue', 'and', 'or', 'not', 'true', 'false', 'none', 'import', 'using', 'as', 'model', 'public', 'private', 'readonly'];
 const properties = {
     length: { name: 'length', kind: 'property', type: 'int', documentation: '配列の要素数、または文字列のUnicodeスカラー値の数。読み取り専用です。' },
     addr: { name: 'addr', kind: 'property', type: 'address', documentation: '変数の場所。ref 変数の場合は現在参照している場所です。' },

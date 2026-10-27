@@ -107,3 +107,11 @@ Python の失敗・例外・タイムアウトはコマンドの失敗として�
 同型内部・別モデル・モジュール別名、読み書き・ref・入力・初期化・既定値の再利用、
 自動表示・コピー・比較、private file の close 責任と Windows / アセンブリ出力を検証する。
 `make test` にも含む。実行例は `examples/models/visibility.qy`。
+
+## 0.26.2 の const / readonly 検証
+
+`make test-readonly` は専用スイート（32メソッド）を実行する。
+定数モデルの評価・前方参照・配列上限、読み取り専用メソッドと ref 引数、
+入れ子・コピー・別名・GC下の実体化、file の共有と明示 close、モジュール、
+Windows / アセンブリ出力を検証する。`make test` にも含む。
+実行例は `examples/models/readonly.qy`。
