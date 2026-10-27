@@ -1,4 +1,4 @@
-# QYNO 0.26.9
+# QYNO 0.26.10
 
 C99 で実装した、Linux x64 / Windows x64 向けのコンパイラ。
 UTF-8 の `.qy` ソースから実行ファイルを直接生成する。
@@ -35,9 +35,9 @@ int main();
 
 ## VS Code 拡張
 
-[VSCode Option](vscode-extensions/README.md) は QYNO 0.26.9 のハイライト、
+[VSCode Option](vscode-extensions/README.md) は QYNO 0.26.10 のハイライト、
 ユーザー定義の関数名・変数名の補完、定義への移動、引数ヒントに対応する。
-[vscode-extensions/0.26.9_VSCode_option.vsix](vscode-extensions/0.26.9_VSCode_option.vsix) を
+[vscode-extensions/0.26.10_VSCode_option.vsix](vscode-extensions/0.26.10_VSCode_option.vsix) を
 VS Code の「VSIX からのインストール…」で指定する。
 
 ## ローカル変数の型推論
@@ -52,13 +52,16 @@ VS Code の「VSIX からのインストール…」で指定する。
 この段階の int は従来どおり64bit。
 
 関数の戻り値は `auto square(int x) = x^2` または `square(int x) = x^2` と書いて推論できる。
-ブロック形式とモデルのメソッドにも対応する。引数の型は引き続き明示し、
+ブロック形式とモデルのメソッドにも対応する。
+`square(x) = x^2` や `auto square(auto x) = x^2` のように引数の型も省略でき、
+呼び出し時の型ごとに関数を具体化する。`int square(x)` は戻り値の int 制約を維持する。
 戻り値の推論が循環する再帰では必要な関数の戻り値型を明示する。
 詳細は [型拡張の実装順と現時点の仕様](docs/types-roadmap.md)、
 実行例は [examples/types/auto.qy](examples/types/auto.qy) を参照。
 型名省略とスコープの例は [examples/types/implicit.qy](examples/types/implicit.qy) を参照。
 ファイル先頭の定数とモジュールの例は [examples/types/constants.qy](examples/types/constants.qy) を参照。
 関数の戻り値推論の例は [examples/types/functions.qy](examples/types/functions.qy) を参照。
+引数の型推論の例は [examples/types/generic.qy](examples/types/generic.qy) を参照。
 
 ## モデル型
 

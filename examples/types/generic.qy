@@ -1,0 +1,30 @@
+using io
+
+square(x) = x^2
+twice(auto x) = x * 2
+first(ref readonly values) = values[0]
+
+increase(ref x);
+	x++
+
+append(ref values, value);
+	values.add(value)
+
+model Counter;
+	private int bias = 3
+
+	readonly add(x) = this.bias + x
+
+int main();
+	print("{square(3)} {square(1.5)}")
+	print("{twice(4)} {twice(2.5)}")
+	values = [1, 2]
+	increase(ref values[0])
+	append(ref values, 3)
+	print(values)
+	print(first(ref values))
+	str names[] = ["QYNO", "language"]
+	print(first(ref names))
+	Counter counter
+	print("{counter.add(4)} {counter.add(0.5)}")
+	return 0

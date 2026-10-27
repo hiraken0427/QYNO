@@ -5,7 +5,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#define QYC_VERSION "0.26.9"
+#define QYC_VERSION "0.26.10"
 
 typedef struct SourceFile SourceFile;
 typedef struct Module Module;
@@ -353,6 +353,9 @@ struct Function {
     Interface *contract; /* signature-only interface method */
     int is_template;
     Function *template_origin;
+    int is_generic;     /* 型未確定の引数を持つ未検査テンプレート */
+    Function *generic_origin;
+    int generic_instances;
     Model *model;       /* implicit ref this receiver for model methods */
     int is_private;
     int is_readonly;

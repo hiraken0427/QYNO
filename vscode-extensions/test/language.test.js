@@ -14,6 +14,42 @@ function labels(text, modules) { return items(text, modules).map(i => i.label); 
 function at(text, modules) { const f = fixture(text, modules); return symbolAt(f.project, f.line, f.character); }
 function hint(text, modules) { const f = fixture(text, modules); return signature(f.project, f.line, f.character); }
 
+test('omitted and auto argument types are preserved in generic signatures', () => {
+    const source = 'square(x) = x^2\nauto add(auto x, double y) = x + y\nint main();\n\t¦';
+    const result = items(source);
+    assert.equal(result.find(i => i.label === 'square').detail, 'auto square(auto x)');
+    assert.equal(result.find(i => i.label === 'add').detail, 'auto add(auto x, double y)');
+    assert.equal(hint('square(x) = x^2\nint main();\n\tsquare(¦').label, 'auto square(auto x)');
+});
+
+test('generic ref and readonly argument completion retains passing modes', () => {
+    const source = 'first(ref readonly values) = values[0]\nint main();\n\tfi¦';
+    const first = items(source).find(i => i.label === 'first');
+    assert.equal(first.detail, 'auto first(ref readonly auto values)');
+    assert.equal(first.insertText, 'first(ref ${1:values})');
+    assert.equal(at('first(ref readonly values) = val¦ues[0]').name, 'values');
+});
+
+test('inferred parameters are completed inside their function and do not escape', () => {
+    assert.ok(labels('square(x);\n\t¦').includes('x'));
+    assert.equal(at('square(x);\n\treturn ¦x^2').line, 0);
+    assert.ok(!labels('square(x) = x^2\nint main();\n\t¦').includes('x'));
+});
+
+test('generic model methods retain readonly and parameter details', () => {
+    const source = 'model Counter;\n\tprivate int bias\n\treadonly add(x) = this.bias + x\nint main();\n\tCounter c\n\tc.¦';
+    const add = items(source).find(i => i.label === 'add');
+    assert.equal(add.detail, 'public readonly auto add(auto x)');
+    assert.equal(add.insertText, 'add(${1:x})');
+});
+
+test('imported generic function arguments retain definitions and signature hints', () => {
+    const modules = {helper:'square(x) = x^2\nfirst(ref readonly x) = x[0]'};
+    assert.equal(hint('import helper\nint main();\n\thelper.square(¦', modules).label, 'auto helper.square(auto x)');
+    assert.equal(at('import helper\nint main();\n\thelper.squ¦are(3)', modules).uri, 'file:///helper.qy');
+    assert.equal(items('import helper\nusing helper\nint main();\n\tfi¦', modules).find(i => i.label === 'first').insertText, 'first(ref ${1:x})');
+});
+
 test('auto and omitted return functions support forward completion and signatures', () => {
     const source = 'int main();\n\t¦\nauto square(int x) = x^2\ntwice(int n) = n * 2';
     const result = items(source);

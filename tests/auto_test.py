@@ -112,9 +112,8 @@ class AutoTests(QynoTestCase):
                 self.compile_source(program('void noop();', '\treturn', 'int main();',
                     '\tint n = 1', '\tauto value = ' + value), error='エラー')
 
-    def test_field_parameter_main_and_loop_auto_restrictions(self):
+    def test_field_main_and_loop_auto_restrictions(self):
         for source in [program('auto main() = 0'),
-                       program('int f(auto n) = n', 'int main();', '\treturn 0'),
                        program('model Point;', '\tauto x = 0', 'int main();', '\treturn 0'),
                        program('int main();', '\tfor(0 <= auto i < 2, i++);', '\t\tprint(i)')]:
             with self.subTest(source=source): self.compile_source(source, error='エラー')

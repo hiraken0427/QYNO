@@ -200,7 +200,9 @@ function analyze(text, uri = '') {
                     let p = 0; const ref = part[p]?.value === 'ref';
                     if (['ref', 'val'].includes(part[p]?.value)) p++;
                     const readonly = ref && part[p]?.value === 'readonly'; if (readonly) p++;
-                    const parameterType = readType(part, p);
+                    const omittedParameter = part[p]?.kind === 'id' && !KEYWORDS.has(part[p].value) &&
+                        (!part[p + 1] || part[p + 1].value === '[');
+                    const parameterType = omittedParameter ? { name: 'auto', end: p } : readType(part, p);
                     if (!parameterType) continue;
                     p = parameterType.end - 1;
                     const equal = part.findIndex((t, n) => n > p + 1 && t.value === '=');
