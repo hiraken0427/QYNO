@@ -83,6 +83,7 @@ static int depth;
 static int main_label;
 static int write_label;
 static int print_int_label;
+static int integer_format_label;
 static int print_double_label;
 static int print_float_label;
 static int print_bool_label;
@@ -2340,110 +2341,7 @@ static void gen_word_follows(void)
  * 状態は 0 成功、1 整数として読めない、2 int の範囲外。失敗したら rsi は読み始めの位置に戻す。
  * 形は [+-] 数字。rdx は変えない。
  */
-static void gen_parse_int(void)
-{
-    int digits;
-    int chkplus;
-    int dloop;
-    int ddone;
-    int ok;
-    int ovf;
-    int nextd;
-    int pos;
-    int fail1;
-    int fail2;
-    int out;
-
-    digits = x64_new_label(".L.qy_parse_int.digits");
-    chkplus = x64_new_label(".L.qy_parse_int.plus");
-    dloop = x64_new_label(".L.qy_parse_int.loop");
-    ddone = x64_new_label(".L.qy_parse_int.done");
-    ok = x64_new_label(".L.qy_parse_int.ok");
-    ovf = x64_new_label(".L.qy_parse_int.ovf");
-    nextd = x64_new_label(".L.qy_parse_int.next");
-    pos = x64_new_label(".L.qy_parse_int.pos");
-    fail1 = x64_new_label(".L.qy_parse_int.fail1");
-    fail2 = x64_new_label(".L.qy_parse_int.fail2");
-    out = x64_new_label(".L.qy_parse_int.out");
-
-    x64_bind(parse_int_label);
-    x64_push(RBP);
-    x64_mov(RBP, RSP);
-    x64_sub_imm(RSP, 16);
-    x64_store(RBP, -8, RSI);            /* 読み始めの位置 */
-    x64_xor(R8, R8);                    /* 負なら 1 */
-    x64_cmp(RSI, RDX);
-    x64_jcc(CC_AE, fail1);
-    x64_load8(RAX, RSI, 0);
-    cmp_rax_imm('-');
-    x64_jcc(CC_NZ, chkplus);
-    x64_mov_imm(R8, 1);
-    x64_add_imm(RSI, 1);
-    x64_jmp(digits);
-    x64_bind(chkplus);
-    cmp_rax_imm('+');
-    x64_jcc(CC_NZ, digits);
-    x64_add_imm(RSI, 1);
-
-    x64_bind(digits);
-    x64_xor(R9, R9);                    /* 絶対値 */
-    x64_xor(R10, R10);                  /* 数字の数 */
-    x64_xor(R11, R11);                  /* 範囲を超えたら 1 */
-    x64_bind(dloop);
-    x64_cmp(RSI, RDX);
-    x64_jcc(CC_AE, ddone);
-    x64_load8(RAX, RSI, 0);
-    x64_sub_imm(RAX, '0');
-    cmp_rax_imm(10);
-    x64_jcc(CC_AE, ddone);
-    /* 922337203685477580 × 10 + 数字 が 2^63 - 1（負なら 2^63）を超えないか */
-    x64_mov_imm(RCX, 922337203685477580LL);
-    x64_cmp(R9, RCX);
-    x64_jcc(CC_A, ovf);
-    x64_jcc(CC_B, ok);
-    x64_mov_imm(RCX, 7);
-    x64_add(RCX, R8);
-    x64_cmp(RAX, RCX);
-    x64_jcc(CC_A, ovf);
-    x64_bind(ok);
-    x64_mov_imm(RCX, 10);
-    x64_imul(R9, RCX);
-    x64_add(R9, RAX);
-    x64_jmp(nextd);
-    x64_bind(ovf);
-    x64_mov_imm(R11, 1);
-    x64_bind(nextd);
-    x64_add_imm(R10, 1);
-    x64_add_imm(RSI, 1);
-    x64_jmp(dloop);
-
-    x64_bind(ddone);
-    x64_test(R10, R10);
-    x64_jcc(CC_Z, fail1);
-    x64_call(word_follows_label);
-    x64_test(RAX, RAX);
-    x64_jcc(CC_NZ, fail1);
-    x64_test(R11, R11);
-    x64_jcc(CC_NZ, fail2);
-    x64_mov(RAX, R9);
-    x64_test(R8, R8);
-    x64_jcc(CC_Z, pos);
-    x64_neg(RAX);
-    x64_bind(pos);
-    x64_xor(RCX, RCX);
-    x64_jmp(out);
-    x64_bind(fail1);
-    x64_mov_imm(RCX, 1);
-    x64_load(RSI, RBP, -8);
-    x64_jmp(out);
-    x64_bind(fail2);
-    x64_mov_imm(RCX, 2);
-    x64_load(RSI, RBP, -8);
-    x64_bind(out);
-    x64_mov(RSP, RBP);
-    x64_pop(RBP);
-    x64_ret();
-}
+#include "integer_bases_codegen.inc"
 
 /*
  * 10進数の M × 10^E を、最も近い double にする（1回だけ丸める）
@@ -4743,6 +4641,7 @@ static void gen_input_routines(void)
     gen_skip_ws();
     gen_word_follows();
     gen_parse_int();
+    gen_integer_format_runtime();
     gen_dec_to_double();
     gen_parse_real();
     gen_parse_bool();
@@ -4939,6 +4838,7 @@ static void gen_input_value(Node *node)
     x64_call(skip_ws_label);
     x64_cmp(RSI, RDX);
     x64_jcc(CC_AE, missing);
+    if (ty == TY_INT) x64_mov_imm(RDI, 0);
     x64_call(ty == TY_INT ? parse_int_label : ty == TY_BOOL ? parse_bool_label : parse_real_label);
     x64_mov_imm(R8, 1);
     x64_cmp(RCX, R8);
@@ -5145,6 +5045,7 @@ static void gen_input_pattern(Node *node)
         x64_cmp(RSI, RDX);
         x64_jcc(CC_AE, missing[i]);
         x64_store(RBP, -f->temp->offset, RSI);          /* 値の先頭（float の範囲外の表示に使う） */
+        if (ty == TY_INT) x64_mov_imm(RDI, f->base);
         x64_call(ty == TY_INT ? parse_int_label : ty == TY_BOOL ? parse_bool_label : parse_real_label);
         x64_mov_imm(R8, 1);
         x64_cmp(RCX, R8);
@@ -5504,6 +5405,30 @@ static void gen_expr(Node *node)
     case ND_CHAIN:
         gen_chain(node);
         return;
+    case ND_INT_PARSE:
+    case ND_INT_FORMAT:
+        gen_integer_conversion(node); return;
+    case ND_BIT_NOT:
+        gen_expr(node->lhs); x64_xor_imm(RAX, -1); return;
+    case ND_BIT_AND:
+    case ND_BIT_OR:
+    case ND_BIT_XOR:
+    case ND_XOR:
+    case ND_SHL:
+    case ND_SHR:
+        gen_expr(node->lhs); push(); gen_expr(node->rhs); x64_mov(RCX, RAX); pop(RAX);
+        if (node->kind == ND_BIT_AND) x64_and(RAX, RCX);
+        else if (node->kind == ND_BIT_OR) x64_or(RAX, RCX);
+        else if (node->kind == ND_BIT_XOR || node->kind == ND_XOR) x64_xor(RAX, RCX);
+        else {
+            int valid = new_label("shift.valid"), invalid = new_label("shift.invalid");
+            x64_test(RCX, RCX); x64_jcc(CC_S, invalid);
+            x64_mov_imm(RDX, 63); x64_cmp(RCX, RDX); x64_jcc(CC_BE, valid);
+            x64_bind(invalid); gen_fail(node->tok, "シフト量は0以上63以下にしてください", EX_SOFTWARE);
+            x64_bind(valid);
+            if (node->kind == ND_SHL) x64_shl_cl(RAX); else x64_sar_cl(RAX);
+        }
+        return;
     case ND_AND:
     case ND_OR:
         gen_logic(node);
@@ -5552,6 +5477,10 @@ static void gen_expr(Node *node)
 static void gen_print_value(Node *expr)
 {
     gen_expr(expr);
+    if (expr->format_base) {
+        x64_mov_imm(RDI, expr->format_base); x64_mov_imm(RSI, 1); x64_call(integer_format_label);
+        x64_call(print_str_label); return;
+    }
     if (type_is_array(expr->ty)) { x64_call(array_print_label); return; }
     if (type_is_model(expr->ty)) { x64_call(type_model(expr->ty)->print_label); return; }
     switch (expr->ty) {
@@ -6025,6 +5954,7 @@ void codegen(Ast *ast, Program *out_prog, FILE *out_text, Target out_target)
         }
     }
     write_label = x64_new_label(".L.qy_write");
+    integer_format_label = x64_new_label(".L.qy_integer_format");
     print_int_label = x64_new_label(".L.qy_print_int");
     print_double_label = x64_new_label(".L.qy_print_double");
     print_float_label = x64_new_label(".L.qy_print_float");

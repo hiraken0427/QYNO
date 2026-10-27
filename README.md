@@ -1,4 +1,4 @@
-# QYNO 0.26.4
+# QYNO 0.26.5
 
 C99 で実装した、Linux x64 / Windows x64 向けのコンパイラ。
 UTF-8 の `.qy` ソースから実行ファイルを直接生成する。
@@ -35,9 +35,9 @@ int main();
 
 ## VS Code 拡張
 
-[VSCode Option](vscode-extensions/README.md) は QYNO 0.26.4 のハイライト、
+[VSCode Option](vscode-extensions/README.md) は QYNO 0.26.5 のハイライト、
 ユーザー定義の関数名・変数名の補完、定義への移動、引数ヒントに対応する。
-[vscode-extensions/0.26.4_VSCode_option.vsix](vscode-extensions/0.26.4_VSCode_option.vsix) を
+[vscode-extensions/0.26.5_VSCode_option.vsix](vscode-extensions/0.26.5_VSCode_option.vsix) を
 VS Code の「VSIX からのインストール…」で指定する。
 
 ## モデル型
@@ -194,6 +194,31 @@ int main();
 
 整数の範囲外への更新は折り返さず終了する。小数の非有限値・前進できない更新は診断する。
 bool は数値範囲のループ変数にしない。詳細は [for の仕様](docs/for-open-start-design.md) を参照。
+
+## ビット演算と基数表記
+
+0.26.5では `and` / `or` / `xor` を bool と int で共用する。
+boolのand / orは短絡し、intのビット演算は両辺を評価する。ビット反転はbnot、シフトは << / >>。
+シフト量は0〜63、右シフトは符号を保つ算術右シフトになる。
+
+```text
+using io
+
+int main();
+	int flags = 0b0011 or 0o4
+	print((flags and 4) != 0)
+	print("{flags:0b}, {flags:0o}, {flags:0d}, {flags:0x}")
+	str text = str(flags, base=16, prefix=true)
+	int restored = int(text)
+	input("hex> {flags:0x}")
+	return 0
+```
+
+0b / 0o / 0d / 0xの整数リテラルと、int / strの相互変換、print / input / file.writeの基数指定に対応する。
+指定のない表記・出力は10進数。整数入力は接頭辞を判定し、接頭辞がなければ10進数として読む。
+詳細は [ビット演算とシフト演算](docs/bitwise-design.md)、
+[整数の基数表記・変換・入出力](docs/integer-bases-design.md) を参照。
+実行例は [bitwise.qy](examples/numbers/bitwise.qy) と [bases.qy](examples/numbers/bases.qy)。
 
 ## 開発ブランチ
 

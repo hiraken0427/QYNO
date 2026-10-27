@@ -74,7 +74,8 @@ function environment(project, line, character) {
 
 function snippetCall(symbol, name = symbol.name) {
     // QYNO declarations put dimensions after names, but call arguments use names alone.
-    return `${name}(${symbol.params.map((p, i) => `${p.ref ? 'ref ' : ''}\${${i + 1}:${p.placeholder || p.default || p.name}}`).join(', ')})`;
+    const params=symbol.builtin && ['int','str'].includes(symbol.path) ? symbol.params.filter(p=>!p.optional) : symbol.params;
+    return `${name}(${params.map((p, i) => `${p.ref ? 'ref ' : ''}\${${i + 1}:${p.placeholder || p.default || p.name}}`).join(', ')})`;
 }
 function completion(symbol, label = symbol.name) {
     return { label, kind: symbol.kind, detail: ['model', 'interface'].includes(symbol.kind) ? `${symbol.kind} ${label}` : symbol.kind === 'function' ? functionLabel(symbol, label) : symbol.type ? typeLabel({ ...symbol, name: label }) : symbol.path,
@@ -122,6 +123,11 @@ function complete(project, line, character) {
     const context = codeContext(project.model, line, character);
     if (!context) return [];
     const env = environment(project, line, character), text = context.text;
+    if (context.format) {
+        const word=/[A-Za-z0-9]*$/.exec(text)[0];
+        return [['0b','2進'],['0o','8進'],['0d','10進'],['0x','16進']].filter(([code])=>code.startsWith(word)).map(([code,label])=>({
+            label:code,kind:'property',detail:label+'の整数書式',insertText:code,snippet:false,range:{start:character-word.length,end:character}}));
+    }
     const word = /[A-Za-z_0-9]*$/.exec(text)[0];
     const before = text.slice(0, text.length - word.length);
     const range = { start: character - word.length, end: character };
@@ -153,7 +159,7 @@ function complete(project, line, character) {
         if (!items.length) items = receiverMembers(project, env, before).map(s => completion(s));
     } else {
         items = [...env.names].map(([label, s]) => completion(s, label));
-        for (const keyword of KEYWORD_COMPLETIONS) if (!env.names.has(keyword)) items.push({ label: keyword, kind: TYPES.has(keyword) ? 'type' : 'keyword', insertText: keyword, detail: 'QYNO 0.26.4' });
+        for (const keyword of KEYWORD_COMPLETIONS) if (!env.names.has(keyword)) items.push({ label: keyword, kind: TYPES.has(keyword) ? 'type' : 'keyword', insertText: keyword, detail: 'QYNO 0.26.5' });
     }
     // A completion immediately before '(' must not insert a second argument list.
     const next = project.model.lines[line].slice(character).match(/^\s*\(/);
@@ -162,7 +168,7 @@ function complete(project, line, character) {
 
 function symbolAt(project, line, character) {
     const context = codeContext(project.model, line, character);
-    if (!context) return undefined;
+    if (!context || context.format) return undefined;
     const text = project.model.lines[line];
     const init = context.start === 0 && initializationContext(project, environment(project, line, character), line, character, receiverSymbol);
     if (init?.keySymbol && init.key.line === line && character >= init.key.start && character <= init.key.end) return init.keySymbol;
@@ -183,7 +189,7 @@ function symbolAt(project, line, character) {
 /** Find the innermost unmatched call; strings, interpolations and arrays are lexical. */
 function callAt(model, line, character) {
     const context = codeContext(model, line, character);
-    if (!context) return undefined;
+    if (!context || context.format) return undefined;
     const ts = context.tokens.filter(t => t.start < character && t.kind !== 'comment');
     const stack = [];
     for (let i = 0; i < ts.length; i++) {
@@ -196,7 +202,8 @@ function callAt(model, line, character) {
             stack.push({ kind: '(', path, argument: 0 });
         } else if (value === '[' || value === '{') stack.push({ kind: value });
         else if (value === ')' || value === ']' || value === '}') stack.pop();
-        else if (value === ',' && stack.at(-1)?.kind === '(') stack.at(-1).argument++;
+        else if (value === ',' && stack.at(-1)?.kind === '(') { stack.at(-1).argument++; stack.at(-1).argName=undefined; }
+        else if (value === '=' && stack.at(-1)?.kind === '(' && ts[i-1]?.kind==='id') stack.at(-1).argName=ts[i-1].value;
     }
     return [...stack].reverse().find(s => s.kind === '(' && s.path);
 }
@@ -215,6 +222,7 @@ function signature(project, line, character) {
         const candidate = properties[last];
         if (candidate?.kind === 'function' && receiverMembers(project, env, call.path.slice(0, -last.length)).some(s => s.name === last)) symbol = candidate;
     }
-    return symbol?.kind === 'function' ? { symbol, label: functionLabel(symbol, call.path), activeParameter: Math.min(call.argument, Math.max(0, symbol.params.length - 1)) } : undefined;
+    const index=symbol?.builtin && ['int','str'].includes(symbol.path) && call.argName ? symbol.params.findIndex(p=>p.name===call.argName) : call.argument;
+    return symbol?.kind === 'function' ? { symbol, label: functionLabel(symbol, call.path), activeParameter: Math.min(Math.max(0,index), Math.max(0, symbol.params.length - 1)) } : undefined;
 }
 module.exports = { environment, complete, symbolAt, callAt, signature, completion, snippetCall };

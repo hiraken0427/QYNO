@@ -1003,3 +1003,8 @@ void x64_shr_cl(Reg dst)
 {
     shift_cl(5, "shr", dst);
 }
+
+void x64_sar_cl(Reg dst)
+{
+    shift_cl(7, "sar", dst);
+}

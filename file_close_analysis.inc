@@ -436,7 +436,7 @@ static FcMap *fc_eval(FcContext *ctx, FcState *s, Node *n)
         for (field = n->fields; field; field = field->next) fc_eval(ctx, s, field->var);
         return fc_empty();
     }
-    if (n->kind == ND_FORMAT || n->kind == ND_PRINT) {
+    if (n->kind == ND_INT_PARSE || n->kind == ND_INT_FORMAT || n->kind == ND_FORMAT || n->kind == ND_PRINT) {
         for (p = n->lhs; p; p = p->next) fc_eval(ctx, s, p);
         for (p = n->end; p; p = p->next) fc_eval(ctx, s, p);
     } else { fc_eval(ctx, s, n->lhs); fc_eval(ctx, s, n->rhs); }

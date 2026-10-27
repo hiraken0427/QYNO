@@ -1,15 +1,15 @@
 CC = gcc
 CFLAGS = -std=c99 -g -Wall -Wextra -pedantic
 PYTHON ?= python3
-SRCS = main.c modules.c tokenize.c parse.c type.c codegen.c x64.c buffer.c program.c builtin.c pe.c elf.c unicode.c types.c
+SRCS = main.c modules.c tokenize.c parse.c type.c codegen.c x64.c buffer.c program.c builtin.c pe.c elf.c unicode.c types.c integer_bases.c
 OBJS = $(SRCS:.c=.o)
 
 qyc: $(OBJS)
 	$(CC) -o $@ $(OBJS) -lm
 
 $(OBJS): qyc.h
-codegen.o: collections_codegen.inc memory_codegen.inc places_codegen.inc models_codegen.inc file_runtime.inc
-type.o: arrays_type.inc models_type.inc readonly_type.inc const_models.inc initialization_type.inc initialization_flow.inc interfaces_type.inc interfaces_specialize.inc file_close_analysis.inc
+codegen.o: collections_codegen.inc memory_codegen.inc places_codegen.inc models_codegen.inc file_runtime.inc integer_bases_codegen.inc
+type.o: arrays_type.inc models_type.inc readonly_type.inc const_models.inc initialization_type.inc initialization_flow.inc interfaces_type.inc interfaces_specialize.inc integer_bases_type.inc file_close_analysis.inc
 
 test: qyc
 	PYTHON="$(PYTHON)" bash ./test.sh
@@ -27,6 +27,14 @@ test: qyc
 	$(PYTHON) tests/readonly_test.py ./qyc
 	$(PYTHON) tests/initialization_test.py ./qyc
 	$(PYTHON) tests/interfaces_test.py ./qyc
+	$(PYTHON) tests/bitwise_test.py ./qyc
+	$(PYTHON) tests/integer_bases_test.py ./qyc
+
+test-bitwise: qyc
+	$(PYTHON) tests/bitwise_test.py ./qyc
+
+test-integer-bases: qyc
+	$(PYTHON) tests/integer_bases_test.py ./qyc
 
 test-interfaces: qyc
 	$(PYTHON) tests/interfaces_test.py ./qyc
@@ -76,4 +84,4 @@ test-arrays: qyc
 clean:
 	rm -f qyc qyc.exe *.o tmp tmp.exe tmp.qy tmp.s
 
-.PHONY: test test-interfaces test-initialization test-readonly test-visibility test-model test-file test-input-refs test-for test-io test-modules test-lineedit test-rounding test-semantics test-text test-arrays clean
+.PHONY: test test-bitwise test-integer-bases test-interfaces test-initialization test-readonly test-visibility test-model test-file test-input-refs test-for test-io test-modules test-lineedit test-rounding test-semantics test-text test-arrays clean

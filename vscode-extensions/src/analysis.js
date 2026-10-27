@@ -1,9 +1,36 @@
 'use strict';
 
 const TYPES = new Set(['int', 'float', 'double', 'bool', 'str', 'char', 'file', 'void']);
-const KEYWORDS = new Set([...TYPES, 'const', 'ref', 'val', 'return', 'if', 'else', 'for', 'while', 'break', 'continue', 'and', 'or', 'not', 'true', 'false', 'none', 'import', 'using', 'as', 'print', 'input', 'struct', 'enum', 'of', 'model', 'interface', 'implements', 'public', 'private', 'readonly']);
+const KEYWORDS = new Set([...TYPES, 'const', 'ref', 'val', 'return', 'if', 'else', 'for', 'while', 'break', 'continue', 'and', 'or', 'xor', 'bnot', 'not', 'true', 'false', 'none', 'import', 'using', 'as', 'print', 'input', 'struct', 'enum', 'of', 'model', 'interface', 'implements', 'public', 'private', 'readonly']);
 const identifierStart = c => /[A-Za-z_]/.test(c || '');
 const identifierPart = c => /[A-Za-z0-9_]/.test(c || '');
+
+function interpolationEnd(text, open) {
+    let depth=1, quote=null;
+    for (let i=open+1;i<text.length;i++) {
+        if (text[i]==='\\') { i++; continue; }
+        if (quote) { if (text[i]===quote) quote=null; continue; }
+        if (text[i]==='"' || text[i]==="'") { quote=text[i]; continue; }
+        if (text[i]==='{') depth++;
+        if (text[i]==='}' && --depth===0) return i;
+    }
+    return -1;
+}
+function offsetToken(token, offset) {
+    return {...token,start:token.start+offset,end:token.end+offset,
+        ...(token.interpolations ? {interpolations:token.interpolations.map(p=>({...p,start:p.start+offset,end:p.end+offset,
+            tokens:p.tokens.map(t=>offsetToken(t,offset)),formatStart:p.formatStart===undefined?undefined:p.formatStart+offset}))} : {})};
+}
+function formatStart(tokens) {
+    let depth=0;
+    for (const t of tokens) {
+        if (t.kind==='string') continue;
+        if (['(','[','{'].includes(t.value)) depth++;
+        else if ([')',']','}'].includes(t.value)) depth--;
+        else if (t.value===':' && depth===0) return t.end;
+    }
+    return undefined;
+}
 
 /** UTF-16 columns deliberately match VS Code positions, including emoji. */
 function lexLine(text, line = 0) {
@@ -22,11 +49,12 @@ function lexLine(text, line = 0) {
                 if (text[i] === '\\') { i = Math.min(text.length, i + 2); continue; }
                 if (text[i] === quote) { i++; closed = true; break; }
                 if (text[i] === '{') {
-                    const begin = ++i;
-                    while (i < text.length && text[i] !== '}' && text[i] !== quote) i++;
+                    const open=i, begin=++i, found=interpolationEnd(text,open);
+                    if (found>=0) i=found;
+                    else while (i < text.length && text[i] !== '}' && text[i] !== quote) i++;
                     const end = i;
-                    const nested = lexLine(text.slice(begin, end), line).map(t => ({ ...t, start: t.start + begin, end: t.end + begin }));
-                    interpolations.push({ start: begin, end, tokens: nested });
+                    const nested = lexLine(text.slice(begin, end), line).map(t => offsetToken(t,begin));
+                    interpolations.push({ start: begin, end, tokens: nested, formatStart:formatStart(nested) });
                     if (text[i] === '}') i++;
                     continue;
                 }
@@ -37,13 +65,17 @@ function lexLine(text, line = 0) {
             while (identifierPart(text[++i])) { /* consume */ }
             add('id', start, i);
         } else if (/[0-9]/.test(text[i])) {
-            while (/[0-9]/.test(text[++i] || '')) { /* consume */ }
-            if (text[i] === '.' && /[0-9]/.test(text[i + 1] || '')) {
-                i++; while (/[0-9]/.test(text[i] || '')) i++;
+            if (text[i]==='0' && /[bodx]/i.test(text[i+1] || '')) {
+                i+=2; while (/[A-Za-z0-9_]/.test(text[i] || '')) i++;
+            } else {
+                while (/[0-9]/.test(text[++i] || '')) { /* consume */ }
+                if (text[i] === '.' && /[0-9]/.test(text[i + 1] || '')) {
+                    i++; while (/[0-9]/.test(text[i] || '')) i++;
+                }
             }
             add('number', start, i);
         } else {
-            i += ['==', '!=', '<=', '>=', '++', '--', '+=', '-='].includes(text.slice(i, i + 2)) ? 2 : 1;
+            i += ['==', '!=', '<=', '>=', '++', '--', '+=', '-=', '<<', '>>'].includes(text.slice(i, i + 2)) ? 2 : 1;
             add('punct', start, i);
         }
     }
@@ -51,15 +83,23 @@ function lexLine(text, line = 0) {
 }
 
 function codeContext(model, line, character) {
-    const text = model.lines[line] || '';
+    const text=model.lines[line] || '';
+    const inside=token=>token.kind==='string' && character>token.start &&
+        (character<token.end || !token.closed && character===token.end);
+    const inString=token=> {
+        const part=token.interpolations.find(p=>character>=p.start && character<=p.end);
+        if (!part) return null;
+        const nested=part.tokens.find(inside);
+        if (nested) return inString(nested);
+        const format=part.formatStart!==undefined && character>=part.formatStart;
+        const start=format?part.formatStart:part.start;
+        return {text:text.slice(start,character),start,tokens:part.tokens,format};
+    };
     for (const token of model.tokens[line] || []) {
-        if (token.kind === 'comment' && character >= token.start) return null;
-        if (token.kind === 'string' && character > token.start && (character < token.end || !token.closed && character === token.end)) {
-            const interpolation = token.interpolations.find(p => character >= p.start && character <= p.end);
-            return interpolation ? { text: text.slice(interpolation.start, character), start: interpolation.start, tokens: interpolation.tokens } : null;
-        }
+        if (token.kind==='comment' && character>=token.start) return null;
+        if (inside(token)) return inString(token);
     }
-    return { text: text.slice(0, character), start: 0, tokens: model.tokens[line] || [] };
+    return {text:text.slice(0,character),start:0,tokens:model.tokens[line] || []};
 }
 
 function split(tokens, separator = ',') {

@@ -381,3 +381,46 @@ test('plain readonly model methods retain their modifier without explicit public
     const prefix='model Counter;\n\treadonly int get() = 1\n\tvoid change();\n\t\treturn\nvoid inspect(ref readonly Counter value);\n\tvalue.¦';
     assert.deepEqual(labels(prefix),['value','get']);
 });
+
+test('four integer radix literals are single lexical numbers and shifts are single tokens',()=>{
+    assert.deepEqual(lexLine('0b1111 0o17 0d15 0xF 0B1 0O7 0D8 0XF').map(t=>t.kind),Array(8).fill('number'));
+    assert.deepEqual(lexLine('mask << 3 >> 1').map(t=>t.value),['mask','<<','3','>>','1']);
+});
+test('xor and bnot are keywords while band bor bxor remain identifiers',()=>{
+    for (const word of ['xor','bnot']) assert.equal(items('int main();\n\t'+word+'¦').find(i=>i.label===word)?.kind,'keyword');
+    const model=analyze('int band(int bor, int bxor) = bor + bxor');
+    assert.equal(model.symbols.find(s=>s.name==='band').kind,'function');
+});
+test('format specification completion does not leak variable or function names',()=>{
+    const prefix='int main();\n\tint value=255\n\t';
+    assert.deepEqual(labels(prefix+'io.print("{value:¦}")'),['0b','0o','0d','0x']);
+    assert.deepEqual(labels(prefix+'io.input("{value:0¦}")'),['0b','0o','0d','0x']);
+    assert.deepEqual(labels(prefix+'io.print("{value:0x¦}")'),['0x']);
+    assert.equal(at(prefix+'io.print("{value:0¦x}")'),undefined);
+});
+test('variable and array completion before radix suffix preserves definitions and positions',()=>{
+    const prefix='int main();\n\tint numbers[][]\n\t';
+    assert.ok(labels(prefix+'io.input("😀 {num¦bers[0][0]:0x}")').includes('numbers'));
+    assert.equal(at(prefix+'io.print("{num¦bers[0][0]:0x}")').name,'numbers');
+    assert.equal(at(prefix+'io.input("{num¦bers[0][0]:0o}")').line,1);
+});
+test('conversion signature help includes bases and resolves reordered keyword arguments',()=>{
+    const str=hint('int main();\n\tstr text=str(255,prefix=¦');
+    assert.match(str.label,/int base=10, bool prefix=false/); assert.equal(str.activeParameter,2);
+    assert.equal(hint('int main();\n\tstr text=str(255,prefix=true,base=¦').activeParameter,1);
+    assert.match(hint('int main();\n\tint n=int("ff",¦').label,/int base=0/);
+    assert.equal(items('int main();\n\tstr¦').find(i=>i.label==='str').insertText,'str(${1:value})');
+});
+test('strings and colons inside interpolation expressions do not become format fields',()=>{
+    const prefix='int main();\n\tint number\n\t';
+    assert.deepEqual(labels(prefix+'io.print("{str(\'literal:¦\')}")'),[]);
+    assert.match(hint(prefix+'io.print("{str(num¦ber,16,true):0x}")').label,/str/);
+    assert.ok(labels(prefix+'io.print("{int(\'0xff\') + num¦ber:0x}")').includes('number'));
+    const token=lexLine('io.print("{int("0xff"):0d}")').find(t=>t.kind==='string');
+    assert.equal(token.interpolations.length,1); assert.equal(token.closed,true);
+});
+test('malformed or unfinished format strings remain usable while editing',()=>{
+    for (const suffix of ['{value:','{value:0','{value:0x','{int("0xff") + value:0x']) {
+        assert.doesNotThrow(()=>labels('int main();\n\tint value\n\tio.print("'+suffix+'¦'));
+    }
+});

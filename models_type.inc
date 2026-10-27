@@ -131,13 +131,13 @@ static int model_constant_default(Node *n)
 {
     Node *item;
     if (n->kind == ND_MODEL_COPY || n->kind == ND_ARRAY_COPY || n->kind == ND_CAST || n->kind == ND_NEG ||
-        n->kind == ND_NOT || n->kind == ND_ABS || n->kind == ND_LENGTH) return model_constant_default(n->lhs);
+        n->kind == ND_NOT || n->kind == ND_BIT_NOT || n->kind == ND_ABS || n->kind == ND_LENGTH) return model_constant_default(n->lhs);
     if (n->kind == ND_MODEL_INIT || n->kind == ND_CONSTRUCT || n->kind == ND_ARRAY_LITERAL) {
         for (item = n->lhs; item; item = item->next)
             if (!model_constant_default(n->kind != ND_ARRAY_LITERAL ? item->lhs : item)) return 0;
         return 1;
     }
-    if (n->kind == ND_BUILTIN && n->val < BI_FILE_OPEN) {
+    if (n->kind == ND_INT_PARSE || n->kind == ND_INT_FORMAT || (n->kind == ND_BUILTIN && n->val < BI_FILE_OPEN)) {
         for (item = n->lhs; item; item = item->next) if (!model_constant_default(item)) return 0;
         return 1;
     }
@@ -147,7 +147,8 @@ static int model_constant_default(Node *n)
         return 1;
     }
     if (n->kind == ND_INDEX || n->kind == ND_ADD || n->kind == ND_SUB || n->kind == ND_MUL ||
-        n->kind == ND_DIV || n->kind == ND_MOD || n->kind == ND_POW || n->kind == ND_AND || n->kind == ND_OR)
+        n->kind == ND_DIV || n->kind == ND_MOD || n->kind == ND_POW || n->kind == ND_AND || n->kind == ND_OR ||
+        n->kind == ND_XOR || n->kind == ND_BIT_AND || n->kind == ND_BIT_OR || n->kind == ND_BIT_XOR || n->kind == ND_SHL || n->kind == ND_SHR)
         return model_constant_default(n->lhs) && model_constant_default(n->rhs);
     return n->kind == ND_MODEL_NEW || n->kind == ND_ARRAY_NEW || is_const_expr(n);
 }

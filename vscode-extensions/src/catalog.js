@@ -1,5 +1,5 @@
 'use strict';
-// Reference: QYNO 0.26.4. No runtime dependency on a compiler installation.
+// Reference: QYNO 0.26.5. No runtime dependency on a compiler installation.
 const callable = (path, type, params, documentation) => ({
     kind: 'function', name: path.split('.').at(-1), path, type, rank: 0,
     params: params.map(p => typeof p === 'string' ? { name: p, type: 'value', rank: 0 } : { rank: 0, ...p }),
@@ -11,9 +11,10 @@ const STANDARD = [
     callable('math.round', 'int / float / double', ['x', { name: 'digits', type: 'int', optional: true, default: '0' }], '指定桁で四捨五入します。'),
     callable('math.roundup', 'int / float / double', ['x', { name: 'digits', type: 'int', optional: true, default: '0' }], '指定桁で天井関数に従って丸めます。'),
     callable('math.rounddown', 'int / float / double', ['x', { name: 'digits', type: 'int', optional: true, default: '0' }], '指定桁で床関数に従って丸めます。'),
-    ...['int', 'float', 'double'].map(type => callable(type, type, ['value'], `数値を ${type} に変換します。`)),
+    callable('int','int',[{name:'value',type:'int / float / double / str'},{name:'base',type:'int',optional:true,defaultText:'0'}], '数値をintに変換します。strは接頭辞を自動判定し、base=0/2/8/10/16を指定できます。baseはstrの変換にだけ使えます。'),
+    ...['float', 'double'].map(type => callable(type, type, ['value'], `数値を ${type} に変換します。`)),
     callable('char', 'char', [{ name: 'text', type: 'str / char' }], 'Unicodeスカラー値を1個含む文字列へ変換します。'),
-    callable('str', 'str', [{ name: 'text', type: 'str / char' }], 'str または char を str に変換します。数値の変換には使用できません。'),
+    callable('str','str',[{name:'value',type:'int / str / char'},{name:'base',type:'int',optional:true,defaultText:'10'},{name:'prefix',type:'bool',optional:true,defaultText:'false'}], '整数を2/8/10/16進に文字列化します。prefix=trueで接頭辞を付けます。base/prefixはintの変換にだけ使えます。str/charの従来の変換も利用できます。'),
     callable('io.print', 'void', [{ name: 'value', type: 'value', optional: true, placeholder: '"text"' }], '値を表示します。既定の終端は改行。文字列リテラルの {式} と end= を使用できます。'),
     callable('io.input', 'context / bool', [{ name: 'target', type: 'value', optional: true }], 'input(target) は直接入力。値を返す形式は input() / input(prompt=message)。入力先を指定した形式は bool を返します。'),
     callable('io.file.open', 'file', [{ name: 'path', type: 'str', placeholder: '"path.txt"' }, { name: 'mode', type: 'str', optional: true, default: '"r"' }], 'UTF-8ファイルを開きます。r は読み取り、w は切り詰め、a は追記。正常終了の全経路で明示的な close が必要です。'),
@@ -24,7 +25,7 @@ const STANDARD = [
     callable('io.file.write', 'int', [{ name: 'destination', type: 'file' }, { name: 'value', type: 'value', placeholder: '"text"' }], 'print と同じ書式で書き込み、UTF-8のバイト数を返します。改行は自動追加しません。'),
     callable('io.file.exists', 'bool', [{ name: 'path', type: 'str', placeholder: '"path.txt"' }], '通常ファイルの存在を確認します。相対パスは実行時の作業ディレクトリが基準です。')
 ];
-const KEYWORD_COMPLETIONS = ['int', 'float', 'double', 'bool', 'str', 'char', 'file', 'void', 'const', 'ref', 'val', 'return', 'if', 'else', 'for', 'while', 'break', 'continue', 'and', 'or', 'not', 'true', 'false', 'none', 'import', 'using', 'as', 'model', 'interface', 'implements', 'public', 'private', 'readonly'];
+const KEYWORD_COMPLETIONS = ['int', 'float', 'double', 'bool', 'str', 'char', 'file', 'void', 'const', 'ref', 'val', 'return', 'if', 'else', 'for', 'while', 'break', 'continue', 'and', 'or', 'xor', 'bnot', 'not', 'true', 'false', 'none', 'import', 'using', 'as', 'model', 'interface', 'implements', 'public', 'private', 'readonly'];
 const properties = {
     length: { name: 'length', kind: 'property', type: 'int', documentation: '配列の要素数、または文字列のUnicodeスカラー値の数。読み取り専用です。' },
     addr: { name: 'addr', kind: 'property', type: 'address', documentation: '変数の場所。ref 変数の場合は現在参照している場所です。' },

@@ -38,13 +38,24 @@
               "name": "punctuation.section.interpolation.begin.qyno"
             }
           },
-          "end": "\\}|(?=\")|$",
+          "end": "\\}|$",
           "endCaptures": {
             "0": {
               "name": "punctuation.section.interpolation.end.qyno"
             }
           },
           "patterns": [
+            {
+              "include": "#embedded-strings"
+            },
+            {
+              "match": ":\\s*(0[bodx])\\b",
+              "captures": {
+                "1": {
+                  "name": "constant.other.format.qyno"
+                }
+              }
+            },
             {
               "include": "#numbers"
             },
@@ -86,13 +97,24 @@
               "name": "punctuation.section.interpolation.begin.qyno"
             }
           },
-          "end": "\\}|(?=')|$",
+          "end": "\\}|$",
           "endCaptures": {
             "0": {
               "name": "punctuation.section.interpolation.end.qyno"
             }
           },
           "patterns": [
+            {
+              "include": "#embedded-strings"
+            },
+            {
+              "match": ":\\s*(0[bodx])\\b",
+              "captures": {
+                "1": {
+                  "name": "constant.other.format.qyno"
+                }
+              }
+            },
             {
               "include": "#numbers"
             },
@@ -179,7 +201,7 @@
       "name": "variable.language.this.qyno"
     },
     {
-      "match": "\\b([A-Za-z_]\\w*(?:\\.[A-Za-z_]\\w*)*)\\s+([A-Za-z_]\\w*)",
+      "match": "\\b((?!(?:and|or|xor|bnot|not)\\b)[A-Za-z_]\\w*(?:\\.[A-Za-z_]\\w*)*)\\s+((?!(?:and|or|xor|bnot|not)\\b)[A-Za-z_]\\w*)",
       "captures": {
         "1": {
           "name": "storage.type.qyno"
@@ -213,6 +235,10 @@
     "numbers": {
       "patterns": [
         {
+          "match": "\\b(?:0[bB][01]+|0[oO][0-7]+|0[dD][0-9]+|0[xX][0-9a-fA-F]+)\\b",
+          "name": "constant.numeric.qyno"
+        },
+        {
           "match": "\\b[0-9]+(?:\\.[0-9]+)?\\b",
           "name": "constant.numeric.qyno"
         }
@@ -241,7 +267,7 @@
           "name": "support.function.qyno"
         },
         {
-          "match": "\\b[A-Za-z_]\\w*(?=\\s*\\()",
+          "match": "\\b(?!(?:and|or|xor|bnot|not)\\b)[A-Za-z_]\\w*(?=\\s*\\()",
           "name": "entity.name.function.qyno"
         }
       ]
@@ -249,12 +275,38 @@
     "operators": {
       "patterns": [
         {
-          "match": "\\b(?:and|or|not)\\b|\\+\\+|--|[+*/%=!<>|&^~:-]+",
+          "match": "\\b(?:and|or|xor|bnot|not)\\b|\\+\\+|--|[+*/%=!<>|&^~:-]+",
           "name": "keyword.operator.qyno"
         },
         {
           "match": "[;,.()\\[\\]{}]",
           "name": "punctuation.qyno"
+        }
+      ]
+    },
+    "embedded-strings": {
+      "patterns": [
+        {
+          "begin": "\"",
+          "end": "\"|$",
+          "name": "string.quoted.double.qyno",
+          "patterns": [
+            {
+              "match": "\\\\.",
+              "name": "constant.character.escape.qyno"
+            }
+          ]
+        },
+        {
+          "begin": "'",
+          "end": "'|$",
+          "name": "string.quoted.single.qyno",
+          "patterns": [
+            {
+              "match": "\\\\.",
+              "name": "constant.character.escape.qyno"
+            }
+          ]
         }
       ]
     }

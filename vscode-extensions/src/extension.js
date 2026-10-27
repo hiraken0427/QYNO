@@ -81,7 +81,7 @@ function activate(context) {
                 return result;
             });
         }
-    }, '.'));
+    }, '.', ':'));
     context.subscriptions.push(vscode.languages.registerHoverProvider(selector, {
         async provideHover(document, position, token) {
             const project = await index.project(document, false, token);
@@ -109,7 +109,7 @@ function activate(context) {
             help.signatures = [signature]; help.activeSignature = 0; help.activeParameter = found.activeParameter;
             return help;
         }
-    }, '(', ','));
+    }, '(', ',', '='));
     context.subscriptions.push(vscode.languages.registerDocumentSymbolProvider(selector, {
         provideDocumentSymbols(document) {
             const model = analyze(document.getText(), document.uri.toString());
