@@ -37,6 +37,7 @@ static void gen_model_runtime(void)
     scratch.stack_size = 32; emitting_function = &scratch;
     for (m = emitting_models; m; m = m->next) {
         ModelField *f;
+        int printed = 0;
         int from_value = rt_label("model.copy.value");
         int unequal = rt_label("model.unequal");
         depth = 0;
@@ -71,7 +72,8 @@ static void gen_model_runtime(void)
         rt_enter(m->print_label, 4); rt_save(1, RAX);
         gen_write_const(m->name); gen_write_const("{");
         for (f = m->fields; f; f = f->next) {
-            if (f->index) gen_write_const(", ");
+            if (f->is_private) continue;
+            if (printed++) gen_write_const(", ");
             gen_write_const(f->name); gen_write_const("=");
             rt_load(RAX, 1); x64_load(RAX, RAX, 24); x64_load(RAX, RAX, f->index * 8);
             if (type_is_model(f->ty)) x64_call(type_model(f->ty)->print_label);

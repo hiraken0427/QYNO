@@ -1,4 +1,4 @@
-# QYNO 0.26.0
+# QYNO 0.26.1
 
 C99 で実装した、Linux x64 / Windows x64 向けのコンパイラ。
 UTF-8 の `.qy` ソースから実行ファイルを直接生成する。
@@ -35,9 +35,9 @@ int main();
 
 ## VS Code 拡張
 
-[VSCode Option](vscode-extensions/README.md) は QYNO 0.26.0 のハイライト、
+[VSCode Option](vscode-extensions/README.md) は QYNO 0.26.1 のハイライト、
 ユーザー定義の関数名・変数名の補完、定義への移動、引数ヒントに対応する。
-[vscode-extensions/0.26.0_VSCode_option.vsix](vscode-extensions/0.26.0_VSCode_option.vsix) を
+[vscode-extensions/0.26.1_VSCode_option.vsix](vscode-extensions/0.26.1_VSCode_option.vsix) を
 VS Code の「VSIX からのインストール…」で指定する。
 
 ## モデル型
@@ -64,6 +64,9 @@ int main();
 ```
 
 配列・入れ子・フィールドの ref 渡しにも対応する。省略したフィールドは既定値で初期化する。
+0.26.1 ではフィールド・メソッドの `public` / `private` に対応。省略時は public、
+private は宣言元のモデル内部だけで利用できる。自動表示から private を除外し、コピー・比較では保持する。
+`public` と `private` は予約語になる。
 詳細は [モデルの仕様](docs/models.md)、実行例は [examples/models/main.qy](examples/models/main.qy) を参照。
 
 ## モジュール

@@ -54,9 +54,26 @@ async function run() {
     const methodDefinitions = await vscode.commands.executeCommand('vscode.executeDefinitionProvider',modelDoc.uri,new vscode.Position(8,5));
     assert.ok(methodDefinitions.some(d=>(d.range || d.targetSelectionRange).start.line===3)); checks++;
     const methodHelp = await vscode.commands.executeCommand('vscode.executeSignatureHelpProvider',modelDoc.uri,new vscode.Position(8,14));
-    assert.equal(methodHelp.activeParameter,1); assert.equal(methodHelp.signatures[0].label,'void p.move(double dx, double dy)'); checks++;
+    assert.equal(methodHelp.activeParameter,1); assert.equal(methodHelp.signatures[0].label,'public void p.move(double dx, double dy)'); checks++;
     const modelOutline = await vscode.commands.executeCommand('vscode.executeDocumentSymbolProvider',modelDoc.uri);
     assert.ok(modelOutline.find(s=>s.name==='Point').children.some(s=>s.name==='move')); checks++;
+    const visibilityDoc = await vscode.workspace.openTextDocument({ language: 'qyno', content:
+        'model Counter;\n\tprivate int count = 7\n\tprivate void hidden();\n\t\tthis.count++\n\tpublic int current() = this.count\n\tpublic int other(Counter counter) = counter.count\nint main();\n\tCounter c\n\tc.hidden()\n\tc.count++\n\tc.current()\n\treturn 0\n' });
+    await vscode.window.showTextDocument(visibilityDoc);
+    const outside = await vscode.commands.executeCommand('vscode.executeCompletionItemProvider',visibilityDoc.uri,new vscode.Position(10,3));
+    assert.ok(outside.items.some(i=>i.label==='current')); assert.ok(!outside.items.some(i=>['count','hidden'].includes(i.label))); checks++;
+    const inside = await vscode.commands.executeCommand('vscode.executeCompletionItemProvider',visibilityDoc.uri,new vscode.Position(3,7));
+    assert.ok(inside.items.some(i=>i.label==='count' && i.detail==='private int count')); assert.ok(inside.items.some(i=>i.label==='hidden')); checks++;
+    const other = await vscode.commands.executeCommand('vscode.executeCompletionItemProvider',visibilityDoc.uri,new vscode.Position(5,visibilityDoc.lineAt(5).text.indexOf('counter.count') + 'counter.'.length));
+    assert.ok(other.items.some(i=>i.label==='count')); checks++;
+    const privateHover = await vscode.commands.executeCommand('vscode.executeHoverProvider',visibilityDoc.uri,new vscode.Position(9,5));
+    assert.ok(privateHover.some(h=>h.contents.some(c=>c.value?.includes('private int count')))); checks++;
+    const privateDefinition = await vscode.commands.executeCommand('vscode.executeDefinitionProvider',visibilityDoc.uri,new vscode.Position(9,5));
+    assert.ok(privateDefinition.some(d=>(d.range || d.targetSelectionRange).start.line===1)); checks++;
+    const visibilityOutline = await vscode.commands.executeCommand('vscode.executeDocumentSymbolProvider',visibilityDoc.uri);
+    const counterOutline = visibilityOutline.find(s=>s.name==='Counter');
+    assert.equal(counterOutline.children.find(s=>s.name==='count').detail,'private int count');
+    assert.equal(counterOutline.children.find(s=>s.name==='current').detail,'public int current()'); checks++;
     console.log(`QYNO VS Code integration: ${checks} checks passed`);
 }
 module.exports={run};

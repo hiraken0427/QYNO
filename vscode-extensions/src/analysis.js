@@ -1,7 +1,7 @@
 'use strict';
 
 const TYPES = new Set(['int', 'float', 'double', 'bool', 'str', 'char', 'file', 'void']);
-const KEYWORDS = new Set([...TYPES, 'const', 'ref', 'val', 'return', 'if', 'else', 'for', 'while', 'break', 'continue', 'and', 'or', 'not', 'true', 'false', 'none', 'import', 'using', 'as', 'print', 'input', 'struct', 'enum', 'of', 'model']);
+const KEYWORDS = new Set([...TYPES, 'const', 'ref', 'val', 'return', 'if', 'else', 'for', 'while', 'break', 'continue', 'and', 'or', 'not', 'true', 'false', 'none', 'import', 'using', 'as', 'print', 'input', 'struct', 'enum', 'of', 'model', 'public', 'private']);
 const identifierStart = c => /[A-Za-z_]/.test(c || '');
 const identifierPart = c => /[A-Za-z0-9_]/.test(c || '');
 
@@ -81,9 +81,10 @@ function closing(tokens, begin) {
     return -1;
 }
 function rankOf(tokens) { return tokens.filter(t => t.value === '[').length; }
-function typeLabel(symbol) { return `${symbol.ref ? 'ref ' : ''}${symbol.type} ${symbol.name}${'[]'.repeat(symbol.rank || 0)}`; }
+function visibilityLabel(symbol) { return symbol.declaringModelId ? `${symbol.visibility || 'public'} ` : ''; }
+function typeLabel(symbol) { return `${visibilityLabel(symbol)}${symbol.ref ? 'ref ' : ''}${symbol.type} ${symbol.name}${'[]'.repeat(symbol.rank || 0)}`; }
 function functionLabel(symbol, name = symbol.name) {
-    return `${symbol.type} ${name}(${symbol.params.map(typeLabel).join(', ')})${'[]'.repeat(symbol.rank || 0)}`;
+    return `${visibilityLabel(symbol)}${symbol.type} ${name}(${symbol.params.map(typeLabel).join(', ')})${'[]'.repeat(symbol.rank || 0)}`;
 }
 
 function readType(tokens, start) {
@@ -130,9 +131,12 @@ function analyze(text, uri = '') {
         if (ts[0].value === 'model' && ts[1]?.kind === 'id') {
             const body = newScope(line, indent + 1, 'model', scope, true);
             const model = declare(ts[1], { kind: 'model', type: ts[1].value, scopeId: scope.id, bodyScopeId: body.id, members: [], visibleAfter: 0 });
+            if (model) model.modelId = `${uri}:${model.line}:${model.start}`;
             body.owner = model; stack.push(body); continue;
         }
         let index = 0;
+        const visibility = ['public', 'private'].includes(ts[index]?.value) ? ts[index++].value : 'public';
+        const member = scope.kind === 'model' ? { visibility, declaringModelId: scope.owner?.modelId } : {};
         const constant = ts[index]?.value === 'const'; if (constant) index++;
         const modifier = ['ref', 'val'].includes(ts[index]?.value) ? ts[index++].value : null;
         const declaredType = readType(ts, index);
@@ -153,7 +157,7 @@ function analyze(text, uri = '') {
                     const parameter = declare(part[p + 1], { kind: 'parameter', type: parameterType.name, rank: rankOf(part.slice(p + 2)), ref, scopeId: body.id, visibleAfter: part[p + 1]?.end || 0 });
                     if (parameter) params.push(parameter);
                 }
-                const fn = declare(name, { kind: 'function', type, rank: end < 0 ? 0 : rankOf(ts.slice(end + 1).filter(t => t.value !== '=')), params, scopeId: scope.id, bodyScopeId: body.id, visibleAfter: 0 });
+                const fn = declare(name, { ...member, kind: 'function', type, rank: end < 0 ? 0 : rankOf(ts.slice(end + 1).filter(t => t.value !== '=')), params, scopeId: scope.id, bodyScopeId: body.id, visibleAfter: 0 });
                 body.owner = fn;
                 if (scope.kind === 'model') {
                     scope.owner?.members.push(fn);
@@ -167,7 +171,7 @@ function analyze(text, uri = '') {
                 continue;
             }
             const end = ts.findIndex((t, n) => n > index + 1 && t.value === '=');
-            const variable = declare(name, { kind: scope.kind === 'model' ? 'field' : constant ? 'constant' : 'variable', type, rank: rankOf(ts.slice(index + 2, end < 0 ? ts.length : end)), ref: modifier === 'ref', scopeId: scope.id });
+            const variable = declare(name, { ...member, kind: scope.kind === 'model' ? 'field' : constant ? 'constant' : 'variable', type, rank: rankOf(ts.slice(index + 2, end < 0 ? ts.length : end)), ref: modifier === 'ref', scopeId: scope.id });
             if (scope.kind === 'model' && variable) scope.owner?.members.push(variable);
         }
         if (ts[0].value === 'for') {

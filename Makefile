@@ -23,6 +23,10 @@ test: qyc
 	$(PYTHON) tests/input_refs_test.py ./qyc
 	$(PYTHON) tests/file_test.py ./qyc
 	$(PYTHON) tests/model_test.py ./qyc
+	$(PYTHON) tests/visibility_test.py ./qyc
+
+test-visibility: qyc
+	$(PYTHON) tests/visibility_test.py ./qyc
 
 test-model: qyc
 	$(PYTHON) tests/model_test.py ./qyc
@@ -60,4 +64,4 @@ test-arrays: qyc
 clean:
 	rm -f qyc qyc.exe *.o tmp tmp.exe tmp.qy tmp.s
 
-.PHONY: test test-model test-file test-input-refs test-for test-io test-modules test-lineedit test-rounding test-semantics test-text test-arrays clean
+.PHONY: test test-visibility test-model test-file test-input-refs test-for test-io test-modules test-lineedit test-rounding test-semantics test-text test-arrays clean

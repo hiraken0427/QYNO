@@ -7,6 +7,7 @@ static Node *copy_model(Node *source)
     Node *copy = calloc(1, sizeof(*copy));
     if (!copy) fatal("モデルのコピーを確保できません");
     copy->kind = ND_MODEL_COPY; copy->lhs = source; copy->ty = source->ty; copy->tok = source->tok;
+    copy->access_model = source->access_model;
     return copy;
 }
 static Node *model_default(Type ty, ArrayDim *dims, Token *tok)
@@ -27,10 +28,25 @@ static ModelField *find_model_field(Model *m, const char *name)
     for (f = m->fields; f; f = f->next) if (strcmp(f->name, name) == 0) return f;
     return NULL;
 }
+/* Use source ownership, never the currently checked function: default ASTs
+ * are cached and reused at construction sites outside their declaring model. */
+static void check_member_access(Node *use, Model *owner, int is_private,
+                                const char *name, Token *declaration)
+{
+    if (is_private && use->access_model != owner)
+        error_tok(use->tok, "%s.%.*s は private です。この位置からはアクセスできません（宣言: %s:%d:%d）",
+                  owner->name, declaration->len, name, declaration->source->filename, declaration->line, declaration->col);
+}
 static void check_model_init(Node *node, Type expected)
 {
     Node *item, **end; ModelField *f; Model *m;
     if (!type_is_model(expected)) error_tok(node->tok, "{フィールド=値} にはモデル型の文脈が必要です");
+    /* Inferred arrays revisit their typed elements. Do not reinterpret the
+     * omitted defaults appended below as explicit user-written field names. */
+    if (node->ty != TY_NONE) {
+        if (node->ty != expected) error_tok(node->tok, "モデルの初期化先は同じ型にしてください");
+        return;
+    }
     m = type_model(expected);
     for (item = node->lhs; item; item = item->next) {
         Node *before;
@@ -38,6 +54,7 @@ static void check_model_init(Node *node, Type expected)
         if (!f) error_tok(item->tok, "モデル %s にフィールド %s はありません", m->name, item->name);
         for (before = node->lhs; before != item; before = before->next)
             if (before->field == f) error_tok(item->tok, "フィールド %s の初期化が重複しています", f->name);
+        check_member_access(item, f->model, f->is_private, f->name, f->tok);
         item->field = f;
         check_expected(item->lhs, f->ty);
         item->lhs = coerce(item->lhs, f->ty, item->tok, "フィールドの初期値");
@@ -64,6 +81,7 @@ static void check_model_field(Node *node)
     if (!type_is_model(node->lhs->ty)) error_tok(node->tok, "%s にフィールド %s はありません", type_name(node->lhs->ty), node->name);
     f = find_model_field(type_model(node->lhs->ty), node->name);
     if (!f) error_tok(node->tok, "モデル %s にフィールド %s はありません", type_name(node->lhs->ty), node->name);
+    check_member_access(node, f->model, f->is_private, f->name, f->tok);
     index = calloc(1, sizeof(*index)); if (!index) fatal("フィールド番号を確保できません");
     index->kind = ND_NUM; index->ty = TY_INT; index->val = f->index; index->tok = node->tok;
     node->kind = ND_INDEX; node->rhs = index; node->field = f; node->ty = f->ty;
@@ -76,6 +94,7 @@ static void check_model_method(Node *node)
     for (fn = cur_ast->funcs; fn; fn = fn->next)
         if (fn->model == type_model(node->lhs->ty) && same_name(fn->name, fn->name_len, node->tok->loc, node->tok->len)) break;
     if (!fn) error_tok(node->tok, "モデル %s にメソッド %.*s はありません", type_name(node->lhs->ty), node->tok->len, node->tok->loc);
+    check_member_access(node, fn->model, fn->is_private, fn->name, fn->tok);
     self = calloc(1, sizeof(*self)); if (!self) fatal("メソッドの対象を確保できません");
     { Node *root = node->lhs;
       while (root->kind == ND_INDEX) root = root->lhs;

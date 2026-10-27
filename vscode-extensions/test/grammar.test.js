@@ -11,9 +11,11 @@ async function grammar() {
     const registry = new textmate.Registry({ onigLib: Promise.resolve({ createOnigScanner: patterns => new oniguruma.OnigScanner(patterns), createOnigString: text => new oniguruma.OnigString(text) }), loadGrammar: async scope => scope === 'source.qyno' ? textmate.parseRawGrammar(fs.readFileSync(path.join(__dirname, '../syntaxes/qyno.tmLanguage.json'),'utf8'),'qyno.json') : null });
     return registry.loadGrammar('source.qyno');
 }
-test('TextMate highlights actual QYNO 0.25.2 syntax and resets one-line strings', async () => {
+test('TextMate highlights actual QYNO 0.26.1 syntax and resets one-line strings', async () => {
     const g = await grammar();
     function scope(text, word, expected) { const token = g.tokenizeLine(text).tokens.find(t => t.startIndex <= text.indexOf(word) && t.endIndex > text.indexOf(word)); assert.ok(token?.scopes.includes(expected), JSON.stringify(token)); }
+    scope('private int count', 'private', 'storage.modifier.qyno');
+    scope('public int current() = this.count', 'public', 'storage.modifier.qyno');
     scope('model Point;', 'Point', 'entity.name.type.qyno');
     scope('Point point = {x=3.0}', 'Point', 'storage.type.qyno');
     scope('this.x += dx', 'this', 'variable.language.this.qyno');
@@ -33,7 +35,7 @@ test('TextMate highlights actual QYNO 0.25.2 syntax and resets one-line strings'
 });
 test('manifest paths and snippets exist with QYNO indentation', () => {
     const base=path.join(__dirname,'..'), pkg=require('../package.json');
-    assert.equal(pkg.version,'0.26.0'); assert.equal(pkg.publisher,'hiraken0427');
+    assert.equal(pkg.version,'0.26.1'); assert.equal(pkg.publisher,'hiraken0427');
     for (const file of [pkg.main,...pkg.contributes.grammars.map(g=>g.path),...pkg.contributes.snippets.map(s=>s.path),pkg.contributes.languages[0].configuration]) assert.ok(fs.existsSync(path.join(base,file)),file);
     const snippets=require('../snippets/qyno.json');
     assert.ok(snippets.Main.body.includes('\treturn 0'));

@@ -1,6 +1,6 @@
 'use strict';
 const { STANDARD, KEYWORD_COMPLETIONS, properties } = require('./catalog');
-const { TYPES, codeContext, visibleSymbols, visibleUsings, functionLabel, typeLabel } = require('./analysis');
+const { TYPES, codeContext, visibleSymbols, visibleUsings, functionLabel, typeLabel, scopeContains } = require('./analysis');
 
 function environment(project, line, character) {
     const model = project.model;
@@ -66,7 +66,9 @@ function environment(project, line, character) {
         const found = source && source !== model ? environment({ ...project, model: source }, symbol.line || 0, source.lines[symbol.line || 0]?.length || 0).resolve(symbol.type || '') : resolve(symbol.type || '');
         return found?.kind === 'model' ? found : undefined;
     };
-    return { names, resolve, members, modelType };
+    const owner = model.scopes.filter(s => s.kind === 'model' && scopeContains(model, s.id, line, character)).at(-1)?.owner;
+    const canAccess = member => member.visibility !== 'private' || member.declaringModelId === owner?.modelId;
+    return { names, resolve, members, modelType, canAccess };
 }
 
 function snippetCall(symbol, name = symbol.name) {
@@ -75,11 +77,11 @@ function snippetCall(symbol, name = symbol.name) {
 }
 function completion(symbol, label = symbol.name) {
     return { label, kind: symbol.kind, detail: symbol.kind === 'model' ? `model ${label}` : symbol.kind === 'function' ? functionLabel(symbol, label) : symbol.type ? typeLabel({ ...symbol, name: label }) : symbol.path,
-        documentation: symbol.documentation || (symbol.kind === 'function' ? 'ユーザー定義関数' : symbol.kind === 'constant' ? '定数' : 'ユーザー定義の変数'),
+        documentation: symbol.documentation || (symbol.visibility === 'private' ? 'private: 宣言元のモデル内からのみアクセスできます' : symbol.kind === 'function' ? 'ユーザー定義関数' : symbol.kind === 'constant' ? '定数' : 'ユーザー定義の変数'),
         insertText: symbol.kind === 'function' ? snippetCall(symbol, label) : label,
         snippet: symbol.kind === 'function', symbol };
 }
-function receiverSymbol(env, text) {
+function receiverSymbol(env, text, includePrivate = false) {
     const match = /([A-Za-z_]\w*(?:(?:\[[^\]\n]*\])|(?:\.[A-Za-z_]\w*))*)\.?$/.exec(text);
     if (!match) return undefined;
     const parts = match[1].match(/[A-Za-z_]\w*|\[[^\]]*\]/g);
@@ -90,7 +92,10 @@ function receiverSymbol(env, text) {
             if (!symbol.rank) return undefined;
             symbol = { ...symbol, rank: symbol.rank - 1 };
         } else if (part === 'value') { /* same value type */ }
-        else symbol = env.modelType(symbol)?.members.find(m => m.name === part);
+        else {
+            symbol = env.modelType(symbol)?.members.find(m => m.name === part);
+            if (symbol && !includePrivate && !env.canAccess(symbol)) return undefined;
+        }
     }
     return symbol;
 }
@@ -100,7 +105,7 @@ function receiverMembers(project, env, text) {
     const rank = symbol.rank || 0, result = [];
     if (/^[A-Za-z_]\w*\.$/.test(text)) result.push(properties.addr, { ...properties.value, type: symbol.type });
     const model = env.modelType(symbol);
-    if (model) result.push(...model.members);
+    if (model) result.push(...model.members.filter(env.canAccess));
     if (rank || ['str', 'char'].includes(symbol.type)) result.push(properties.length);
     if (rank && symbol.kind !== 'constant') result.push(properties.add, properties.remove_at, properties.clear);
     return result;
@@ -132,7 +137,7 @@ function complete(project, line, character) {
         if (!items.length) items = receiverMembers(project, env, before).map(s => completion(s));
     } else {
         items = [...env.names].map(([label, s]) => completion(s, label));
-        for (const keyword of KEYWORD_COMPLETIONS) if (!env.names.has(keyword)) items.push({ label: keyword, kind: TYPES.has(keyword) ? 'type' : 'keyword', insertText: keyword, detail: 'QYNO 0.26.0' });
+        for (const keyword of KEYWORD_COMPLETIONS) if (!env.names.has(keyword)) items.push({ label: keyword, kind: TYPES.has(keyword) ? 'type' : 'keyword', insertText: keyword, detail: 'QYNO 0.26.1' });
     }
     // A completion immediately before '(' must not insert a second argument list.
     const next = project.model.lines[line].slice(character).match(/^\s*\(/);
@@ -154,7 +159,7 @@ function symbolAt(project, line, character) {
     const path = stop < 0 ? full : full.slice(0, before.length + stop);
     const env = environment(project, line, character);
     const qualified = /([A-Za-z_]\w*(?:(?:\[[^\]\n]*\])|(?:\.[A-Za-z_]\w*))*)$/.exec(text.slice(context.start, start + path.length))?.[1] || path;
-    return env.resolve(path) || env.names.get(path) || receiverSymbol(env, qualified);
+    return env.resolve(path) || env.names.get(path) || receiverSymbol(env, qualified, true);
 }
 
 /** Find the innermost unmatched call; strings, interpolations and arrays are lexical. */
