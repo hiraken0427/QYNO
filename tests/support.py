@@ -23,7 +23,7 @@ class QynoTestCase(unittest.TestCase):
         self.directory = Path(temporary.name)
         self.sequence = 0
 
-    def compile_source(self, source, *, error=None, warnings=()):
+    def compile_source(self, source, *, error=None, warnings=(), error_source=None):
         self.sequence += 1
         path = self.directory / f"case{self.sequence}.qy"
         path.write_bytes(source.encode("utf-8") if isinstance(source, str) else source)
@@ -37,7 +37,7 @@ class QynoTestCase(unittest.TestCase):
             self.assertEqual(result.returncode, 1, diagnostic)
             self.assertIn("エラー", diagnostic)
             self.assertIn(error, diagnostic)
-            self.assertIn(str(path), diagnostic)
+            self.assertIn(str(self.directory / error_source) if error_source else str(path), diagnostic)
             return result
         self.assertEqual(result.returncode, 0, diagnostic)
         if warnings:

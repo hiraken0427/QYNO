@@ -1,0 +1,4 @@
+const LIMIT = BASE + 1
+const auto BASE = 3
+const LABEL = "QYNO"
+const MATRIX = [[1, 2], [3, 4]]

@@ -16,6 +16,7 @@ Python を指定する場合は `make test PYTHON=/path/to/python3` とする。
 | --- | --- |
 | `make test-auto` | ローカル auto・const auto、型固定、配列・モデルのコピー、入力、readonly・interface・明示 close の制約 |
 | `make test-implicit-declarations` | 型名省略の宣言と既存変数への代入、ブロック・同名宣言、名前衝突、未使用警告・候補名、コピー・所有権 |
+| `make test-global-const-inference` | ファイル先頭の推論付き定数、前方・モジュール参照、循環・依存深さ、配列上限・モデル既定値・readonly |
 | `make test-rounding` | Decimal を正解値とした丸め、正負の中間値、桁指定、整数精度・範囲外 |
 | `make test-semantics` | 短絡評価、比較連鎖の評価回数、スコープ、再帰、値渡し・参照、診断 |
 | `make test-text` | Unicode スカラー値、NUL、char、コピー、文字置換、不正 UTF-8、添字エラー |
@@ -158,3 +159,11 @@ readonly / interface の所有制限と、file・file 配列の明示 close の�
 未使用警告ではコンパイル成功と副作用の保持、似た名前の候補、ソース位置、具体化時の重複防止を検証する。
 旧テストの「未宣言の単純代入」「内側の明示的な同名宣言」は、新仕様の成功例へ更新し、
 未宣言の複合代入と同一スコープでの二重宣言は引き続きエラーとして検証する。
+
+## 0.26.8 の推論付き定数
+
+`make test-global-const-inference` は32メソッドで、ファイル先頭のconst autoとconstの型名省略、
+従来の型付き定数と混在した前方参照、import / using / 別名とdiamond依存を検証する。
+配列・モデルの定数、readonlyの借用、コピーの独立性、配列上限やモデル既定値からの早期参照も確認する。
+自己・相互参照とモデル既定値を含む循環、深すぎる依存、実行時操作・変更操作・名前衝突を診断し、
+依存モジュールのエラーではそのファイルの位置を検証する。未導入の関数の型推論は含めない。

@@ -1,0 +1,20 @@
+import settings
+using settings as cfg
+
+const SIZE = cfg.LIMIT
+const auto LABEL = cfg.LABEL + " constants"
+
+model Point;
+	int x = SIZE
+	int y = cfg.BASE
+
+const ORIGIN = Point()
+
+int main();
+	int values[SIZE]
+	point = ORIGIN
+	point.x++
+	print("{LABEL}: {values.length}")
+	print(cfg.MATRIX)
+	print("{ORIGIN.x}, {ORIGIN.y}; copy: {point.x}, {point.y}")
+	return 0

@@ -2,6 +2,8 @@
  * existing checked slot path, keeping ref borrowing and single evaluation. */
 static void check_call(Node *node);
 static void check_model_init(Node *node, Type expected);
+static void check_model_definition(Model *m);
+static void check_field_initial(ModelField *f);
 static Node *copy_model(Node *source)
 {
     Node *copy = calloc(1, sizeof(*copy));
@@ -49,6 +51,7 @@ static void check_model_init(Node *node, Type expected)
         return;
     }
     m = type_model(expected);
+    if (m->state == 0) check_model_definition(m);
     if (m->initializer) { check_construction(node, m); return; }
     for (item = node->lhs; item; item = item->next) {
         Node *before;
@@ -68,6 +71,7 @@ static void check_model_init(Node *node, Type expected)
     for (f = m->fields; f; f = f->next) {
         for (item = node->lhs; item && item->field != f; item = item->next) { }
         if (item) continue;
+        check_field_initial(f);
         item = calloc(1, sizeof(*item)); if (!item) fatal("フィールドの初期値を確保できません");
         item->kind = ND_FIELD; item->field = f; item->tok = f->tok; item->name = f->name;
         item->lhs = f->initial ? f->initial : model_default(f->ty, f->dims, f->tok);
@@ -153,6 +157,17 @@ static int model_constant_default(Node *n)
     return n->kind == ND_MODEL_NEW || n->kind == ND_ARRAY_NEW || is_const_expr(n);
 }
 static int model_definition_depth;
+static void check_field_initial(ModelField *f)
+{
+    if (!f->initial || f->initial_state == 2) return;
+    if (f->initial_state == 1) error_tok(f->tok, "フィールド %s の既定値が循環しています", f->name);
+    f->initial_state = 1;
+    check_dims(f->dims);
+    check_expected(f->initial, f->ty);
+    f->initial = coerce(f->initial, f->ty, f->tok, "フィールドの既定値");
+    if (!model_constant_default(f->initial)) error_tok(f->tok, "フィールドの既定値はコンパイル時に確定する式にしてください");
+    f->initial_state = 2;
+}
 static void check_model_definition(Model *m)
 {
     ModelField *f, *other;
@@ -162,6 +177,7 @@ static void check_model_definition(Model *m)
     m->state = 1;
     for (f = m->fields; f; f = f->next) {
         Function *fn;
+        concrete_only(f->ty, f->tok);
         for (fn = cur_ast->funcs; fn; fn = fn->next) if (fn->model == m && same_name(fn->name, fn->name_len, f->name, (int)strlen(f->name))) error_tok(f->tok, "フィールドとメソッドの名前 %s が重複しています", f->name);
         for (other = m->fields; other != f; other = other->next)
             if (!strcmp(other->name, f->name)) error_tok(f->tok, "フィールド %s が重複しています", f->name);
@@ -169,11 +185,7 @@ static void check_model_definition(Model *m)
         check_dims(f->dims);
         f->pending = !f->initial && !defaultable(f->ty, f->dims);
         if (f->pending && !m->initializer) error_tok(f->tok, "フィールド %s には既定値または親の init が必要です", f->name);
-        if (f->initial) {
-            check_expected(f->initial, f->ty);
-            f->initial = coerce(f->initial, f->ty, f->tok, "フィールドの既定値");
-            if (!model_constant_default(f->initial)) error_tok(f->tok, "フィールドの既定値はコンパイル時に確定する式にしてください");
-        }
+        check_field_initial(f);
     }
     m->state = 2; model_definition_depth--;
     check_initializer_defaults(m);

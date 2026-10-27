@@ -5,7 +5,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#define QYC_VERSION "0.26.7"
+#define QYC_VERSION "0.26.8"
 
 typedef struct SourceFile SourceFile;
 typedef struct Module Module;
@@ -134,6 +134,7 @@ typedef enum {
 
 #define MAX_ARRAY_RANK 32
 #define MAX_PLACE_DEPTH 128
+#define MAX_CONST_DEPTH 256
 typedef struct ArrayDim ArrayDim;
 
 /* ---------- 構文解析（AST） ---------- */
@@ -202,7 +203,7 @@ struct Var {
     int name_len;
     Type ty;
     ArrayDim *dims;
-    int is_inferred;    /* auto のローカル宣言。初期値の検査後に ty が確定する */
+    int is_inferred;    /* auto 等の推論付き宣言。初期値の検査後に ty が確定する */
     int is_implicit;    /* 型名のない name = 初期値 による宣言 */
     int is_used;        /* 読み取り・場所の参照・複合更新がある */
     int offset;         /* rbp からの距離（[rbp - offset] に置く）。const は 0 */
@@ -382,6 +383,7 @@ struct ModelField {
     Node *initial;
     int index;
     int pending;
+    int initial_state; /* フィールド既定値の遅延検査（0:未、1:検査中、2:済み） */
 };
 struct Interface {
     Interface *next;

@@ -190,6 +190,21 @@ async function run() {
     assert.ok(outerDefinition.some(d=>(d.range || d.targetSelectionRange).start.line===1)); checks++;
     const implicitHover=await implicitQuery(6,'cou','vscode.executeHoverProvider');
     assert.ok(implicitHover.some(h=>h.contents.some(c=>c.value?.includes('auto count')))); checks++;
+    const constantsDoc=await vscode.workspace.openTextDocument({language:'qyno',content:
+        'int main();\n\tprint(LIMIT)\nconst LIMIT = BASE + 1\nconst auto BASE = 3\n'});
+    await vscode.window.showTextDocument(constantsDoc);
+    const constantsPosition=new vscode.Position(1,constantsDoc.lineAt(1).text.indexOf('LIMIT')+2);
+    const constantsItems=await vscode.commands.executeCommand('vscode.executeCompletionItemProvider',constantsDoc.uri,constantsPosition);
+    assert.ok(constantsItems.items.some(i=>i.label==='LIMIT' && i.detail==='const auto LIMIT')); checks++;
+    const constantsDefinition=await vscode.commands.executeCommand('vscode.executeDefinitionProvider',constantsDoc.uri,constantsPosition);
+    assert.ok(constantsDefinition.some(d=>(d.range || d.targetSelectionRange).start.line===2)); checks++;
+    const constantsHover=await vscode.commands.executeCommand('vscode.executeHoverProvider',constantsDoc.uri,constantsPosition);
+    assert.ok(constantsHover.some(h=>h.contents.some(c=>c.value?.includes('const auto LIMIT')))); checks++;
+    const constantsOutline=await vscode.commands.executeCommand('vscode.executeDocumentSymbolProvider',constantsDoc.uri);
+    assert.ok(constantsOutline.some(s=>s.name==='LIMIT' && s.kind===vscode.SymbolKind.Constant)); checks++;
+    const dependencyPosition=new vscode.Position(2,constantsDoc.lineAt(2).text.indexOf('BASE')+2);
+    const dependencyDefinition=await vscode.commands.executeCommand('vscode.executeDefinitionProvider',constantsDoc.uri,dependencyPosition);
+    assert.ok(dependencyDefinition.some(d=>(d.range || d.targetSelectionRange).start.line===3)); checks++;
     console.log(`QYNO VS Code integration: ${checks} checks passed`);
 }
 module.exports={run};

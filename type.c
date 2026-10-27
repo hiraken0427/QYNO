@@ -2,7 +2,7 @@
  * 工程4：型検査
  *
  * 式の型を決めてノードに付け、必要な型変換（ND_CAST）を挿入する。
- * auto のローカル宣言は初期値から型を決め、それ以外は明示された型を使う。
+ * 推論付きのローカル変数・const は初期値から型を決め、それ以外は明示された型を使う。
  *
  * 暗黙の型変換の規則
  *   int    → float・double      許可（自動昇格）
@@ -73,6 +73,7 @@ static int is_numeric(Type ty)
 static Ast *cur_ast;
 static Function *cur_func;
 static int allow_void;          /* 次に調べる呼び出しが文として使われるなら 1 */
+static int const_check_depth;
 
 /* const の計算に使う値 */
 typedef struct {
@@ -766,6 +767,8 @@ static void check_expr(Node *node)
         }
         return;
     case ND_VAR:
+        if (node->var->is_const && node->var->is_inferred && node->var->ty == TY_NONE)
+            ensure_const(node->var);
         node->ty = node->var->ty;
         return;
     case ND_CALL:
@@ -1784,6 +1787,15 @@ static void check_stmt(Node *node)
 {
     switch (node->kind) {
     case ND_DECL:
+        if (node->var->is_const) {
+            if (node->var->const_state == 2) return;
+            if (node->var->const_state == 1)
+                error_tok(node->var->tok, "const %.*s の定義が循環しています",
+                    node->var->name_len, node->var->name);
+            if (++const_check_depth > MAX_CONST_DEPTH)
+                error_tok(node->var->tok, "const の依存は %d 段以下にしてください", MAX_CONST_DEPTH);
+            node->var->const_state = 1;
+        }
         if (node->var->is_inferred && node->var->ty == TY_NONE) {
             check_expr(node->lhs);
             if (node->lhs->ty == TY_NONE || node->lhs->ty == TY_VOID || node->lhs->ty == TY_ADDR) {
@@ -1803,14 +1815,6 @@ static void check_stmt(Node *node)
             if (contains_initializer(node->var->ty)) error_tok(node->tok, "init を含むモデルは const にできません");
             if (type_is_model(array_base(node->var->ty)) && contains_file(node->var->ty))
                 error_tok(node->tok, "file を含むモデルは const にできません");
-            if (node->var->const_state == 2) {
-                return;         /* ほかの const から参照されて計算済み */
-            }
-            if (node->var->const_state == 1) {
-                error_tok(node->var->tok, "const %.*s の定義が循環しています",
-                         node->var->name_len, node->var->name);
-            }
-            node->var->const_state = 1;
         }
         check_dims(node->var->dims);
         if (node->lhs != NULL) {
@@ -1829,6 +1833,7 @@ static void check_stmt(Node *node)
             node->var->const_val = value_node(eval_const(node->lhs), node->lhs->tok);
             constant_size(node, node->var->const_val, &budget);
             node->var->const_state = 2;
+            const_check_depth--;
         }
         return;
     case ND_USING:
@@ -1926,7 +1931,13 @@ static void check_stmts(Node *list)
 
 static void ensure_const(Var *v)
 {
+    Function *saved_func = cur_func;
+    int saved_allow = allow_void;
+    if (v->is_global) cur_func = NULL;
+    allow_void = 0;
     check_stmt(v->decl);
+    cur_func = saved_func;
+    allow_void = saved_allow;
 }
 
 /* 名前の重なりと main を確かめる */
@@ -1992,10 +2003,11 @@ void typecheck(Ast *ast)
     cur_ast = ast;
     cur_func = NULL;
     allow_void = 0;
+    const_check_depth = 0;
     check_names(ast);
     resolve_model_types(ast);
-    check_interface_positions(ast);
     prepare_builders(ast);
+    check_interface_positions(ast);
     { Model *m, *other; Function *f;
       for (m = ast->models; m; m = m->next) {
           for (other = ast->models; other != m; other = other->next)
