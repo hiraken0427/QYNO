@@ -6,7 +6,7 @@
   ],
   "patterns": [
     {
-      "match": "^\\s*(model)\\s+([A-Za-z_]\\w*)",
+      "match": "^\\s*(model|interface)\\s+([A-Za-z_]\\w*)",
       "captures": {
         "1": {
           "name": "storage.type.qyno"
@@ -117,7 +117,7 @@
       ]
     },
     {
-      "match": "^\\s*(?:(public|private)\\s+)?(?:(readonly)\\s+)?([A-Za-z_]\\w*(?:\\.[A-Za-z_]\\w*)*)\\s+([A-Za-z_]\\w*)(?=\\s*\\()",
+      "match": "^\\s*(?:(implements|public|private)\\s+)?(?:(readonly)\\s+)?([A-Za-z_]\\w*(?:\\.[A-Za-z_]\\w*)*)\\s+([A-Za-z_]\\w*)(?=\\s*\\()",
       "captures": {
         "1": {
           "name": "storage.modifier.qyno"
@@ -167,7 +167,7 @@
       "name": "keyword.control.import.qyno"
     },
     {
-      "match": "\\b(?:ref|val|const|public|private|readonly)\\b",
+      "match": "\\b(?:ref|val|const|implements|public|private|readonly)\\b",
       "name": "storage.modifier.qyno"
     },
     {

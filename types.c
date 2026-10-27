@@ -4,6 +4,7 @@
 
 typedef struct {
     Model *model;
+    Interface *contract;
     Token *tok;
     char *path;
     Using *scope;
@@ -18,7 +19,7 @@ static int count;
 
 int type_is_array(Type ty)
 {
-    return (int)ty >= TY_ARRAY && types[(int)ty - TY_ARRAY].model == NULL && types[(int)ty - TY_ARRAY].path == NULL;
+    return (int)ty >= TY_ARRAY && types[(int)ty - TY_ARRAY].model == NULL && types[(int)ty - TY_ARRAY].contract == NULL && types[(int)ty - TY_ARRAY].path == NULL;
 }
 
 Type array_type(Type element)
@@ -28,7 +29,7 @@ Type array_type(Type element)
     DynamicType *grown;
     const char *name;
     for (i = 0; i < count; i++) {
-        if (!types[i].model && !types[i].path && types[i].element == element) {
+        if (!types[i].model && !types[i].contract && !types[i].path && types[i].element == element) {
             return (Type)(TY_ARRAY + i);
         }
     }
@@ -89,6 +90,15 @@ Type model_type(Model *model)
 {
     DynamicType e = {0}; e.model = model; return add_type(e);
 }
+int type_is_interface(Type ty)
+{
+    return (int)ty >= TY_ARRAY && types[(int)ty - TY_ARRAY].contract != NULL;
+}
+Interface *type_interface(Type ty) { return types[(int)ty - TY_ARRAY].contract; }
+Type interface_type(Interface *contract)
+{
+    DynamicType e = {0}; e.contract = contract; return add_type(e);
+}
 Type named_type(Token *tok, const char *name, Using *scope)
 {
     DynamicType e = {0}; size_t n = strlen(name);
@@ -104,7 +114,7 @@ Type resolve_type(Type ty)
     index = (int)ty - TY_ARRAY;
     if (types[index].resolved) return types[index].resolved;
     if (types[index].path) result = resolve_module_type(types[index].tok, types[index].path, types[index].scope);
-    else if (types[index].model) return ty;
+    else if (types[index].model || types[index].contract) return ty;
     else { element = resolve_type(types[index].element); result = array_type(element); }
     types[index].resolved = result; return result;
 }
@@ -117,6 +127,17 @@ void resolve_model_types(Ast *ast)
         fn->ret = resolve_type(fn->ret);
         for (v = fn->params; v; v = v->next) v->ty = resolve_type(v->ty);
         for (v = fn->locals; v; v = v->next) v->ty = resolve_type(v->ty);
+    }
+    { Interface *in;
+      for (in = ast->interfaces; in; in = in->next)
+          for (fn = in->methods; fn; fn = fn->next) {
+              fn->ret = resolve_type(fn->ret);
+              for (v = fn->params; v; v = v->next) v->ty = resolve_type(v->ty);
+          }
+    }
+    for (m = ast->models; m; m = m->next) {
+        Implementation *im;
+        for (im = m->implements; im; im = im->next) im->ty = resolve_type(im->ty);
     }
     for (v = ast->global_vars; v; v = v->next) v->ty = resolve_type(v->ty);
 }

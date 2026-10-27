@@ -116,6 +116,29 @@ async function run() {
     const initSymbol = initOutline.find(s=>s.name==='Rectangle').children.find(s=>s.name==='init');
     assert.equal(initSymbol.kind,vscode.SymbolKind.Constructor);
     assert.equal(initSymbol.detail,'public bool init(double width, double height=1.0)'); checks++;
+    const contractDoc = await vscode.workspace.openTextDocument({language:'qyno',content:
+        'interface Shape;\n\treadonly double area();\n\tvoid move(double dx, double dy);\nmodel Circle implements Shape;\n\treadonly double area() = 1.0\n\tvoid move(double x, double y);\n\t\treturn\nvoid inspect(ref readonly Shape value);\n\tvalue.area()\nvoid change(ref Shape value);\n\tvalue.move(1.0, 2.0)\n'});
+    await vscode.window.showTextDocument(contractDoc);
+    const contractQuery = (line, part, command) => vscode.commands.executeCommand(command,contractDoc.uri,
+        new vscode.Position(line,contractDoc.lineAt(line).text.indexOf(part)+part.length));
+    const contractMembers=await contractQuery(8,'value.','vscode.executeCompletionItemProvider');
+    assert.deepEqual(contractMembers.items.filter(i=>i.kind!==vscode.CompletionItemKind.Snippet).map(i=>i.label),['area']); checks++;
+    const mutableMembers=await contractQuery(10,'value.','vscode.executeCompletionItemProvider');
+    assert.deepEqual(mutableMembers.items.filter(i=>i.kind!==vscode.CompletionItemKind.Snippet).map(i=>i.label).sort(),['area','move']); checks++;
+    const contractDefinition=await contractQuery(8,'value.ar','vscode.executeDefinitionProvider');
+    assert.ok(contractDefinition.some(d=>(d.range || d.targetSelectionRange).start.line===1)); checks++;
+    const contractHover=await contractQuery(8,'value.ar','vscode.executeHoverProvider');
+    assert.ok(contractHover.some(h=>h.contents.some(c=>c.value?.includes('readonly double area()')))); checks++;
+    const contractSignature=await contractQuery(10,'value.move(','vscode.executeSignatureHelpProvider');
+    assert.equal(contractSignature.signatures[0].label,'public void value.move(double dx, double dy)'); checks++;
+    const implementationDefinition=await contractQuery(3,'implements Sha','vscode.executeDefinitionProvider');
+    assert.ok(implementationDefinition.some(d=>(d.range || d.targetSelectionRange).start.line===0)); checks++;
+    const contractOutline=await vscode.commands.executeCommand('vscode.executeDocumentSymbolProvider',contractDoc.uri);
+    const shapeOutline=contractOutline.find(s=>s.name==='Shape');
+    assert.equal(shapeOutline.kind,vscode.SymbolKind.Interface);
+    assert.deepEqual(shapeOutline.children.map(s=>s.name),['area','move']); checks++;
+    const contractParameterHover=await contractQuery(8,'val','vscode.executeHoverProvider');
+    assert.ok(contractParameterHover.some(h=>h.contents.some(c=>c.value?.includes('ref readonly Shape value')))); checks++;
     console.log(`QYNO VS Code integration: ${checks} checks passed`);
 }
 module.exports={run};

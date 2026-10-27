@@ -62,10 +62,10 @@ function environment(project, line, character) {
     const modelType = symbol => {
         if (!symbol || symbol.rank) return undefined;
         const source = symbol.uri && symbol.uri !== model.uri ? [...project.modules.values()].find(m => m.uri === symbol.uri) : model;
-        const local = source?.symbols.find(s => s.kind === 'model' && s.scopeId === 0 && s.name === symbol.type);
+        const local = source?.symbols.find(s => ['model', 'interface'].includes(s.kind) && s.scopeId === 0 && s.name === symbol.type);
         if (local) return local;
         const found = source && source !== model ? environment({ ...project, model: source }, symbol.line || 0, source.lines[symbol.line || 0]?.length || 0).resolve(symbol.type || '') : resolve(symbol.type || '');
-        return found?.kind === 'model' ? found : undefined;
+        return ['model', 'interface'].includes(found?.kind) ? found : undefined;
     };
     const owner = model.scopes.filter(s => s.kind === 'model' && scopeContains(model, s.id, line, character)).at(-1)?.owner;
     const canAccess = member => member.visibility !== 'private' || member.declaringModelId === owner?.modelId;
@@ -77,7 +77,7 @@ function snippetCall(symbol, name = symbol.name) {
     return `${name}(${symbol.params.map((p, i) => `${p.ref ? 'ref ' : ''}\${${i + 1}:${p.placeholder || p.default || p.name}}`).join(', ')})`;
 }
 function completion(symbol, label = symbol.name) {
-    return { label, kind: symbol.kind, detail: symbol.kind === 'model' ? `model ${label}` : symbol.kind === 'function' ? functionLabel(symbol, label) : symbol.type ? typeLabel({ ...symbol, name: label }) : symbol.path,
+    return { label, kind: symbol.kind, detail: ['model', 'interface'].includes(symbol.kind) ? `${symbol.kind} ${label}` : symbol.kind === 'function' ? functionLabel(symbol, label) : symbol.type ? typeLabel({ ...symbol, name: label }) : symbol.path,
         documentation: symbol.documentation || (symbol.visibility === 'private' ? 'private: 宣言元のモデル内からのみアクセスできます' : symbol.kind === 'function' ? 'ユーザー定義関数' : symbol.kind === 'constant' ? '定数' : 'ユーザー定義の変数'),
         insertText: symbol.kind === 'function' ? snippetCall(symbol, label) : label,
         snippet: symbol.kind === 'function', symbol };
@@ -93,7 +93,7 @@ function receiverSymbol(env, text, includePrivate = false) {
             if (!symbol.rank) return undefined;
             symbol = { ...symbol, rank: symbol.rank - 1 };
         } else if (symbol.kind === 'namespace') { symbol = env.resolve(symbol.path + '.' + part); }
-        else if (part === 'value') { /* same value type */ }
+        else if (part === 'value') { if (env.modelType(symbol)?.kind === 'interface') return undefined; }
         else {
             const receiverReadonly = symbol.readonly;
             symbol = env.modelType(symbol)?.members.find(m => m.name === part);
@@ -107,7 +107,8 @@ function receiverMembers(project, env, text) {
     const symbol = receiverSymbol(env, text.slice(0, -1));
     if (!symbol || !['variable', 'constant', 'parameter', 'field'].includes(symbol.kind)) return [];
     const rank = symbol.rank || 0, result = [];
-    if (/^[A-Za-z_]\w*\.$/.test(text.trim())) {
+    const contract = env.modelType(symbol)?.kind === 'interface';
+    if (!contract && /^[A-Za-z_]\w*\.$/.test(text.trim())) {
         if (!symbol.readonly) result.push(properties.addr);
         result.push({ ...properties.value, type: symbol.type });
     }
@@ -152,7 +153,7 @@ function complete(project, line, character) {
         if (!items.length) items = receiverMembers(project, env, before).map(s => completion(s));
     } else {
         items = [...env.names].map(([label, s]) => completion(s, label));
-        for (const keyword of KEYWORD_COMPLETIONS) if (!env.names.has(keyword)) items.push({ label: keyword, kind: TYPES.has(keyword) ? 'type' : 'keyword', insertText: keyword, detail: 'QYNO 0.26.3' });
+        for (const keyword of KEYWORD_COMPLETIONS) if (!env.names.has(keyword)) items.push({ label: keyword, kind: TYPES.has(keyword) ? 'type' : 'keyword', insertText: keyword, detail: 'QYNO 0.26.4' });
     }
     // A completion immediately before '(' must not insert a second argument list.
     const next = project.model.lines[line].slice(character).match(/^\s*\(/);

@@ -1,4 +1,4 @@
-# モデル型（0.26.3）
+# モデル型（0.26.4）
 
 `model` は型付きフィールドとメソッドを持つ値型。代入・通常の引数・戻り値では
 独立した値を作り、変更したい変数は `ref` で渡す。型名が異なれば別の型であり、
@@ -181,7 +181,7 @@ int main();
 `geometry.Point`、`using geometry`、`using geometry.Point` にも対応する。
 別ファイルの同じ名前のモデルは別の型。モデルと通常の関数の前方参照も可能。
 
-0.26.3 では継承、静的メソッド、
+0.26.4 では継承、静的メソッド、
 自己参照・相互参照するフィールド型は導入しない。
 配列を介するフィールド型の循環も診断する。モデルの入れ子と参照・更新パスは128段まで。
 
@@ -246,3 +246,16 @@ init と再帰的にそれを含む型は const として生成できない。in
 
 詳細は [カスタム初期化の仕様](model-initialization-design.md)、
 実行例は [examples/models/initialization.qy](../examples/models/initialization.qy) を参照。
+
+## インターフェース（0.26.4）
+
+`interface Shape;` にメソッドのシグネチャを並べ、`model Rectangle implements Shape;` と実装を明示する。
+通常の関数・モデルメソッドの `ref Shape` / `ref readonly Shape` 引数として利用できる。
+利用側は契約にあるメソッドだけを呼べ、public・型・引数・配列上限・readonly の一致を検査する。
+
+コンパイル時に具体的なモデル型へ特殊化するため、値コピーや init の再実行は起こらない。
+file の明示 close は具体的なメソッドの本体に基づいて検査する。
+interface 型の変数・配列・フィールド・戻り値、継承は導入しない。
+
+詳細は [インターフェースの仕様](interfaces-design.md)、
+実行例は [examples/models/interfaces.qy](../examples/models/interfaces.qy) を参照。

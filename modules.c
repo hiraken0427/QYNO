@@ -9,10 +9,11 @@
 #include <string.h>
 #include <sys/stat.h>
 
-typedef enum { SYM_NONE, SYM_MODEL, SYM_MODULE, SYM_FUNCTION, SYM_CONSTANT, SYM_BUILTIN } SymbolKind;
+typedef enum { SYM_NONE, SYM_MODEL, SYM_INTERFACE, SYM_MODULE, SYM_FUNCTION, SYM_CONSTANT, SYM_BUILTIN } SymbolKind;
 typedef struct {
     SymbolKind kind;
     Model *model;
+    Interface *contract;
     Module *module;
     Function *function;
     Var *constant;
@@ -200,6 +201,7 @@ Ast *load_program(const char *path, const char **roots, int root_count)
     Node **global_tail = &program->globals;
     Var **variable_tail = &program->global_vars;
     Model **model_tail = &program->models;
+    Interface **interface_tail = &program->interfaces;
     int i;
     if (canonical == NULL) fatal("%s を開けません: %s", path, strerror(errno));
     directory = copy_name(canonical, strlen(canonical));
@@ -238,6 +240,8 @@ Ast *load_program(const char *path, const char **roots, int root_count)
     /* 所有モジュールは Token.source に残す。リストだけを出力単位へ連結する。 */
     for (module = modules; module != NULL; module = module->next) {
         if (module->builtin) continue;
+        *interface_tail = module->ast->interfaces;
+        while (*interface_tail) interface_tail = &(*interface_tail)->next;
         *model_tail = module->ast->models;
         while (*model_tail) model_tail = &(*model_tail)->next;
         *function_tail = module->ast->funcs;
@@ -293,6 +297,12 @@ static Symbol exported_symbol(Module *module, const char *name)
         return symbol;
     }
     if (strchr(name, '.') != NULL) return symbol;
+    { Interface *in;
+      for (in = module->ast->interfaces; in; in = in->next)
+          if (in->tok->source->module == module && strcmp(in->name, name) == 0) {
+              symbol.kind = SYM_INTERFACE; symbol.contract = in; return symbol;
+          }
+    }
     { Model *m;
       for (m = module->ast->models; m; m = m->next)
           if (m->tok->source->module == module && strcmp(m->name, name) == 0) {
@@ -352,6 +362,7 @@ static int same_symbol(Symbol a, Symbol b)
     if (a.kind != b.kind) return 0;
     switch (a.kind) {
     case SYM_MODEL: return a.model == b.model;
+    case SYM_INTERFACE: return a.contract == b.contract;
     case SYM_MODULE: return a.module == b.module;
     case SYM_FUNCTION: return a.function == b.function;
     case SYM_CONSTANT: return a.constant == b.constant;
@@ -382,6 +393,8 @@ static Symbol using_symbol(Using *u, const char *name)
     if (strcmp(last, name) != 0) return symbol;
     if (u->target_model != NULL) {
         symbol.kind = SYM_MODEL; symbol.model = u->target_model;
+    } else if (u->target_interface != NULL) {
+        symbol.kind = SYM_INTERFACE; symbol.contract = u->target_interface;
     } else if (u->target_function != NULL) {
         symbol.kind = SYM_FUNCTION;
         symbol.function = u->target_function;
@@ -429,6 +442,7 @@ static void resolve_using(Using *u)
     if (target.kind == SYM_NONE) error_tok(u->path_tok, "using の対象 %s はありません。必要な import と名前を確認してください", u->path);
     if (u->alias != NULL && target.kind != SYM_MODULE) error_tok(u->alias, "as の別名はモジュールにだけ指定できます: %s", u->path);
     u->target_model = target.model;
+    u->target_interface = target.contract;
     u->target_module = target.module;
     u->target_function = target.function;
     u->target_constant = target.constant;
@@ -515,7 +529,10 @@ static void validate_using(Using *u)
             introduced_name(u, builtin_name((Builtin)b), symbol);
         }
     } else {
-        Model *m;
+        Model *m; Interface *in;
+        for (in = target->ast->interfaces; in; in = in->next) if (in->tok->source->module == target) {
+            symbol.kind = SYM_INTERFACE; symbol.contract = in; introduced_name(u, in->name, symbol);
+        }
         for (m = target->ast->models; m; m = m->next) if (m->tok->source->module == target) {
             symbol.kind = SYM_MODEL; symbol.model = m; introduced_name(u, m->name, symbol);
         }
@@ -557,7 +574,8 @@ static void validate_declaration(Token *site, Using *scope)
         if (symbol.kind != SYM_NONE &&
             !(symbol.kind == SYM_FUNCTION && symbol.function->tok == site) &&
             !(symbol.kind == SYM_CONSTANT && symbol.constant->tok == site) &&
-            !(symbol.kind == SYM_MODEL && symbol.model->tok == site)) {
+            !(symbol.kind == SYM_MODEL && symbol.model->tok == site) &&
+            !(symbol.kind == SYM_INTERFACE && symbol.contract->tok == site)) {
             error_tok(site, "名前 %s は using %s と衝突しています", name, u->path);
         }
     }
@@ -574,6 +592,13 @@ void validate_module_names(Ast *program)
         if (module->builtin) continue;
         for (u = module->ast->all_usings; u != NULL; u = u->all_next) resolve_using(u);
         for (u = module->ast->all_usings; u != NULL; u = u->all_next) validate_using(u);
+    }
+    { Interface *in; for (in = program->interfaces; in; in = in->next) {
+        Function *method; validate_declaration(in->tok, NULL);
+        for (method = in->methods; method; method = method->next) {
+            Var *p; for (p = method->params; p; p = p->next) validate_declaration(p->tok, p->usings);
+        }
+      }
     }
     { Model *m; for (m = program->models; m; m = m->next) validate_declaration(m->tok, NULL); }
     for (fn = program->funcs; fn != NULL; fn = fn->next) {
@@ -643,6 +668,7 @@ void resolve_module_name(Node *node)
         }
     }
     if (node->kind == ND_CALL) {
+        if (symbol.kind == SYM_INTERFACE) error_tok(node->tok, "interface は生成できません");
         if (symbol.kind == SYM_MODEL) {
             if (node->nargs) error_tok(node->tok, "モデルの初期化は 型 変数 = {フィールド=値} と書いてください");
             node->kind = ND_MODEL_INIT; node->cmp_ty = symbol.model->ty; return;
@@ -672,6 +698,7 @@ void resolve_module_name(Node *node)
 Type resolve_module_type(Token *tok, const char *name, Using *scope)
 {
     Symbol symbol = scoped_symbol(tok->source->module, name, scope, NULL, tok);
+    if (symbol.kind == SYM_INTERFACE) return symbol.contract->ty;
     if (symbol.kind != SYM_MODEL) error_tok(tok, "モデル型 %s は定義されていません。import と using を確認してください", name);
     return symbol.model->ty;
 }

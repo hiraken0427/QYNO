@@ -58,10 +58,10 @@ class Index {
         return { model, modules, moduleNames };
     }
 }
-const kinds = { model: vscode.CompletionItemKind.Class, field: vscode.CompletionItemKind.Field, function: vscode.CompletionItemKind.Function, variable: vscode.CompletionItemKind.Variable, parameter: vscode.CompletionItemKind.Variable, constant: vscode.CompletionItemKind.Constant, namespace: vscode.CompletionItemKind.Module, property: vscode.CompletionItemKind.Property, type: vscode.CompletionItemKind.TypeParameter, keyword: vscode.CompletionItemKind.Keyword };
+const kinds = { interface: vscode.CompletionItemKind.Interface, model: vscode.CompletionItemKind.Class, field: vscode.CompletionItemKind.Field, function: vscode.CompletionItemKind.Function, variable: vscode.CompletionItemKind.Variable, parameter: vscode.CompletionItemKind.Variable, constant: vscode.CompletionItemKind.Constant, namespace: vscode.CompletionItemKind.Module, property: vscode.CompletionItemKind.Property, type: vscode.CompletionItemKind.TypeParameter, keyword: vscode.CompletionItemKind.Keyword };
 function markdown(symbol) {
     const result = new vscode.MarkdownString();
-    result.appendCodeblock(symbol.kind === 'model' ? `model ${symbol.name}` : symbol.kind === 'function' ? functionLabel(symbol, symbol.path || symbol.name) : symbol.type ? typeLabel(symbol) : symbol.path || symbol.name, 'qyno');
+    result.appendCodeblock(['model', 'interface'].includes(symbol.kind) ? `${symbol.kind} ${symbol.name}` : symbol.kind === 'function' ? functionLabel(symbol, symbol.path || symbol.name) : symbol.type ? typeLabel(symbol) : symbol.path || symbol.name, 'qyno');
     if (symbol.documentation) result.appendText('\n' + symbol.documentation);
     return result;
 }
@@ -117,8 +117,8 @@ function activate(context) {
                 const selection = new vscode.Range(s.line, s.start, s.line, s.end);
                 const end = s.bodyScopeId ? model.scopes[s.bodyScopeId].endLine : s.line;
                 const range = new vscode.Range(s.line, 0, end, model.lines[end].length);
-                const symbol = new vscode.DocumentSymbol(s.name, s.kind === 'function' ? functionLabel(s) : typeLabel(s), s.kind === 'model' ? vscode.SymbolKind.Struct : s.initializer ? vscode.SymbolKind.Constructor : s.kind === 'function' ? vscode.SymbolKind.Function : s.kind === 'constant' ? vscode.SymbolKind.Constant : vscode.SymbolKind.Variable, range, selection);
-                if (s.kind === 'model') symbol.children = s.members.map(outline);
+                const symbol = new vscode.DocumentSymbol(s.name, s.kind === 'function' ? functionLabel(s) : typeLabel(s), s.kind === 'interface' ? vscode.SymbolKind.Interface : s.kind === 'model' ? vscode.SymbolKind.Struct : s.initializer ? vscode.SymbolKind.Constructor : s.kind === 'function' ? vscode.SymbolKind.Function : s.kind === 'constant' ? vscode.SymbolKind.Constant : vscode.SymbolKind.Variable, range, selection);
+                if (['model', 'interface'].includes(s.kind)) symbol.children = s.members.map(outline);
                 return symbol;
             };
             return model.symbols.filter(s => s.scopeId === 0).map(outline);
