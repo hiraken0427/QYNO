@@ -1,16 +1,16 @@
-# QYNO 0.26.9 VSCode Option
+# QYNO 0.26.10 VSCode Option
 
-QYNO **0.26.9** 用の VS Code 拡張です。配布ファイルは同じフォルダの
-[`0.26.9_VSCode_option.vsix`](0.26.9_VSCode_option.vsix) です。
+QYNO **0.26.10** 用の VS Code 拡張です。配布ファイルは同じフォルダの
+[`0.26.10_VSCode_option.vsix`](0.26.10_VSCode_option.vsix) です。
 VS Code 1.85 以降に対応します。
 
 ## インストール
 
 VS Code の拡張機能画面右上の「…」から **VSIX からのインストール…** を選び、
-`0.26.9_VSCode_option.vsix` を指定してください。CLI でもインストールできます。
+`0.26.10_VSCode_option.vsix` を指定してください。CLI でもインストールできます。
 
 ```sh
-code --install-extension vscode-extensions/0.26.9_VSCode_option.vsix
+code --install-extension vscode-extensions/0.26.10_VSCode_option.vsix
 ```
 
 `.qy` ファイルを開くと有効になります。別の拡張が `.qy` を担当している場合は、
@@ -23,6 +23,7 @@ Marketplace への公開やコンパイラのインストールは行いませ�
 - 型名を省略した `name = value` のローカル宣言と、既存変数への代入を区別します。内側の明示的な同名宣言と、ブロック終了後の外側の名前への参照に対応します。
 - ファイル先頭・ローカルの `const NAME = value` / `const auto NAME = value` を認識し、前方参照・モジュール経由の補完・定義参照と、定数のホバー・アウトラインに対応します。型表示は `const auto NAME` です。
 - `auto f(int x)` / `f(int x)` の関数・メソッドを認識し、補完・定義参照・引数ヒント・ホバー・アウトラインに対応します。戻り値は auto と表示し、通常の呼び出し文を関数宣言として扱いません。
+- `f(x)` / `f(auto x)` / `f(ref x)` の省略した引数を auto と表示し、引数名補完・定義参照・ホバー・引数ヒント・ref付き呼び出しの補完に対応します。
 
 - init の名前付き引数を、宣言・代入・戻り値・関数引数・入れ子・配列・add の文脈で補完。
 - 必須引数と既定値の表示、引数名の定義参照・ホバー、生成用の引数ヒント。
@@ -92,7 +93,7 @@ int main();
 
 補完は編集支援用の軽量な構文解析です。コンパイラの完全な型検査や診断機能ではありません。
 未完成のコードでも候補を提示します。複雑な式の戻り値の型推論や、式に対するすべてのメンバー補完は行いません。
-ビルド・実行と、close 漏れなどの検査には別途 QYNO 0.26.9 の `qyc` を使用してください。
+ビルド・実行と、close 漏れなどの検査には別途 QYNO 0.26.10 の `qyc` を使用してください。
 拡張はユーザープログラムやコンパイラを自動実行しません。
 
 開発用のパッケージ作成には Node.js 22 以降が必要です。拡張自体に npm 実行時依存はありません。
@@ -109,8 +110,8 @@ npm run package
 `test:editor` は VS Code 1.85.2 を取得して実際の拡張ホスト上で補完・定義・ホバー・引数ヒント・
 アウトライン・未保存変更を検証します。Linux の GUI のない環境では Xvfb などが必要です。
 取得済みの VS Code を使う場合は `QYNO_VSCODE_EXECUTABLE` に実行ファイルのパスを設定できます。
-`npm run package` はこのフォルダに VSIX を出力します。内部の拡張バージョンは SemVer の `0.26.9`、
-配布ファイル名は `0.26.9_VSCode_option.vsix` です。
+`npm run package` はこのフォルダに VSIX を出力します。内部の拡張バージョンは SemVer の `0.26.10`、
+配布ファイル名は `0.26.10_VSCode_option.vsix` です。
 
 ## インターフェース
 

@@ -231,6 +231,24 @@ async function run() {
     assert.ok(inferredMethodHover.some(h=>h.contents.some(c=>c.value?.includes('public readonly auto get()')))); checks++;
     const inferredMethodDefinition=await vscode.commands.executeCommand('vscode.executeDefinitionProvider',inferredMethodDoc.uri,methodNamePosition);
     assert.ok(inferredMethodDefinition.some(d=>(d.range || d.targetSelectionRange).start.line===2)); checks++;
+    const genericDoc=await vscode.workspace.openTextDocument({language:'qyno',content:
+        'square(x) = x^2\nfirst(ref readonly values) = values[0]\nint main();\n\tint data[] = [1, 2]\n\tprint(square(3))\n\tprint(first(ref data))\n'});
+    await vscode.window.showTextDocument(genericDoc);
+    const genericQuery=(line,part,command)=>vscode.commands.executeCommand(command,genericDoc.uri,
+        new vscode.Position(line,genericDoc.lineAt(line).text.indexOf(part)+part.length));
+    const genericHint=await genericQuery(4,'square(','vscode.executeSignatureHelpProvider');
+    assert.equal(genericHint.signatures[0].label,'auto square(auto x)'); checks++;
+    const genericRefHint=await genericQuery(5,'first(','vscode.executeSignatureHelpProvider');
+    assert.equal(genericRefHint.signatures[0].label,'auto first(ref readonly auto values)'); checks++;
+    const genericItems=await genericQuery(5,'fi','vscode.executeCompletionItemProvider');
+    assert.ok(genericItems.items.some(i=>i.label==='first' && i.detail==='auto first(ref readonly auto values)')); checks++;
+    const genericParameterPosition=new vscode.Position(0,genericDoc.lineAt(0).text.lastIndexOf('x')+1);
+    const genericParameterDefinition=await vscode.commands.executeCommand('vscode.executeDefinitionProvider',genericDoc.uri,genericParameterPosition);
+    assert.ok(genericParameterDefinition.some(d=>(d.range || d.targetSelectionRange).start.character===7)); checks++;
+    const genericParameterHover=await vscode.commands.executeCommand('vscode.executeHoverProvider',genericDoc.uri,genericParameterPosition);
+    assert.ok(genericParameterHover.some(h=>h.contents.some(c=>c.value?.includes('auto x')))); checks++;
+    const genericOutline=await vscode.commands.executeCommand('vscode.executeDocumentSymbolProvider',genericDoc.uri);
+    assert.ok(genericOutline.some(s=>s.name==='square' && s.detail==='auto square(auto x)')); checks++;
     console.log(`QYNO VS Code integration: ${checks} checks passed`);
 }
 module.exports={run};

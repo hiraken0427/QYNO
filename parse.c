@@ -7,7 +7,7 @@
  * path     = ident ("." ident)*
  * function = (rtype | "auto")? ident "(" params? ")" dimensions (";" block | "=" expr NEWLINE)
  * rtype    = type | "void"
- * params   = ("ref" | "val")? type ident dimensions ("," params)?
+ * params   = ("ref" "readonly"? | "val")? (type | "auto")? ident dimensions ("," params)?
  * dimensions = ("[" expr? "]")*
  * block    = NEWLINE INDENT stmt+ DEDENT
  * stmt     = "return" expr? NEWLINE
@@ -1820,18 +1820,23 @@ static Function *function_def(int is_readonly)
     }
     if (!equal(tok, ")")) {
         for (;;) {
-            int param_ref = 0, param_readonly = 0;
+            int param_ref = 0, param_readonly = 0, param_infer, param_omitted;
             if (consume("ref")) {
                 param_ref = 1;
                 param_readonly = consume("readonly");
             } else {
                 consume("val");         /* val は既定（値渡し）なので、書いても書かなくてもよい */
             }
-            ty = type_keyword(tok);
-            if (ty == TY_NONE) {
+            param_omitted = tok->kind == TK_IDENT && !is_keyword(tok) &&
+                (equal(tok->next, ",") || equal(tok->next, ")") || equal(tok->next, "["));
+            param_infer = param_omitted || equal(tok, "auto");
+            if (param_infer && (parsing_interface || fn->is_initializer))
+                error_tok(tok, "interface の契約と init の引数には型を明示してください");
+            ty = param_infer ? TY_NONE : type_keyword(tok);
+            if (!param_infer && ty == TY_NONE) {
                 error_tok(tok, "引数の型（int・float・double・bool・str・char）が必要です");
             }
-            skip_type();
+            if (!param_omitted) skip_type();
             if (tok->kind != TK_IDENT) {
                 error_tok(tok, "引数の名前が必要です");
             }
@@ -1844,9 +1849,13 @@ static Function *function_def(int is_readonly)
             v->is_param = 1;
             v->is_ref = param_ref;
             v->is_readonly = param_readonly;
+            v->is_inferred = param_infer;
+            if (param_infer) fn->is_generic = fn->is_template = 1;
             cur = cur->next = v;
             fn->param_count++;
             tok = tok->next;
+            if (param_infer && equal(tok, "["))
+                error_tok(tok, "推論する引数は配列の次元も推論します。名前の後の [] は省略してください");
             v->dims = dimensions(&v->ty);
             if (consume("=")) {
                 if (!fn->is_initializer) error_tok(v->tok, "既定引数は init にだけ指定できます");

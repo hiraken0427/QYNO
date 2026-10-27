@@ -21,7 +21,8 @@ static void warn_unused_inferred_locals(Ast *ast)
     Function *fn;
     Var *v, *candidate;
     for (fn = ast->funcs; fn; fn = fn->next) {
-        if (fn->is_internal || fn->template_origin) continue;
+        if (fn->is_internal || fn->template_origin || fn->generic_origin ||
+            (fn->is_generic && !fn->generic_instances)) continue;
         for (v = fn->locals; v; v = v->next) {
             if (!v->is_implicit || v->is_used) continue;
             for (candidate = v->vnext; candidate; candidate = candidate->vnext)

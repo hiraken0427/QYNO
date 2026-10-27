@@ -106,6 +106,7 @@ static void check_array_capacity(Node *source, Type ty, ArrayDim *dims);
 static void check_construction(Node *node, Model *m);
 static void check_initializer_defaults(Model *m);
 static void ensure_function(Function *fn, Token *site);
+static Function *specialize_generic_call(Node *call);
 
 /*
  * リテラルだけでできた式か（3.14、-0.5、100 * 3.14、2.0^2 など）。
@@ -645,7 +646,8 @@ static void check_call(Node *node)
         error_tok(node->tok, "関数 %.*s の引数は %d 個です（%d 個渡しています）",
                  fn->name_len, fn->name, fn->param_count, node->nargs);
     }
-    if (fn->infer_return) ensure_function(fn, node->tok);
+    if (fn->is_generic) fn = node->func = specialize_generic_call(node);
+    if (fn->infer_return || (fn->generic_origin && fn->check_state != 1)) ensure_function(fn, node->tok);
 
     memset(&head, 0, sizeof(head));
     cur = &head;
@@ -1942,6 +1944,7 @@ static void check_stmts(Node *list)
     }
 }
 
+#include "generic_functions.inc"
 #include "return_inference.inc"
 
 static void ensure_const(Var *v)
@@ -2020,6 +2023,7 @@ void typecheck(Ast *ast)
     allow_void = 0;
     const_check_depth = 0;
     function_check_depth = 0;
+    generic_specs = NULL; generic_spec_count = 0;
     check_names(ast);
     resolve_model_types(ast);
     prepare_builders(ast);
@@ -2046,7 +2050,7 @@ void typecheck(Ast *ast)
     }
 
     for (fn = ast->funcs; fn != NULL; fn = fn->next) {
-        if (fn->is_internal) continue;
+        if (fn->is_internal || fn->is_generic) continue;
         ensure_function(fn, fn->tok);
     }
     check_implementations(ast);

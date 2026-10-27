@@ -107,9 +107,9 @@ class ReturnInferenceTests(QynoTestCase):
         for header in ['auto make()[]', 'make()[]']:
             self.compile_source(program(header + ' = [1]', 'int main();', '\treturn 0'), error='次元も推論')
 
-    def test_argument_type_inference_is_still_deferred(self):
+    def test_argument_type_inference_specializes_calls(self):
         for header in ['auto f(x)', 'f(x)', 'f(auto x)']:
-            self.compile_source(program(header + ' = x^2', 'int main();', '\treturn 0'), error='引数の型')
+            self.check_program(program(header + ' = x^2', 'int main();', '\tprint(f(3))'), '9\n')
 
     def test_unannotated_self_and_mutual_recursion_require_return_annotations(self):
         for definitions in [program('auto f(int n) = f(n - 1)'),

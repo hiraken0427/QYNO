@@ -28,7 +28,7 @@ static Function *interface_implementation(Model *m, Function *required)
 {
     Function *fn;
     for (fn = cur_ast->funcs; fn; fn = fn->next)
-        if (fn->model == m && !fn->is_internal && !fn->template_origin &&
+        if (fn->model == m && !fn->is_internal && !fn->template_origin && !fn->generic_origin &&
             same_name(fn->name, fn->name_len, required->name, required->name_len)) return fn;
     return NULL;
 }
@@ -90,6 +90,8 @@ static void check_implementations(Ast *ast)
                     error_tok(im->tok, "%s は interface %s の public メソッド %.*s を実装してください（契約: %s:%d）",
                         m->name, type_name(im->ty), required->name_len, required->name,
                         required->tok->source->filename, required->tok->line);
+                if (actual->is_generic)
+                    error_tok(actual->tok, "interface を実装するメソッドの引数には型を明示してください");
                 valid = actual->ret == required->ret && same_dimensions(actual->return_dims, required->return_dims) &&
                     actual->param_count == required->param_count && (!required->is_readonly || actual->is_readonly);
                 a = actual->params->next; b = required->params->next;
