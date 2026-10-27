@@ -14,6 +14,23 @@ function labels(text, modules) { return items(text, modules).map(i => i.label); 
 function at(text, modules) { const f = fixture(text, modules); return symbolAt(f.project, f.line, f.character); }
 function hint(text, modules) { const f = fixture(text, modules); return signature(f.project, f.line, f.character); }
 
+test('auto locals and constants support names, navigation and declared type labels', () => {
+    const source = 'int main();\n\tauto count = 3\n\tconst auto LIMIT = 10\n\t¦';
+    const result = items(source);
+    assert.equal(result.find(i => i.label === 'count').detail, 'auto count');
+    assert.equal(result.find(i => i.label === 'LIMIT').detail, 'const auto LIMIT');
+    assert.equal(at('int main();\n\tauto count = 3\n\tprint(cou¦nt)').line, 1);
+    assert.equal(at('int main();\n\tconst auto LIMIT = 10\n\tprint(LI¦MIT)').line, 1);
+    assert.ok(items('int main();\n\tau¦').some(i => i.label === 'auto' && i.kind === 'type'));
+});
+
+test('auto locals obey declaration position and block scope', () => {
+    assert.ok(!labels('int main();\n\t¦\n\tauto later = 1').includes('later'));
+    assert.ok(!labels('int main();\n\tauto self = se¦').includes('self'));
+    assert.ok(labels('int main();\n\tif(true);\n\t\tauto inner = [1]\n\t\t¦').includes('inner'));
+    assert.ok(!labels('int main();\n\tif(true);\n\t\tauto inner = [1]\n\t¦').includes('inner'));
+});
+
 test('forward functions, constants, parameters and locals are completed with types', () => {
     const result = items('int main(int arg);\n\tstr title\n\t¦\n\treturn later(arg)\nint later(int n) = n + 1\nconst int LIMIT = 10');
     for (const name of ['main', 'later', 'arg', 'title', 'LIMIT']) assert.ok(result.some(i => i.label === name), name);

@@ -2,7 +2,7 @@
  * 工程4：型検査
  *
  * 式の型を決めてノードに付け、必要な型変換（ND_CAST）を挿入する。
- * 型推論は行わず、変数の型は宣言に書かれたものを使う。
+ * auto のローカル宣言は初期値から型を決め、それ以外は明示された型を使う。
  *
  * 暗黙の型変換の規則
  *   int    → float・double      許可（自動昇格）
@@ -1784,6 +1784,14 @@ static void check_stmt(Node *node)
 {
     switch (node->kind) {
     case ND_DECL:
+        if (node->var->is_inferred && node->var->ty == TY_NONE) {
+            check_expr(node->lhs);
+            if (node->lhs->ty == TY_NONE || node->lhs->ty == TY_VOID || node->lhs->ty == TY_ADDR) {
+                error_tok(node->lhs->tok, "auto の初期値には具体的な値型が必要です（addr・void は使用できません）");
+            }
+            concrete_only(node->lhs->ty, node->lhs->tok);
+            node->var->ty = node->lhs->ty;
+        }
         if (node->var->is_ref) {
             check_dims(node->var->dims);
             if (node->lhs != NULL) {

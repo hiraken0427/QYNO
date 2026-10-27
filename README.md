@@ -1,4 +1,4 @@
-# QYNO 0.26.5
+# QYNO 0.26.6
 
 C99 で実装した、Linux x64 / Windows x64 向けのコンパイラ。
 UTF-8 の `.qy` ソースから実行ファイルを直接生成する。
@@ -35,10 +35,19 @@ int main();
 
 ## VS Code 拡張
 
-[VSCode Option](vscode-extensions/README.md) は QYNO 0.26.5 のハイライト、
+[VSCode Option](vscode-extensions/README.md) は QYNO 0.26.6 のハイライト、
 ユーザー定義の関数名・変数名の補完、定義への移動、引数ヒントに対応する。
-[vscode-extensions/0.26.5_VSCode_option.vsix](vscode-extensions/0.26.5_VSCode_option.vsix) を
+[vscode-extensions/0.26.6_VSCode_option.vsix](vscode-extensions/0.26.6_VSCode_option.vsix) を
 VS Code の「VSIX からのインストール…」で指定する。
+
+## ローカル変数の型推論
+
+`auto count = 3`、`auto text = "QYNO"`、`auto values = [1, 2]` のように、
+初期値から型を推論できる。ローカルの `const auto LIMIT = 10` にも対応する。
+推論後の型は固定され、配列・モデルのコピーと file の明示 close の規則も維持する。
+この段階の int は従来どおり64bit。型名を省略した `y = 3` や、関数の型推論は後続の段階で実装する。
+詳細は [型拡張の実装順と現時点の仕様](docs/types-roadmap.md)、
+実行例は [examples/types/auto.qy](examples/types/auto.qy) を参照。
 
 ## モデル型
 
@@ -197,7 +206,7 @@ bool は数値範囲のループ変数にしない。詳細は [for の仕様](d
 
 ## ビット演算と基数表記
 
-0.26.5では `and` / `or` / `xor` を bool と int で共用する。
+0.26.5以降、`and` / `or` / `xor` を bool と int で共用する。
 boolのand / orは短絡し、intのビット演算は両辺を評価する。ビット反転はbnot、シフトは << / >>。
 シフト量は0〜63、右シフトは符号を保つ算術右シフトになる。
 

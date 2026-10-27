@@ -1,6 +1,6 @@
 'use strict';
 
-const TYPES = new Set(['int', 'float', 'double', 'bool', 'str', 'char', 'file', 'void']);
+const TYPES = new Set(['int', 'float', 'double', 'bool', 'str', 'char', 'file', 'void', 'auto']);
 const KEYWORDS = new Set([...TYPES, 'const', 'ref', 'val', 'return', 'if', 'else', 'for', 'while', 'break', 'continue', 'and', 'or', 'xor', 'bnot', 'not', 'true', 'false', 'none', 'import', 'using', 'as', 'print', 'input', 'struct', 'enum', 'of', 'model', 'interface', 'implements', 'public', 'private', 'readonly']);
 const identifierStart = c => /[A-Za-z_]/.test(c || '');
 const identifierPart = c => /[A-Za-z0-9_]/.test(c || '');

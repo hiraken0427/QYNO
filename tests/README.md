@@ -8,12 +8,13 @@ make test
 
 Linux x86_64、GCC、Make、Bash、Python 3 の標準ライブラリを使用する。
 追加の Python パッケージは不要。`make test` は必要なら `qyc` をビルドし、
-既存の `test.sh`、行編集、統合プログラム、9 つの専用スイートを実行する。
+既存の `test.sh`、行編集、統合プログラムと各機能の専用スイートを実行する。
 `test.sh` は実行権限に依存しないよう Bash で起動する。
 Python を指定する場合は `make test PYTHON=/path/to/python3` とする。
 
 | コマンド | 主な検証内容 |
 | --- | --- |
+| `make test-auto` | ローカル auto・const auto、型固定、配列・モデルのコピー、入力、readonly・interface・明示 close の制約 |
 | `make test-rounding` | Decimal を正解値とした丸め、正負の中間値、桁指定、整数精度・範囲外 |
 | `make test-semantics` | 短絡評価、比較連鎖の評価回数、スコープ、再帰、値渡し・参照、診断 |
 | `make test-text` | Unicode スカラー値、NUL、char、コピー、文字置換、不正 UTF-8、添字エラー |
@@ -139,3 +140,11 @@ print/end=/file.writeの書式、inputの自動/固定基数・失敗時の全�
 ビット演算はPythonの任意精度整数を使う64ビット参照計算と照合する。
 旧来の「intへstrは渡せない」テストは、整数文字列の変換が成功する検証へ更新している。
 実行例は [bitwise.qy](../examples/numbers/bitwise.qy) と [bases.qy](../examples/numbers/bases.qy)。
+
+## 0.26.6 のローカル型推論
+
+`make test-auto` は26メソッドで、auto / const auto の型確定と型固定、
+既存のスカラー型・多次元配列・モデル・関数戻り値・input の推論を確認する。
+コピーの独立性、初期値の評価回数、init 内と interface 特殊化内の宣言も実行して検証する。
+空配列・型文脈のないモデル初期化子・自己参照・未導入の構文はコンパイルエラーとし、
+readonly / interface の所有制限と、file・file 配列の明示 close の検査を維持する。

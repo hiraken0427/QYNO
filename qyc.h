@@ -5,7 +5,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#define QYC_VERSION "0.26.5"
+#define QYC_VERSION "0.26.6"
 
 typedef struct SourceFile SourceFile;
 typedef struct Module Module;
@@ -202,6 +202,7 @@ struct Var {
     int name_len;
     Type ty;
     ArrayDim *dims;
+    int is_inferred;    /* auto のローカル宣言。初期値の検査後に ty が確定する */
     int offset;         /* rbp からの距離（[rbp - offset] に置く）。const は 0 */
     int is_const;       /* const 定数なら 1 */
     int is_param;       /* 関数の引数なら 1（[rbp + 16 + ...] に置かれる） */
