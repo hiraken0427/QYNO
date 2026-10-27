@@ -1,0 +1,32 @@
+// QYNO 0.26.1: private belongs to its declaring model type.
+model Counter;
+	private int count = 0
+
+	private void add_positive(int amount);
+		if(amount > 0);
+			this.count += amount
+
+	public void increment();
+		this.add_positive(1)
+
+	public int current() = this.count
+
+	public void copy_from(Counter other);
+		this.count = other.count
+
+	public Counter doubled();
+		return {count=this.count * 2}
+
+int main();
+	Counter counter = {}
+	counter.increment()
+	counter.increment()
+	io.print(counter.current())
+	Counter copy = counter
+	copy.increment()
+	io.print(counter.current())
+	io.print(copy.current())
+	Counter doubled = counter.doubled()
+	io.print(doubled.current())
+	io.print(counter)
+	return 0

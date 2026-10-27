@@ -138,7 +138,7 @@ test('model methods provide definitions and signatures', () => {
     const prefix=modelSource+'\nint main();\n\tPoint p\n\t';
     assert.equal(at(prefix+'p.mo¦ve(1.0, 2.0)').line,3);
     assert.equal(hint(prefix+'p.move(1.0, ¦').activeParameter,1);
-    assert.equal(hint(prefix+'p.move(1.0, ¦').label,'void p.move(double dx, double dy)');
+    assert.equal(hint(prefix+'p.move(1.0, ¦').label,'public void p.move(double dx, double dy)');
     assert.equal(at(prefix+'p.x¦').type,'double');
 });
 test('imported model types and model parameters are supported', () => {
@@ -151,4 +151,63 @@ test('nested imported model fields resolve types in their defining module', () =
     f.project.modules.set('geometry.circle', require('../src/analysis').analyze('import points\nusing points\nmodel Box;\n\tPoint point','file:///geometry.circle.qy'));
     f.project.modules.set('points', require('../src/analysis').analyze(modelSource,'file:///points.qy'));
     assert.ok(complete(f.project,f.line,f.character).some(i=>i.label==='move'));
+});
+
+const privateSource = 'model Counter;\n\tprivate int count = 7\n\tpublic int shown = 1\n\tprivate void hidden();\n\t\tthis.count++\n\tpublic int current() = this.count';
+test('visibility declarations are parsed and public is the default', () => {
+    const parsed = analyze(privateSource + '\n\tint implicit');
+    const counter = parsed.symbols.find(s => s.kind === 'model');
+    assert.deepEqual(counter.members.map(s => [s.name, s.visibility]), [['count','private'],['shown','public'],['hidden','private'],['current','public'],['implicit','public']]);
+    assert.ok(counter.members.every(s => s.declaringModelId === counter.modelId));
+    assert.ok(!labels(privateSource+'\nint main();\n\t¦').includes('hidden'));
+});
+test('outside completion filters private fields and methods', () => {
+    const result = labels(privateSource+'\nint main();\n\tCounter c\n\tc.¦');
+    assert.ok(result.includes('shown')); assert.ok(result.includes('current'));
+    assert.ok(!result.includes('count')); assert.ok(!result.includes('hidden'));
+    assert.ok(labels('int main();\n\tpri¦').includes('private'));
+    assert.ok(labels('int main();\n\tpub¦').includes('public'));
+});
+test('same-model this and other instance completion includes private', () => {
+    for (const receiver of ['this', 'other']) {
+        const result = items(privateSource+`\n\tvoid test(Counter other);\n\t\t${receiver}.¦`);
+        assert.ok(result.some(s => s.label === 'count' && s.detail === 'private int count'));
+        assert.ok(result.some(s => s.label === 'hidden' && s.detail === 'private void hidden()'));
+    }
+    const mathBody = labels(privateSource+'\n\tint twice() = this.¦');
+    assert.ok(mathBody.includes('count'));
+    const nested = labels(privateSource+'\n\tvoid test();\n\t\tif(true);\n\t\t\tthis.¦');
+    assert.ok(nested.includes('count'));
+});
+test('another model cannot complete private members of an owned instance', () => {
+    const prefix = privateSource+'\nmodel Box;\n\tprivate Counter child\n\tvoid test();\n\t\tthis.child.';
+    const result = labels(prefix+'¦');
+    assert.ok(result.includes('current')); assert.ok(!result.includes('count')); assert.ok(!result.includes('hidden'));
+});
+test('private receiver chains cannot expose nested members in completion', () => {
+    const prefix='model Child;\n\tint exposed\nmodel Box;\n\tprivate Child child\n\tpublic Child visible\nint main();\n\tBox b\n\t';
+    assert.ok(!labels(prefix+'b.child.¦').includes('exposed'));
+    assert.ok(labels(prefix+'b.visible.¦').includes('exposed'));
+    assert.ok(!labels(privateSource+'\nint main();\n\tCounter cs[1]\n\tcs[0].¦').includes('count'));
+    assert.ok(!labels(privateSource+'\nint main();\n\tCounter c\n\tref Counter alias = c.addr\n\talias.value.¦').includes('count'));
+});
+test('private definition and hover remain available for manually written uses', () => {
+    const source=privateSource+'\nint main();\n\tCounter c\n\tc.co¦unt';
+    const symbol=at(source);
+    assert.equal(symbol.name,'count'); assert.equal(symbol.visibility,'private'); assert.equal(symbol.line,1);
+    const detail=require('../src/language').completion(symbol);
+    assert.equal(detail.detail,'private int count'); assert.match(detail.documentation,/private/);
+    assert.equal(hint(privateSource+'\nint main();\n\tCounter c\n\tc.hidden(¦'),undefined);
+    assert.equal(hint(privateSource+'\n\tvoid test(Counter c);\n\t\tc.hidden(¦').label,'private void c.hidden()');
+});
+test('import aliases and selected using do not elevate completion privileges', () => {
+    const modules={ 'geometry.circle':privateSource };
+    for (const [using,type] of [['using geometry.circle as lib','lib.Counter'], ['using geometry.circle.Counter','Counter'], ['using geometry.circle','Counter']]) {
+        const result=labels(`import geometry.circle\n${using}\nint main();\n\t${type} c\n\tc.¦`,modules);
+        assert.ok(result.includes('current')); assert.ok(!result.includes('count'));
+    }
+});
+test('same spelling in two modules does not imply same nominal owner', () => {
+    const result=labels('import geometry.circle\n'+privateSource+'\n\tvoid test(geometry.circle.Counter other);\n\t\tother.¦',{'geometry.circle':privateSource});
+    assert.ok(result.includes('current')); assert.ok(!result.includes('count'));
 });

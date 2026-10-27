@@ -5,7 +5,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#define QYC_VERSION "0.26.0"
+#define QYC_VERSION "0.26.1"
 
 typedef struct SourceFile SourceFile;
 typedef struct Module Module;
@@ -322,12 +322,14 @@ struct Node {
     Token *tok;         /* エラー表示用 */
     char *name;         /* 未解決の名前（修飾名を含む） */
     ModelField *field;
+    Model *access_model; /* lexical owner of user-written expressions; survives lowering */
     Using *usings;      /* 式の位置のブロック内 using */
 };
 
 struct Function {
     Function *next;
     Model *model;       /* implicit ref this receiver for model methods */
+    int is_private;
     const char *name;
     int name_len;
     Token *tok;         /* 関数名の位置 */
@@ -344,6 +346,8 @@ struct Function {
 
 struct ModelField {
     ModelField *next;
+    Model *model;       /* declaring nominal model */
+    int is_private;
     Token *tok;
     char *name;
     Type ty;

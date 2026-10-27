@@ -72,7 +72,7 @@ static const char *keywords[] = {
     "int", "float", "double", "bool", "str", "char", "void", "file", "const",
     "true", "false", "return", "print", "if", "else", "for", "while",
     "break", "continue", "and", "or", "not", "struct", "enum", "import", "of", "using", "input",
-    "ref", "val", "none", "as", "model",
+    "ref", "val", "none", "as", "model", "public", "private",
     NULL
 };
 
@@ -87,6 +87,7 @@ static Node *new_node(NodeKind kind, Token *t)
     node->kind = kind;
     node->tok = t;
     node->usings = local_usings;
+    node->access_model = parsing_model;
     return node;
 }
 
@@ -1820,7 +1821,13 @@ static Model *model_def(Function **tail)
     fields = &m->fields;
     parsing_model = m;
     while (tok->kind != TK_DEDENT && tok->kind != TK_EOF) {
-        Type ty = return_type(tok); Token *name = tok;
+        Type ty; Token *name; int is_private = 0;
+        if (equal(tok, "public") || equal(tok, "private")) {
+            is_private = equal(tok, "private"); tok = tok->next;
+            if (equal(tok, "public") || equal(tok, "private"))
+                error_tok(tok, "公開指定 public / private は1つだけ書いてください");
+        }
+        ty = return_type(tok); name = tok;
         if (ty == TY_NONE) error_tok(tok, "モデルにはフィールドまたはメソッドを定義してください");
         tok = tok->next;
         while (equal(tok, ".") && tok->next->kind == TK_IDENT) tok = tok->next->next;
@@ -1828,12 +1835,14 @@ static Model *model_def(Function **tail)
         if (equal(tok->next, "(")) {
             tok = name;
             (*tail)->next = function_def(); *tail = (*tail)->next;
+            (*tail)->is_private = is_private;
         } else {
             ModelField *f = calloc(1, sizeof(*f));
             if (!f) fatal("フィールドを確保できません");
             if (ty == TY_VOID) error_tok(name, "フィールドに void は使えません");
             if (equal(tok, "this") || equal(tok, "addr") || equal(tok, "value") || equal(tok, "length"))
                 error_tok(tok, "this・addr・value・length はモデルのフィールド名に使えません");
+            f->model = m; f->is_private = is_private;
             f->tok = tok; f->name = calloc((size_t)tok->len + 1, 1);
             if (!f->name) fatal("フィールド名を確保できません");
             memcpy(f->name, tok->loc, (size_t)tok->len); f->ty = ty; f->index = m->field_count++;

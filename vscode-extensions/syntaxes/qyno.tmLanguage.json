@@ -161,7 +161,7 @@
       "name": "keyword.control.import.qyno"
     },
     {
-      "match": "\\b(?:ref|val|const)\\b",
+      "match": "\\b(?:ref|val|const|public|private)\\b",
       "name": "storage.modifier.qyno"
     },
     {

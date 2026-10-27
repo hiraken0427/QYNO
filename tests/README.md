@@ -100,3 +100,10 @@ Python の失敗・例外・タイムアウトはコマンドの失敗として�
 モデル内の共有 file の close 責任、比較、UTF-8入出力、Windows PE と GCC でのアセンブルも確認する。
 従来の専用スイート283メソッドと合わせて320メソッドとなる。
 モデルのサンプルは `examples/models/main.qy`。全体テストは `make test` を1回実行する。
+
+## 0.26.1 の公開制御検証
+
+`make test-visibility` は公開制御の専用スイート（25メソッド）を実行する。
+同型内部・別モデル・モジュール別名、読み書き・ref・入力・初期化・既定値の再利用、
+自動表示・コピー・比較、private file の close 責任と Windows / アセンブリ出力を検証する。
+`make test` にも含む。実行例は `examples/models/visibility.qy`。

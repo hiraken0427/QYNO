@@ -1,16 +1,16 @@
-# QYNO 0.26.0 VSCode Option
+# QYNO 0.26.1 VSCode Option
 
-QYNO **0.26.0** 用の VS Code 拡張です。配布ファイルは同じフォルダの
-[`0.26.0_VSCode_option.vsix`](0.26.0_VSCode_option.vsix) です。
+QYNO **0.26.1** 用の VS Code 拡張です。配布ファイルは同じフォルダの
+[`0.26.1_VSCode_option.vsix`](0.26.1_VSCode_option.vsix) です。
 VS Code 1.85 以降に対応します。
 
 ## インストール
 
 VS Code の拡張機能画面右上の「…」から **VSIX からのインストール…** を選び、
-`0.26.0_VSCode_option.vsix` を指定してください。CLI でもインストールできます。
+`0.26.1_VSCode_option.vsix` を指定してください。CLI でもインストールできます。
 
 ```sh
-code --install-extension vscode-extensions/0.26.0_VSCode_option.vsix
+code --install-extension vscode-extensions/0.26.1_VSCode_option.vsix
 ```
 
 `.qy` ファイルを開くと有効になります。別の拡張が `.qy` を担当している場合は、
@@ -20,6 +20,8 @@ Marketplace への公開やコンパイラのインストールは行いませ�
 ## 機能
 
 - model の型名・フィールド・メソッド・this の補完と定義参照。
+- public / private のハイライト、補完候補の公開範囲、ホバー・アウトラインへの公開指定表示。
+  private は同じモデル内部の this・同型インスタンスで補完し、外部や別モデルでは候補から除外します。
 - 型、関数名、変数名、数値、コメント、文字列、文字列内の `{式}` のハイライト。
 - ユーザー定義関数・引数・変数・定数の補完。インデントと宣言位置を考慮し、別関数や終了したブロックのローカル名を候補から除外します。
 - `import geometry.circle`、`using geometry.circle as circle`、選択的な `using` に対応した名前・メンバー補完。
@@ -78,7 +80,7 @@ int main();
 
 補完は編集支援用の軽量な構文解析です。コンパイラの完全な型検査や診断機能ではありません。
 未完成のコードでも候補を提示します。複雑な式の戻り値の型推論や、式に対するすべてのメンバー補完は行いません。
-ビルド・実行と、close 漏れなどの検査には別途 QYNO 0.26.0 の `qyc` を使用してください。
+ビルド・実行と、close 漏れなどの検査には別途 QYNO 0.26.1 の `qyc` を使用してください。
 拡張はユーザープログラムやコンパイラを自動実行しません。
 
 開発用のパッケージ作成には Node.js 22 以降が必要です。拡張自体に npm 実行時依存はありません。
@@ -95,5 +97,5 @@ npm run package
 `test:editor` は VS Code 1.85.2 を取得して実際の拡張ホスト上で補完・定義・ホバー・引数ヒント・
 アウトライン・未保存変更を検証します。Linux の GUI のない環境では Xvfb などが必要です。
 取得済みの VS Code を使う場合は `QYNO_VSCODE_EXECUTABLE` に実行ファイルのパスを設定できます。
-`npm run package` はこのフォルダに VSIX を出力します。内部の拡張バージョンは SemVer の `0.26.0`、
-配布ファイル名とコミット名は `0.26.0_VSCode_option` です。
+`npm run package` はこのフォルダに VSIX を出力します。内部の拡張バージョンは SemVer の `0.26.1`、
+配布ファイル名とコミット名は `0.26.1_VSCode_option` です。
