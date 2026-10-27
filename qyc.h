@@ -5,7 +5,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#define QYC_VERSION "0.26.4"
+#define QYC_VERSION "0.26.5"
 
 typedef struct SourceFile SourceFile;
 typedef struct Module Module;
@@ -107,6 +107,7 @@ struct Token {
     TokenKind kind;
     Token *next;
     long long val;      /* TK_NUM のときの値 */
+    int decimal_min;    /* magnitude 2^63, valid only directly after unary minus */
     double fval;        /* TK_FNUM のときの値 */
     const char *loc;    /* ソース上の位置 */
     int len;            /* トークンの長さ */
@@ -231,6 +232,8 @@ typedef enum {
     ND_AND,     /* and / && */
     ND_OR,      /* or / || */
     ND_NOT,     /* not / ! */
+    ND_XOR, ND_BIT_AND, ND_BIT_OR, ND_BIT_XOR, ND_BIT_NOT, ND_SHL, ND_SHR,
+    ND_INT_PARSE, ND_INT_FORMAT,
     ND_NUM,     /* 整数リテラル */
     ND_FNUM,    /* 小数リテラル */
     ND_BOOL,    /* true / false */
@@ -322,6 +325,9 @@ struct Node {
     Var *in_line;       /* ND_INPUT：読んだ行（隠れたローカル変数） */
     Var *in_cur;        /* ND_INPUT：行の中の読んでいる位置 */
     Var *in_end;        /* ND_INPUT：行の終わり */
+    int format_base;    /* interpolation only: 0 = ordinary rendering */
+    Token *arg_name;    /* conversion-only keyword argument */
+    int option_index;   /* int/str conversion argument slot, evaluated in source order */
     int nargs;          /* ND_CALL の引数の数 */
     Node *end;          /* ND_PRINT の end= の部分の並び（has_end が 0 なら改行） */
     int has_end;        /* ND_PRINT で end= を指定したら 1 */
@@ -412,6 +418,7 @@ struct Model {
 /* input の形の中の {変数} 1つ分 */
 struct InputField {
     InputField *next;
+    int base;           /* int input radix, 0 = detect prefix then decimal */
     Node *var;          /* 読み込む先の変数または添字（ND_VAR / ND_INDEX） */
     char *sep;          /* この {} の後ろの区切りの文字（最後の {} なら NULL） */
     int sep_len;
@@ -470,6 +477,13 @@ Type resolve_module_type(Token *tok, const char *name, Using *scope);
 
 /* tokenize.c */
 Token *tokenize(const char *src);
+const char *interpolation_close(const char *open, const char *end);
+long long integer_bits(uint64_t n);
+int integer_digit(int c);
+int integer_prefix(int c);
+int integer_base_valid(long long base, int automatic);
+int integer_read(const char *s, size_t len, int base, long long *value);
+char *integer_format(long long value, int base, int prefix, int *length);
 Token *tokenize_fragment(const char *start, const char *end, int line, const char *line_start);
 
 /* parse.c */
@@ -574,6 +588,7 @@ void x64_mul(Reg r);
 void x64_bsr(Reg dst, Reg src);
 void x64_shl_cl(Reg dst);
 void x64_shr_cl(Reg dst);
+void x64_sar_cl(Reg dst);
 void x64_neg(Reg r);
 void x64_dec(Reg r);
 void x64_cqo(void);

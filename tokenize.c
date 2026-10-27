@@ -59,7 +59,7 @@ static const char *skip_to_eol(const char *p)
 }
 
 /* 2文字の記号（1文字の記号より先に調べる） */
-static const char *punct2[] = { "==", "!=", "<=", ">=", "++", "--", "+=", "-=", NULL };
+static const char *punct2[] = { "==", "!=", "<=", ">=", "++", "--", "+=", "-=", "<<", ">>", NULL };
 
 /*
  * 整数・識別子・記号を1つ読み、トークンを *cur の後ろに追加する。
@@ -69,14 +69,12 @@ static const char *lex_basic(const char *p, int line, const char *line_start, To
 {
     const char *start;
     const char *q;
-    char *end;
     char num_buf[400];
-    long long val;
     double fval;
     int i;
 
     /* 小数リテラル（数字 . 数字） */
-    if (isdigit((unsigned char)*p)) {
+    if (isdigit((unsigned char)*p) && !(p[0] == '0' && integer_prefix((unsigned char)p[1]))) {
         start = p;
         q = p;
         while (isdigit((unsigned char)*q)) {
@@ -109,17 +107,24 @@ static const char *lex_basic(const char *p, int line, const char *line_start, To
     /* 整数リテラル */
     if (isdigit((unsigned char)*p)) {
         start = p;
-        errno = 0;
-        val = strtoll(p, &end, 10);
-        if (errno == ERANGE) {
-            error_at(line, col_of(start, line_start), "整数が大きすぎます");
+        { uint64_t magnitude = 0, limit; int base = 10, digit, prefixed = 0, decimal_min;
+          if (p[0] == '0' && (base = integer_prefix((unsigned char)p[1]))) { p += 2; prefixed = 1; }
+          else base = 10;
+          limit = base == 10 ? (UINT64_C(1) << 63) : UINT64_MAX;
+          q = p;
+          while (is_ident_char(*p)) {
+              digit = integer_digit((unsigned char)*p);
+              if (digit < 0 || digit >= base) error_at(line, col_of(p, line_start), "整数の基数に合わない数字・文字です");
+              if (magnitude > (limit - (unsigned)digit) / (unsigned)base) error_at(line, col_of(start, line_start), "整数が大きすぎます");
+              magnitude = magnitude * (unsigned)base + (unsigned)digit; p++;
+          }
+          if (p == q) error_at(line, col_of(start, line_start), "整数の接頭辞の後に数字が必要です");
+          if (prefixed && *p == '.' && isdigit((unsigned char)p[1])) error_at(line, col_of(p, line_start), "基数指定は整数にだけ使えます");
+          decimal_min = base == 10 && magnitude == (UINT64_C(1) << 63);
+          *cur = (*cur)->next = new_token(TK_NUM, start, (int)(p - start), line, col_of(start, line_start));
+          (*cur)->val = integer_bits(magnitude); (*cur)->decimal_min = decimal_min;
+          return p;
         }
-        if (is_ident_char(*end)) {
-            error_at(line, col_of(end, line_start), "数値の直後に英字や _ は書けません");
-        }
-        *cur = (*cur)->next = new_token(TK_NUM, start, (int)(end - start), line, col_of(start, line_start));
-        (*cur)->val = val;
-        return end;
     }
 
     /* 識別子・キーワード */
@@ -154,6 +159,19 @@ static const char *lex_basic(const char *p, int line, const char *line_start, To
     return NULL;
 }
 
+const char *interpolation_close(const char *open, const char *end)
+{
+    const char *p; int depth = 1; char quote = 0;
+    for (p = open + 1; p < end; p++) {
+        if (*p == '\\' && p + 1 < end) { p++; continue; }
+        if (quote) { if (*p == quote) quote = 0; continue; }
+        if (*p == '\'' || *p == '"') { quote = *p; continue; }
+        if (*p == '{') depth++;
+        if (*p == '}' && --depth == 0) return p;
+    }
+    return NULL;
+}
+
 /* 文字列リテラルの終わり（閉じ引用符の次）まで進める。文字列は1行で閉じる */
 static const char *skip_string(const char *p, int line, const char *line_start)
 {
@@ -166,6 +184,12 @@ static const char *skip_string(const char *p, int line, const char *line_start)
     while (*p != quote) {
         if (*p == '\0' || *p == '\n' || *p == '\r') {
             error_at(line, col_of(start, line_start), "文字列が閉じられていません（文字列は1行で書いてください）");
+        }
+        if (*p == '{') {
+            const char *line_end = p, *close;
+            while (*line_end && *line_end != '\n' && *line_end != '\r') line_end++;
+            close = interpolation_close(p, line_end);
+            if (close) { p = close + 1; continue; }
         }
         if (*p == '\\' && p[1] != '\0' && p[1] != '\n' && p[1] != '\r') {
             p++;
@@ -195,7 +219,10 @@ Token *tokenize_fragment(const char *start, const char *end, int line, const cha
             continue;
         }
         if (*p == '"' || *p == '\'') {
-            error_at(line, col_of(p, line_start), "埋め込みの式の中に文字列は書けません");
+            next = skip_string(p, line, line_start);
+            if (next > end) error_at(line, col_of(p, line_start), "埋め込みの文字列が閉じられていません");
+            cur = cur->next = new_token(TK_STR, p, (int)(next - p), line, col_of(p, line_start));
+            p = next; continue;
         }
         next = lex_basic(p, line, line_start, &cur);
         if (next == NULL || next > end) {

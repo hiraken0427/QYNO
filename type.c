@@ -128,8 +128,10 @@ static int is_float_literal(Node *node)
         return is_float_literal(node->lhs) && is_float_literal(node->rhs);
     case ND_ABS:
         return is_float_literal(node->lhs);
+    case ND_INT_PARSE:
+    case ND_INT_FORMAT:
     case ND_BUILTIN:
-        if (node->val >= BI_FILE_OPEN) return 0;
+        if (node->kind == ND_BUILTIN && node->val >= BI_FILE_OPEN) return 0;
         for (arg = node->lhs; arg != NULL; arg = arg->next) {
             if (!is_float_literal(arg)) {
                 return 0;
@@ -346,6 +348,7 @@ static void require_bool(Node *node, const char *what)
 #include "arrays_type.inc"
 #include "models_type.inc"
 #include "initialization_type.inc"
+#include "integer_bases_type.inc"
 
 static long long round_integer(Node *node, long long x, long long digits, Builtin mode);
 static void check_pow_domain(Node *node);
@@ -433,6 +436,7 @@ static void check_builtin(Node *node)
 
     b = (Builtin)node->val;
     if (b >= BI_FILE_OPEN) { check_file_builtin(node); return; }
+    if ((b == BI_INT || b == BI_STR) && check_integer_conversion(node)) return;
     min_args = 1;
     max_args = (b == BI_ROUND || b == BI_ROUNDUP || b == BI_ROUNDDOWN) ? 2 : 1;
     if (node->nargs < min_args || node->nargs > max_args) {
@@ -443,6 +447,7 @@ static void check_builtin(Node *node)
         error_tok(node->tok, "%s の引数は 1 個です（%d 個渡しています）", builtin_name(b), node->nargs);
     }
     x = node->lhs;
+    if (x->arg_name) error_tok(x->arg_name, "変換する値を位置引数で指定してください");
     digits = x->next;
     check_expr(x);
     if (b == BI_CHAR || b == BI_STR) {
@@ -531,6 +536,7 @@ static void check_input(Node *node)
         check_expr(f->var);
         check_place(f->var);
         ty = f->var->ty;
+        if (f->base && ty != TY_INT) error_tok(f->var->tok, "基数指定の入力先は int にしてください");
         if (!is_numeric(ty) && ty != TY_BOOL && !type_is_text(ty))
             error_tok(f->var->tok, "%s には直接入力できません。変数または末端の配列要素を指定してください", type_name(ty));
         /* 文字列内の1文字への入力も1スカラー値に制限する。 */
@@ -714,6 +720,9 @@ static void check_expr(Node *node)
     case ND_STRLIT:
         node->ty = TY_STR;
         return;
+    case ND_INT_PARSE:
+    case ND_INT_FORMAT:
+        return;
     case ND_MODEL_INIT:
         check_model_init(node, node->cmp_ty);
         return;
@@ -807,11 +816,26 @@ static void check_expr(Node *node)
         return;
     case ND_AND:
     case ND_OR:
+    case ND_XOR:
+        check_expr(node->lhs); check_expr(node->rhs);
+        if (node->lhs->ty != node->rhs->ty || (node->lhs->ty != TY_BOOL && node->lhs->ty != TY_INT))
+            error_tok(node->tok, "and / or / xor は bool 同士または int 同士にしてください。型を混在できません");
+        node->ty = node->lhs->ty;
+        if (node->ty == TY_INT) node->kind = node->kind == ND_AND ? ND_BIT_AND : node->kind == ND_OR ? ND_BIT_OR : ND_BIT_XOR;
+        return;
+    case ND_BIT_NOT:
         check_expr(node->lhs);
-        check_expr(node->rhs);
-        require_bool(node->lhs, node->kind == ND_AND ? "and の左辺" : "or の左辺");
-        require_bool(node->rhs, node->kind == ND_AND ? "and の右辺" : "or の右辺");
-        node->ty = TY_BOOL;
+        if (node->lhs->ty != TY_INT) error_tok(node->tok, "bnot は int にだけ使用できます");
+        node->ty = TY_INT; return;
+    case ND_SHL:
+    case ND_SHR:
+        check_expr(node->lhs); check_expr(node->rhs);
+        if (node->lhs->ty != TY_INT || node->rhs->ty != TY_INT) error_tok(node->tok, "シフトの値と量は int にしてください");
+        node->ty = TY_INT;
+        if (is_const_expr(node->rhs)) {
+            long long amount = eval_const(node->rhs).i;
+            if (amount < 0 || amount > 63) error_tok(node->tok, "シフト量は0以上63以下にしてください");
+        }
         return;
     case ND_NOT:
         check_expr(node->lhs);
@@ -1351,6 +1375,29 @@ static Value eval_const_inner(Node *node)
     memset(&v, 0, sizeof(v));
     v.ty = node->ty;
     switch (node->kind) {
+    case ND_INT_PARSE:
+    case ND_INT_FORMAT:
+        return eval_integer_conversion(node);
+    case ND_BIT_NOT:
+        v.i = integer_bits(~(uint64_t)eval_const(node->lhs).i); return v;
+    case ND_BIT_AND:
+    case ND_BIT_OR:
+    case ND_BIT_XOR:
+    case ND_XOR:
+    case ND_SHL:
+    case ND_SHR:
+        l = eval_const(node->lhs); r = eval_const(node->rhs);
+        if (node->kind == ND_BIT_AND) v.i = integer_bits((uint64_t)l.i & (uint64_t)r.i);
+        else if (node->kind == ND_BIT_OR) v.i = integer_bits((uint64_t)l.i | (uint64_t)r.i);
+        else if (node->kind == ND_BIT_XOR || node->kind == ND_XOR) v.i = integer_bits((uint64_t)l.i ^ (uint64_t)r.i);
+        else {
+            uint64_t bits = (uint64_t)l.i; int amount = (int)r.i;
+            if (r.i < 0 || r.i > 63) const_error(node, "シフト量は0以上63以下にしてください");
+            if (node->kind == ND_SHL) bits <<= amount;
+            else if (amount) { bits >>= amount; if (l.i < 0) bits |= UINT64_MAX << (64 - amount); }
+            v.i = integer_bits(bits);
+        }
+        return v;
     case ND_MODEL_INIT:
     case ND_MODEL_NEW:
         return constant_model(node);
@@ -1509,12 +1556,15 @@ static int is_const_expr(Node *node)
         return node->var->is_const;
     case ND_CAST:
     case ND_NEG:
+    case ND_BIT_NOT:
     case ND_NOT:
     case ND_ABS:
     case ND_LENGTH:
         return is_const_expr(node->lhs);
+    case ND_INT_PARSE:
+    case ND_INT_FORMAT:
     case ND_BUILTIN:
-        if (node->val >= BI_FILE_OPEN) return 0;
+        if (node->kind == ND_BUILTIN && node->val >= BI_FILE_OPEN) return 0;
         for (cmp = node->lhs; cmp != NULL; cmp = cmp->next) {
             if (!is_const_expr(cmp)) {
                 return 0;
@@ -1530,6 +1580,12 @@ static int is_const_expr(Node *node)
     case ND_INDEX:
     case ND_AND:
     case ND_OR:
+    case ND_XOR:
+    case ND_BIT_AND:
+    case ND_BIT_OR:
+    case ND_BIT_XOR:
+    case ND_SHL:
+    case ND_SHR:
         return is_const_expr(node->lhs) && is_const_expr(node->rhs);
     case ND_CHAIN:
         for (cmp = node->lhs; cmp != NULL; cmp = cmp->next) {
@@ -1664,6 +1720,7 @@ static void check_print_parts(Node *list)
             continue;
         }
         check_expr(part);
+        if (part->format_base && part->ty != TY_INT) error_tok(part->tok, "基数指定は int の式にだけ使えます");
         if (part->ty == TY_FILE || (type_is_array(part->ty) && array_base(part->ty) == TY_FILE))
             error_tok(part->tok, "file は出力・文字列埋め込みに使えません");
     }

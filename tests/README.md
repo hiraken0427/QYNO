@@ -130,3 +130,12 @@ Windows / アセンブリ出力を検証する。`make test` にも含む。
 40件で複数モデル・再帰・型と配列制約・別モジュール・未使用の契約違反・未完了の this・file の close 責任を確認する。
 特殊化4096件の成功・再利用と4097件の診断も検証する。Windows 出力とアセンブリ出力を含む。
 全体テストにも含める。実行例は [examples/models/interfaces.qy](../examples/models/interfaces.qy)。
+
+## 0.26.5 のビット演算・整数基数の検証
+
+`make test-bitwise` の19件と `make test-integer-bases` の33件を全体テストに含める。
+bool/intの共有演算子、短絡と両辺評価、64ビットのシフト・不正量、4基数の境界、相互変換、
+print/end=/file.writeの書式、inputの自動/固定基数・失敗時の全体保持、参照・GC・interfaceを検証する。
+ビット演算はPythonの任意精度整数を使う64ビット参照計算と照合する。
+旧来の「intへstrは渡せない」テストは、整数文字列の変換が成功する検証へ更新している。
+実行例は [bitwise.qy](../examples/numbers/bitwise.qy) と [bases.qy](../examples/numbers/bases.qy)。

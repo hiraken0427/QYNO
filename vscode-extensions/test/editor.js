@@ -139,6 +139,27 @@ async function run() {
     assert.deepEqual(shapeOutline.children.map(s=>s.name),['area','move']); checks++;
     const contractParameterHover=await contractQuery(8,'val','vscode.executeHoverProvider');
     assert.ok(contractParameterHover.some(h=>h.contents.some(c=>c.value?.includes('ref readonly Shape value')))); checks++;
+    const radixDoc=await vscode.workspace.openTextDocument({language:'qyno',content:
+        'using io\nint main();\n\tint numbers[2]\n\tint value=0xff\n\tprint("{value:0x}")\n\tinput("{numbers[0]:0b}")\n\tstr text=str(value,prefix=true,base=16)\n\tint parsed=int(text,base=0)\n\tprint(value xor bnot 0)\n'});
+    await vscode.window.showTextDocument(radixDoc);
+    const radixQuery=(line,part,command)=>vscode.commands.executeCommand(command,radixDoc.uri,
+        new vscode.Position(line,radixDoc.lineAt(line).text.indexOf(part)+part.length));
+    const formats=await radixQuery(4,'value:','vscode.executeCompletionItemProvider');
+    assert.deepEqual(formats.items.filter(i=>i.kind!==vscode.CompletionItemKind.Snippet).map(i=>i.label).sort(),['0b','0d','0o','0x']); checks++;
+    const radixDefinition=await radixQuery(4,'{val','vscode.executeDefinitionProvider');
+    assert.ok(radixDefinition.some(d=>(d.range || d.targetSelectionRange).start.line===3)); checks++;
+    const radixInputDefinition=await radixQuery(5,'{num','vscode.executeDefinitionProvider');
+    assert.ok(radixInputDefinition.some(d=>(d.range || d.targetSelectionRange).start.line===2)); checks++;
+    const prefixHint=await radixQuery(6,'prefix=','vscode.executeSignatureHelpProvider');
+    assert.equal(prefixHint.activeParameter,2); assert.ok(prefixHint.signatures[0].label.includes('int base=10, bool prefix=false')); checks++;
+    const baseHint=await radixQuery(6,'base=','vscode.executeSignatureHelpProvider');
+    assert.equal(baseHint.activeParameter,1); checks++;
+    const parseHint=await radixQuery(7,'base=','vscode.executeSignatureHelpProvider');
+    assert.equal(parseHint.activeParameter,1); assert.ok(parseHint.signatures[0].label.includes('int base=0')); checks++;
+    const conversionHover=await radixQuery(7,'=in','vscode.executeHoverProvider');
+    assert.ok(conversionHover.some(h=>h.contents.some(c=>c.value?.includes('str')))); checks++;
+    const radixHover=await radixQuery(5,'{num','vscode.executeHoverProvider');
+    assert.ok(radixHover.some(h=>h.contents.some(c=>c.value?.includes('int numbers')))); checks++;
     console.log(`QYNO VS Code integration: ${checks} checks passed`);
 }
 module.exports={run};

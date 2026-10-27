@@ -72,7 +72,7 @@ static Node *stmt(void);
 static const char *keywords[] = {
     "int", "float", "double", "bool", "str", "char", "void", "file", "const",
     "true", "false", "return", "print", "if", "else", "for", "while",
-    "break", "continue", "and", "or", "not", "struct", "enum", "import", "of", "using", "input",
+    "break", "continue", "and", "or", "xor", "bnot", "not", "struct", "enum", "import", "of", "using", "input",
     "ref", "val", "none", "as", "interface", "implements", "model", "public", "private", "readonly",
     NULL
 };
@@ -484,7 +484,7 @@ static Node *input_expr(Token *start)
             if (cur == NULL) {
                 fatal("メモリを確保できません");
             }
-            cur->var = part;
+            cur->var = part; cur->base = part->format_base;
             ty = part->var != NULL ? part->var->ty : TY_INT;
             cur->temp = hidden_var(ty, part->tok);
             f = f->next = cur;
@@ -573,7 +573,15 @@ static void call_args(Node *node)
     if (!equal(tok, ")")) {
         for (;;) {
             Token *mark = tok;
-            if (consume("ref")) {
+            if (node->kind == ND_BUILTIN && (node->val == BI_STR || node->val == BI_INT) &&
+                tok->kind == TK_IDENT && equal(tok->next, "=")) {
+                Node *arg; int slot;
+                if (equal(tok, "base")) slot = 1;
+                else if (equal(tok, "prefix")) slot = 2;
+                else { error_tok(tok, "int / str の名前付き引数は base / prefix です"); slot = 0; }
+                tok = tok->next->next; arg = expr(); arg->option_index = slot;
+                arg->arg_name = mark; cur = cur->next = arg;
+            } else if (consume("ref")) {
                 /* ref 変数：変数の場所を渡す */
                 Node *arg = new_node(ND_REFARG, mark);
                 arg->lhs = expr();
@@ -652,6 +660,7 @@ static Node *primary(void)
         return node;
     }
     if (tok->kind == TK_NUM) {
+        if (tok->decimal_min) error_tok(tok, "この10進整数は負号の直後の最小値としてだけ使用できます");
         node = new_num(tok->val, tok);
         tok = tok->next;
         return node;
@@ -823,7 +832,11 @@ static Node *unary(void)
     if (consume("+")) {
         return unary();
     }
+    if (consume("bnot")) return new_unary(ND_BIT_NOT, unary(), start);
     if (consume("-")) {
+        if (tok->kind == TK_NUM && tok->decimal_min && !equal(tok->next, "^")) {
+            Node *minimum = new_num(tok->val, start); tok = tok->next; return minimum;
+        }
         return new_unary(ND_NEG, unary(), start);
     }
     return power();
@@ -884,6 +897,16 @@ static Node *add(void)
     }
 }
 
+static Node *shift(void)
+{
+    Node *node = add();
+    while (equal(tok, "<<") || equal(tok, ">>")) {
+        Token *op = tok; NodeKind kind = equal(tok, "<<") ? ND_SHL : ND_SHR;
+        tok = tok->next; node = new_binary(kind, node, add(), op);
+    }
+    return node;
+}
+
 static int is_cmp_op(Token *t)
 {
     return equal(t, "==") || equal(t, "!=") || equal(t, "<") || equal(t, "<=") || equal(t, ">") || equal(t, ">=");
@@ -925,7 +948,7 @@ static Node *compare(void)
     Node *cur;
     Token *op;
 
-    first = add();
+    first = shift();
     if (!is_cmp_op(tok)) {
         return first;
     }
@@ -937,7 +960,7 @@ static Node *compare(void)
     while (is_cmp_op(tok)) {
         op = tok;
         tok = tok->next;
-        right = add();
+        right = shift();
         cmp = new_node(ND_CMP, op);
         cmp->val = cmp_kind(op);
         cmp->lhs = left;
@@ -978,17 +1001,26 @@ static Node *logic_and(void)
     }
 }
 
-/* or = and ("or" and)* */
+static Node *logic_xor(void)
+{
+    Node *node = logic_and();
+    while (equal(tok, "xor")) {
+        Token *op = tok; tok = tok->next; node = new_binary(ND_XOR, node, logic_and(), op);
+    }
+    return node;
+}
+
+/* or = xor ("or" xor)* */
 static Node *logic_or(void)
 {
     Node *node;
     Token *start;
 
-    node = logic_and();
+    node = logic_xor();
     for (;;) {
         start = tok;
         if (consume("or")) {
-            node = new_binary(ND_OR, node, logic_and(), start);
+            node = new_binary(ND_OR, node, logic_xor(), start);
             continue;
         }
         return node;
@@ -1057,12 +1089,26 @@ static Node *embedded_expr(Token *t, const char *open, const char *close)
     Node *node;
     const char *line_start;
 
-    if (memchr(open + 1, ':', (size_t)(close - open - 1)) != NULL) {
-        error_at(t->line, col_in(t, open), "書式指定（{x:.1} など）はまだ対応していません");
+    const char *p, *colon = NULL; int depth = 0, base = 0; char quote = 0;
+    for (p = open + 1; p < close; p++) {
+        if (*p == '\\' && p + 1 < close) { p++; continue; }
+        if (quote) { if (*p == quote) quote = 0; continue; }
+        if (*p == '\'' || *p == '"') { quote = *p; continue; }
+        if (*p == '(' || *p == '[' || *p == '{') depth++;
+        else if (*p == ')' || *p == ']' || *p == '}') depth--;
+        else if (*p == ':' && !depth) { colon = p; break; }
+    }
+    if (colon) {
+        const char *end = close; p = colon + 1;
+        while (p < end && (*p == ' ' || *p == '\t')) p++;
+        while (end > p && (end[-1] == ' ' || end[-1] == '\t')) end--;
+        if (end - p != 2 || p[0] != '0' || !(p[1] == 'b' || p[1] == 'o' || p[1] == 'd' || p[1] == 'x'))
+            error_at(t->line, col_in(t, colon), "書式指定は 0b / 0o / 0d / 0x にしてください");
+        base = integer_prefix(p[1]);
     }
     line_start = t->loc - (t->col - 1);
     saved = tok;
-    tok = tokenize_fragment(open + 1, close, t->line, line_start);
+    tok = tokenize_fragment(open + 1, colon ? colon : close, t->line, line_start);
     if (tok->kind == TK_EOF) {
         error_at(t->line, col_in(t, open), "{} の中に式を書いてください（{ そのものは \\{ と書きます）");
     }
@@ -1071,6 +1117,7 @@ static Node *embedded_expr(Token *t, const char *open, const char *close)
         error_tok(tok, "埋め込みの式が正しくありません");
     }
     tok = saved;
+    node->format_base = base;
     return node;
 }
 
@@ -1100,11 +1147,8 @@ static Node *string_literal(Token *t)
             continue;
         }
         if (*p == '{') {
-            close = p + 1;
-            while (close < end && *close != '}') {
-                close++;
-            }
-            if (close >= end) {
+            close = interpolation_close(p, end);
+            if (!close) {
                 error_at(t->line, col_in(t, p), "{ に対応する } がありません（{ そのものは \\{ と書きます）");
             }
             cur = flush_literal(cur, &lit, t);
@@ -1447,7 +1491,7 @@ static Node *for_stmt(Token *start)
 
     node = new_node(ND_FOR, start);
     expect("(");
-    start_value = add();
+    start_value = shift();
 
     /* 開始側の比較 */
     op1 = tok;
@@ -1497,7 +1541,7 @@ static Node *for_stmt(Token *start)
     cmp = new_node(ND_CMP, op2);
     cmp->val = cmp_kind(op2);
     cmp->lhs = read;
-    cmp->rhs = add();
+    cmp->rhs = shift();
     chain = new_node(ND_CHAIN, op2);
     chain->lhs = cmp;
 

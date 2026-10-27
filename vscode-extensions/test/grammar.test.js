@@ -11,9 +11,19 @@ async function grammar() {
     const registry = new textmate.Registry({ onigLib: Promise.resolve({ createOnigScanner: patterns => new oniguruma.OnigScanner(patterns), createOnigString: text => new oniguruma.OnigString(text) }), loadGrammar: async scope => scope === 'source.qyno' ? textmate.parseRawGrammar(fs.readFileSync(path.join(__dirname, '../syntaxes/qyno.tmLanguage.json'),'utf8'),'qyno.json') : null });
     return registry.loadGrammar('source.qyno');
 }
-test('TextMate highlights actual QYNO 0.26.4 syntax and resets one-line strings', async () => {
+test('TextMate highlights actual QYNO 0.26.5 syntax and resets one-line strings', async () => {
     const g = await grammar();
     function scope(text, word, expected) { const token = g.tokenizeLine(text).tokens.find(t => t.startIndex <= text.indexOf(word) && t.endIndex > text.indexOf(word)); assert.ok(token?.scopes.includes(expected), JSON.stringify(token)); }
+    scope('print(0b1111)','0b1111','constant.numeric.qyno');
+    scope('print(0o17)','0o17','constant.numeric.qyno');
+    scope('print(0d15)','0d15','constant.numeric.qyno');
+    scope('print(0xFF)','0xFF','constant.numeric.qyno');
+    scope('print(a xor b)','xor','keyword.operator.qyno');
+    scope('print(bnot(value))','bnot','keyword.operator.qyno');
+    scope('print(value << 3)','<<','keyword.operator.qyno');
+    scope('print(value >> 3)','>>','keyword.operator.qyno');
+    scope('print("{value:0x}")','0x','constant.other.format.qyno');
+    scope('input("{numbers[0]:0b}")','0b','constant.other.format.qyno');
     scope('private int count', 'private', 'storage.modifier.qyno');
     scope('public bool init(double width, double height=1.0);', 'init', 'entity.name.function.qyno');
     scope('public readonly double distance() = this.x', 'readonly', 'storage.modifier.qyno');
@@ -42,7 +52,7 @@ test('TextMate highlights actual QYNO 0.26.4 syntax and resets one-line strings'
 });
 test('manifest paths and snippets exist with QYNO indentation', () => {
     const base=path.join(__dirname,'..'), pkg=require('../package.json');
-    assert.equal(pkg.version,'0.26.4'); assert.equal(pkg.publisher,'hiraken0427');
+    assert.equal(pkg.version,'0.26.5'); assert.equal(pkg.publisher,'hiraken0427');
     for (const file of [pkg.main,...pkg.contributes.grammars.map(g=>g.path),...pkg.contributes.snippets.map(s=>s.path),pkg.contributes.languages[0].configuration]) assert.ok(fs.existsSync(path.join(base,file)),file);
     const snippets=require('../snippets/qyno.json');
     assert.ok(snippets.Main.body.includes('\treturn 0'));

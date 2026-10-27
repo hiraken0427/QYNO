@@ -1,0 +1,14 @@
+using io
+
+int main();
+	int n
+	if(input("number> {n}"));
+		print("binary  : {n:0b}")
+		print("octal   : {n:0o}")
+		print("decimal : {n}")
+		print("explicit: {n:0d}")
+		print("hex     : {n:0x}")
+		str saved = str(n, base=16, prefix=true)
+		int restored = int(saved)
+		print(restored == n)
+	return 0
