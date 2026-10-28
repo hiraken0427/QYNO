@@ -615,3 +615,11 @@ test('unsigned for counters and integer keyword completions remain scoped', () =
     assert.ok(result.some(i=>i.label==='int_32'));
     assert.ok(result.some(i=>i.label==='unsigned'));
 });
+
+test('default integer aliases are documented and wide count properties keep int64', () => {
+    const source='int main();\n\tfor(0 <= i < 2,i++);\n\t\t¦';
+    assert.equal(items(source).find(i=>i.label==='i').detail,'auto i');
+    assert.ok(STANDARD.find(s=>s.path==='int').documentation.includes('32bit'));
+    assert.equal(STANDARD.find(s=>s.path==='io.file.write').type,'int_64');
+    assert.equal(items('int main();\n\tint values[]\n\tvalues.¦').find(i=>i.label==='length').detail,'int_64 length');
+});

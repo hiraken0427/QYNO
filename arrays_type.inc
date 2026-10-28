@@ -182,10 +182,10 @@ static void check_method(Node *node)
         error_tok(node->tok, "この配列操作の引数は %d 個です", expected);
     }
     if (expected) {
-        Type to = node->val == AM_ADD ? array_element(node->lhs->ty) : TY_INT;
+        Type to = node->val == AM_ADD ? array_element(node->lhs->ty) : TY_I64;
         check_expected(node->rhs, to);
         if (node->val == AM_ADD) check_value_transfer(node->rhs);
-        node->rhs = node->val == AM_REMOVE_AT && type_is_integer(node->rhs->ty) ? new_cast(node->rhs, TY_INT) : coerce(node->rhs, to, node->rhs->tok, "配列操作の引数");
+        node->rhs = node->val == AM_REMOVE_AT && type_is_integer(node->rhs->ty) ? new_cast(node->rhs, TY_I64) : coerce(node->rhs, to, node->rhs->tok, "配列操作の引数");
         if (node->val == AM_REMOVE_AT && is_const_expr(node->rhs) && eval_const(node->rhs).i < 0) {
             const_error(node, "配列の添字が範囲外です");
         }

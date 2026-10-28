@@ -11,8 +11,8 @@ class IntegerTypeTests(QynoTestCase):
                 ty=('unsigned ' if u else '')+f'int_{b}'
                 for name,n in [('lo',0 if u else -(1<<(b-1))),('hi',(1<<b)-1 if u else (1<<(b-1))-1)]:
                     lines += [f'\t{ty} v{b}{int(u)}{name}={n}',f'\tprint(v{b}{int(u)}{name})'];expected.append(str(n))
-        lines+=['\tunsigned int alias=18446744073709551615','\tprint(alias)']
-        self.check_program(program(*lines),'\n'.join(expected+['18446744073709551615'])+'\n')
+        lines+=['\tunsigned int alias=4294967295','\tprint(alias)']
+        self.check_program(program(*lines),'\n'.join(expected+['4294967295'])+'\n')
 
     def test_implicit_conversion_requires_entire_source_range_or_fitting_constant(self):
         self.check_program(program('const int_64 SMALL=12','int main();','\tint_8 a=SMALL','\tint_16 b=a',

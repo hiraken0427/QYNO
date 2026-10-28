@@ -541,7 +541,7 @@ static void gen_array_print_runtime(void)
     int done = rt_label("print.array.done");
     int primitive[TY_CHAR + 1];
     int i;
-    for (i = TY_INT; i <= TY_CHAR; i++) primitive[i] = rt_label("print.array.primitive");
+    for (i = TY_I64; i <= TY_CHAR; i++) primitive[i] = rt_label("print.array.primitive");
     rt_enter(array_print_label, 5);
     rt_save(1, RAX); rt_set(2, 0);
     x64_load(RDX, RAX, 16);
@@ -565,9 +565,9 @@ static void gen_array_print_runtime(void)
           x64_bind(next_model);
       }
     }
-    for (i = TY_INT; i <= TY_CHAR; i++) { rt_cmp(RCX, i); x64_jcc(CC_Z, primitive[i]); }
+    for (i = TY_I64; i <= TY_CHAR; i++) { rt_cmp(RCX, i); x64_jcc(CC_Z, primitive[i]); }
     x64_jmp(next);
-    for (i = TY_INT; i <= TY_CHAR; i++) {
+    for (i = TY_I64; i <= TY_CHAR; i++) {
         x64_bind(primitive[i]);
         if (i == TY_FLOAT) { x64_movd_to_xmm(0, RAX); x64_cvtss2sd(0, 0); x64_movq_from_xmm(RAX, 0); }
         x64_call(type_is_integer((Type)i) ? (integer_unsigned((Type)i) ? print_uint_label : print_int_label) : i == TY_BOOL ? print_bool_label :

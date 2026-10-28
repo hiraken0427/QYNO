@@ -1,4 +1,4 @@
-# QYNO 0.26.11
+# QYNO 0.26.12
 
 C99 で実装した、Linux x64 / Windows x64 向けのコンパイラ。
 UTF-8 の `.qy` ソースから実行ファイルを直接生成する。
@@ -35,19 +35,21 @@ int main();
 
 ## VS Code 拡張
 
-[VSCode Option](vscode-extensions/README.md) は QYNO 0.26.11 のハイライト、
+[VSCode Option](vscode-extensions/README.md) は QYNO 0.26.12 のハイライト、
 ユーザー定義の関数名・変数名の補完、定義への移動、引数ヒントに対応する。
-[vscode-extensions/0.26.11_VSCode_option.vsix](vscode-extensions/0.26.11_VSCode_option.vsix) を
+[vscode-extensions/0.26.12_VSCode_option.vsix](vscode-extensions/0.26.12_VSCode_option.vsix) を
 VS Code の「VSIX からのインストール…」で指定する。
 
-## 整数型（新段階2）
+## 整数型（新段階3）
 
 `int_8` / `int_16` / `int_32` / `int_64` と、`unsigned int_8` などの符号なし整数型を使用できる。
-この段階では `int` = `int_64`、`unsigned int` = `unsigned int_64`。
+`int` = `int_32`、`unsigned int` = `unsigned int_32`。64bitの値には型を明示する。
 配列・モデル・ref・型推論、math・入出力・基数変換も対応する。
 狭い型や符号の異なる型への変換は範囲を検査し、暗黙の切り捨てを行わない。
 演算結果は型のbit幅で折り返し、forの範囲外更新ではループを終了する。
-例は [examples/types/integers.qy](examples/types/integers.qy)、詳細は
+32bitへの移行例は [examples/types/default-integers.qy](examples/types/default-integers.qy)。
+`.length`と`io.file.write`のバイト数は`int_64`を返す。
+型別の例は [examples/types/integers.qy](examples/types/integers.qy)、詳細は
 [整数型の仕様](docs/types-roadmap.md) を参照。
 
 ## ローカル変数の型推論
@@ -59,7 +61,7 @@ VS Code の「VSIX からのインストール…」で指定する。
 未宣言の名前への `y = 3` も、`auto y = 3` と同様にローカル変数を宣言する。
 既存の名前への代入では型と参照先を維持し、内側で別変数を作る場合は `auto y = ...` または型を明示する。
 型名を省略した宣言が未使用の場合は警告し、似た名前の既存変数があれば候補を示す。
-この段階の int は従来どおり64bit。
+intは32bit。大きな整数リテラルはint_64、さらに大きい正の値はunsigned int_64へ推論する。
 
 関数の戻り値は `auto square(int x) = x^2` または `square(int x) = x^2` と書いて推論できる。
 ブロック形式とモデルのメソッドにも対応する。

@@ -35,6 +35,10 @@ test: qyc
 	$(PYTHON) tests/return_inference_test.py ./qyc
 	$(PYTHON) tests/generic_functions_test.py ./qyc
 	$(PYTHON) tests/integer_types_test.py ./qyc
+	$(PYTHON) tests/default_integer_test.py ./qyc
+
+test-default-integer: qyc
+	$(PYTHON) tests/default_integer_test.py ./qyc
 
 test-integer-types: qyc
 	$(PYTHON) tests/integer_types_test.py ./qyc
@@ -108,4 +112,4 @@ test-arrays: qyc
 clean:
 	rm -f qyc qyc.exe *.o tmp tmp.exe tmp.qy tmp.s
 
-.PHONY: test test-integer-types test-auto test-implicit-declarations test-global-const-inference test-return-inference test-generic-functions test-bitwise test-integer-bases test-interfaces test-initialization test-readonly test-visibility test-model test-file test-input-refs test-for test-io test-modules test-lineedit test-rounding test-semantics test-text test-arrays clean
+.PHONY: test test-default-integer test-integer-types test-auto test-implicit-declarations test-global-const-inference test-return-inference test-generic-functions test-bitwise test-integer-bases test-interfaces test-initialization test-readonly test-visibility test-model test-file test-input-refs test-for test-io test-modules test-lineedit test-rounding test-semantics test-text test-arrays clean

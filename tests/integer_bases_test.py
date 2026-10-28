@@ -33,7 +33,7 @@ class IntegerBasesTests(QynoTestCase):
     def test_integer_formatting_all_bases_signs_zero_and_boundaries(self):
         values=[0,1,15,255,MAX,MIN,-1,-255];lines=['int main();'];expected=[]
         for i,n in enumerate(values):
-            lines.append(f'\tint n{i}={hex(n&MASK)}')
+            lines.append(f'\tint_64 n{i}={hex(n&MASK)}')
             for base,code in [(2,'0b'),(8,'0o'),(10,'0d'),(16,'0x')]:
                 lines.append(f'\tprint("{{n{i}:{code}}}")');expected.append(formatted(n,base,True))
         self.check_program(program(*lines),'\n'.join(expected)+'\n')
@@ -49,17 +49,17 @@ class IntegerBasesTests(QynoTestCase):
             ('0xF',None,15),('ff',16,255),('0x10',16,16),('10',16,16),('0x0b10',16,2832),(' -0d15\t',None,-15),
             ('-0xffffffffffffffff',None,1),('-0xff',None,-255),('+0XFF',None,255)]:
             literal=text.replace('\t','\\t');suffix='' if base is None else f',base={base}'
-            lines += [f'\tstr text{len(values)}="{literal}"',f'\tprint(int(text{len(values)}{suffix}))'];values.append(str(expected))
+            lines += [f'\tstr text{len(values)}="{literal}"',f'\tprint(int_64(text{len(values)}{suffix}))'];values.append(str(expected))
         self.check_program(program(*lines),'\n'.join(values)+'\n')
 
     def test_round_trips_all_int_values_samples(self):
         rng=random.Random(525);values=[MIN,MAX,-1,0,1,255]+[rng.randrange(MIN,MAX+1) for _ in range(12)]
         lines=['int main();'];expected=[]
         for i,n in enumerate(values):
-            lines.append(f'\tint n{i}={hex(n&MASK)}')
+            lines.append(f'\tint_64 n{i}={hex(n&MASK)}')
             for base in [2,8,10,16]:
-                lines += [f'\tstr s{i}_{base}=str(n{i},{base},true)',f'\tprint(s{i}_{base})',f'\tprint(int(s{i}_{base}) == n{i})',
-                    f'\tprint(int(str(n{i},{base}),{base}) == n{i})']
+                lines += [f'\tstr s{i}_{base}=str(n{i},{base},true)',f'\tprint(s{i}_{base})',f'\tprint(int_64(s{i}_{base}) == n{i})',
+                    f'\tprint(int_64(str(n{i},{base}),{base}) == n{i})']
                 expected += [formatted(n,base,True),'true','true']
         self.check_program(program(*lines),'\n'.join(expected)+'\n')
 
@@ -116,7 +116,7 @@ class IntegerBasesTests(QynoTestCase):
         for text,value in [('0b1111',15),('0o17',15),('0d15',15),('0xf',15),('010',10),('-0xff',-255),
                            ('0xffffffffffffffff',-1),('-9223372036854775808',MIN)]:
             for call in ['input(n)','input("{n}")','n=input()']:
-                self.check_program(program('int main();','\tint n','\t'+call,'\tprint(n)'),str(value)+'\n',stdin=text+'\n')
+                self.check_program(program('int main();','\tint_64 n','\t'+call,'\tprint(n)'),str(value)+'\n',stdin=text+'\n')
 
     def test_fixed_base_mismatch_invalid_digit_overflow_and_eof_preserve_values(self):
         for code,text in [('0x','0b1111'),('0x','gg'),('0b','102'),('0o','8'),('0d','0xf'),('0x','10000000000000000'),
@@ -151,7 +151,7 @@ class IntegerBasesTests(QynoTestCase):
 
     def test_file_write_interpolation_uses_same_formats(self):
         path=self.directory/'result.txt'
-        self.check_program(program('int main();',f'\tfile f=io.file.open("{path}","w")','\tint n=-1',
+        self.check_program(program('int main();',f'\tfile f=io.file.open("{path}","w")','\tint_64 n=-1',
             '\tio.file.write(f,"{n:0x}, {n:0d}\\n")','\tio.file.close(f)'), '')
         self.assertEqual(path.read_text(),'0xffffffffffffffff, -0d1\n')
 
@@ -172,7 +172,7 @@ class IntegerBasesTests(QynoTestCase):
     def test_input_round_trips_negative_and_boundary_formats(self):
         for base,code in [(2,'0b'),(8,'0o'),(10,'0d'),(16,'0x')]:
             values=[MIN,MAX,-1,0,1]
-            source=program('int main();','\tint n',*[line for _ in values for line in [f'\tinput("{{n:{code}}}")','\tprint(n)']])
+            source=program('int main();','\tint_64 n',*[line for _ in values for line in [f'\tinput("{{n:{code}}}")','\tprint(n)']])
             self.check_program(source,''.join(str(n)+'\n' for n in values),stdin=''.join(formatted(n,base,True)+'\n' for n in values))
 
     def test_conversion_optional_arguments_preserve_resource_effects(self):

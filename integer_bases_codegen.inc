@@ -1,4 +1,4 @@
-/* RSI..RDX token, RDI=0/2/8/10/16 -> RAX=value, RSI=end, RCX=status.
+/* RSI..RDX token, RDI=0/2/8/10/16, R11=integer Type -> RAX=value, RSI=end, RCX=status.
  * RDX is preserved. This parser stops at a delimiter; whole-string callers
  * additionally require only whitespace after the token. */
 static void gen_parse_int(void)
@@ -28,7 +28,7 @@ static void gen_parse_int(void)
     x64_bind(digits); x64_test(RDI, RDI); x64_jcc(CC_NZ, base_ready); x64_mov_imm(RDI, 10);
     x64_bind(base_ready);
     { int ty;
-      for (ty = TY_INT; ty <= TY_U64; ty++) {
+      for (ty = TY_I64; ty <= TY_U64; ty++) {
           int next = rt_label("integer.limit.next");
           rt_load(RCX, 6); rt_cmp(RCX, ty); x64_jcc(CC_NZ, next);
           if (integer_unsigned((Type)ty)) { x64_test(R8, R8); x64_jcc(CC_NZ, range); }

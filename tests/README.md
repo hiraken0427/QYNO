@@ -108,7 +108,7 @@ Python の失敗・例外・タイムアウトはコマンドの失敗として�
 
 ## 0.26.1 の公開制御検証
 
-`make test-visibility` は公開制御の専用スイート（25メソッド）を実行する。
+`make test-visibility` は公開制御の専用スイート（28メソッド）を実行する。
 同型内部・別モデル・モジュール別名、読み書き・ref・入力・初期化・既定値の再利用、
 自動表示・コピー・比較、private file の close 責任と Windows / アセンブリ出力を検証する。
 `make test` にも含む。実行例は `examples/models/visibility.qy`。
@@ -194,3 +194,12 @@ fileの共有とclose責任、未使用テンプレートの扱いと警告の�
 配列・モデル・定数・ref・readonly・import・interface・ジェネリック・return推論を検証する。
 入力失敗時の一括保持、ファイル出力、for境界と開区間、NaN/無限大/0除算の診断も含む。
 `integer_bases_test.py` は新たに許可したunsignedの10進リテラルと従来の不正表記を区別する。
+
+## 0.26.12 の既定整数型（新段階3、旧段階8）
+
+`make test-default-integer` / `tests/default_integer_test.py` の28メソッドを全体テストに含む。
+int / int_32、unsigned int / unsigned int_32のref一致とint_64との区別、リテラルの幅の推論、
+符号付き最小値、32bit演算・シフト・除算・変換・丸めの境界を確認する。
+配列・ジェネリック・複数returnの幅、入力の一括保持、length / writeのint_64戻り値、
+開始値からのforカウンター型の決定と明示した幅も検証する。
+既存の64bitビット演算・基数変換・入力・丸め・forの検証はint_64を明示して維持する。

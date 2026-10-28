@@ -37,13 +37,13 @@ const char *type_name(Type ty)
     if (type_is_model(ty)) return type_model(ty)->name;
     if (type_is_interface(ty)) return type_interface(ty)->name;
     switch (ty) {
-    case TY_INT: return "int";
+    case TY_I64: return "int_64";
     case TY_I8: return "int_8";
     case TY_I16: return "int_16";
-    case TY_I32: return "int_32";
+    case TY_I32: return "int";
     case TY_U8: return "unsigned int_8";
     case TY_U16: return "unsigned int_16";
-    case TY_U32: return "unsigned int_32";
+    case TY_U32: return "unsigned int";
     case TY_U64: return "unsigned int_64";
     case TY_FLOAT:
         return "float";
@@ -195,8 +195,8 @@ static Node *new_cast(Node *expr, Type ty)
 
 static int integer_literal(Node *n)
 {
-    if (n->ty != TY_INT) return 0;
-    if (n->kind == ND_NUM || (n->kind == ND_VAR && n->var->is_const)) return 1;
+    if (!type_is_integer(n->ty)) return 0;
+    if (n->kind == ND_NUM || (n->kind == ND_VAR && n->var->is_const && n->ty == TY_INT)) return 1;
     if (n->kind == ND_NEG) return integer_literal(n->lhs);
     if (n->kind == ND_ADD || n->kind == ND_SUB || n->kind == ND_MUL || n->kind == ND_DIV || n->kind == ND_MOD || n->kind == ND_POW)
         return integer_literal(n->lhs) && integer_literal(n->rhs);
@@ -447,7 +447,7 @@ static void check_file_builtin(Node *node)
             if (!is_numeric(second->ty) && second->ty != TY_BOOL && !type_is_text(second->ty))
                 error_tok(second->tok, "write できるのは int・float・double・bool・str・char です");
         }
-        node->ty = TY_INT;
+        node->ty = TY_I64;
     } else if (b == BI_FILE_CLOSE) {
         node->ty = TY_VOID;
         if (!allowed) error_tok(node->tok, "close は戻り値がないので文として使ってください");
@@ -510,7 +510,7 @@ static void check_builtin(Node *node)
         }
     }
 
-    if (digits != NULL) { x->next = digits = new_cast(digits, TY_INT); }
+    if (digits != NULL) { x->next = digits = new_cast(digits, TY_I64); }
     switch (b) {
     case BI_SQRT:
         if (type_is_integer(x->ty)) {
@@ -750,7 +750,7 @@ static void check_expr(Node *node)
     if (node->kind == ND_VAR && node->var == NULL) resolve_module_name(node);
     switch (node->kind) {
     case ND_NUM:
-        node->ty = TY_INT;
+        node->ty = node->val >= INT32_MIN && node->val <= INT32_MAX ? TY_INT : TY_I64;
         return;
     case ND_FNUM:
         node->ty = TY_DOUBLE;
@@ -787,12 +787,12 @@ static void check_expr(Node *node)
         if (!type_is_text(node->lhs->ty) && !type_is_array(node->lhs->ty)) {
             error_tok(node->tok, "添字と length は str・char に使えます（%s が指定されています）", type_name(node->lhs->ty));
         }
-        node->ty = node->kind == ND_LENGTH ? TY_INT :
+        node->ty = node->kind == ND_LENGTH ? TY_I64 :
             type_is_array(node->lhs->ty) ? array_element(node->lhs->ty) : TY_STR;
         if (node->kind == ND_INDEX) {
             check_expr(node->rhs);
             if (!type_is_integer(node->rhs->ty)) error_tok(node->rhs->tok, "添字は整数型にしてください");
-            node->rhs = new_cast(node->rhs, TY_INT);
+            node->rhs = new_cast(node->rhs, TY_I64);
             if (is_const_expr(node->rhs)) {
                 long long index = eval_const(node->rhs).i;
                 long long maximum = expression_max_length(node->lhs);
@@ -911,7 +911,7 @@ static void check_expr(Node *node)
             error_tok(node->tok, "^ の指数は int にしてください（%s の指数は未対応です）",
                      type_name(node->rhs->ty));
         }
-        node->rhs = new_cast(node->rhs, TY_INT);
+        node->rhs = new_cast(node->rhs, TY_I64);
         node->ty = node->lhs->ty;
         check_pow_domain(node);
         return;
@@ -1921,6 +1921,14 @@ static void check_stmt(Node *node)
         check_stmts(node->then);
         return;
     case ND_FOR:
+        if (node->for_infer) {
+            Type start;
+            check_expr(node->init->lhs); start = node->init->lhs->ty;
+            if (type_is_integer(start)) {
+                Type counter = integer_common(start, TY_INT);
+                node->init->var->ty = counter == TY_NONE ? start : counter;
+            }
+        }
         if (!is_numeric(node->init->var->ty)) {
             error_tok(node->init->var->tok, "for のループ変数は int・float・double にしてください（%s は使えません）",
                       type_name(node->init->var->ty));

@@ -33,8 +33,8 @@ class RoundingTests(QynoTestCase):
                     with self.subTest(operation=operation, value=value, digits=digits):
                         expected = int(Decimal(value).quantize(Decimal(1).scaleb(-digits), rounding=mode))
                         self.check_program(program(
-                            f"const int C = math.{operation}({value}, {digits})",
-                            "int main();", f"\tint x = {value}",
+                            f"const int_64 C = math.{operation}({value}, {digits})",
+                            "int main();", f"\tint_64 x = {value}",
                             "\tprint(C)", f"\tprint(math.{operation}(x, {digits}))",
                         ), f"{expected}\n{expected}\n")
 
@@ -62,7 +62,7 @@ class RoundingTests(QynoTestCase):
                     "int main();", f"\tprint(math.{operation}({value}, -1))",
                 ), error="範囲")
                 self.check_program(program(
-                    "int main();", f"\tint x = {value}",
+                    "int main();", f"\tint_64 x = {value}",
                     f"\tprint(math.{operation}(x, -1))",
                 ), "", status=70, error="範囲")
 

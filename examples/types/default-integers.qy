@@ -1,0 +1,30 @@
+using io
+
+increase(ref int_32 value);
+	value++
+
+walk(start);
+	for(start <= i <= start + 1, i++);
+		print(i)
+
+int main();
+	int value = 2147483647
+	increase(ref value)
+	print(value) // -2147483648
+	unsigned int mask = 4294967295
+	print("{mask} {mask:0x}")
+	int_64 wide = 2147483647
+	wide++
+	print(wide) // 2147483648
+	inferred = 2147483648 // int_64
+	print(inferred)
+	print(int_64(2)^32)
+	print("{int(-1):0x} {int_64(-1):0x}")
+	int values[] = [1, 2, 3]
+	length = values.length // int_64
+	print(length)
+	for(values.length > i >= 0, i--);
+		print(values[i])
+	walk(1)
+	walk(2147483648)
+	return 0

@@ -11,7 +11,7 @@ def signed(n):
     n &= MASK
     return n-(1<<64) if n&(1<<63) else n
 
-def literal(n): return hex(n&MASK)
+def literal(n): return 'int_64('+hex(n&MASK)+')'
 
 class BitwiseTests(QynoTestCase):
     def test_integer_truth_tables_and_complements(self):
@@ -38,7 +38,7 @@ class BitwiseTests(QynoTestCase):
 
     def test_shift_boundaries_sign_and_discarded_bits(self):
         self.check_program(program('int main();','\tint n=-3','\tprint(n >> 1)','\tprint(n / 2)',
-            '\tprint(1 << 63)','\tprint(0x8000000000000000 << 1)','\tprint(0xffffffffffffffff >> 63)',
+            '\tprint(int_64(1) << 63)','\tprint(0x8000000000000000 << 1)','\tprint(0xffffffffffffffff >> 63)',
             '\tprint(0x7fffffffffffffff >> 63)','\tprint(-1 << 1)','\tprint(n << 0)','\tprint(n >> 0)'),
             '-2\n-1\n-9223372036854775808\n0\n-1\n0\n-2\n-3\n-3\n')
 
@@ -64,7 +64,7 @@ class BitwiseTests(QynoTestCase):
     def test_dynamic_invalid_amount_and_location(self):
         for n in [-1,64,65,MIN,MAX]:
             for op in ['<<','>>']:
-                result=self.check_program(program('int main();','\tint value=1',f'\tint amount={literal(n)}',f'\tprint(value {op} amount)'),'',status=70,error='シフト量')
+                result=self.check_program(program('int main();','\tint value=1',f'\tint_64 amount={literal(n)}',f'\tprint(value {op} amount)'),'',status=70,error='シフト量')
                 self.assertIn(':4:',result.stderr.decode())
 
     def test_zero_lhs_does_not_hide_dynamic_errors_or_side_effects(self):
@@ -81,9 +81,9 @@ class BitwiseTests(QynoTestCase):
         rng=random.Random(20261027); lines=['int main();']; expected=[]
         for i in range(35):
             a=rng.randrange(MIN,MAX+1);b=rng.randrange(MIN,MAX+1);n=rng.choice([0,1,7,31,62,63])
-            lines += [f'\tint a{i}={literal(a)}',f'\tint b{i}={literal(b)}',f'\tint n{i}={n}']
+            lines += [f'\tint_64 a{i}={literal(a)}',f'\tint_64 b{i}={literal(b)}',f'\tint n{i}={n}']
             for op,value in [('and',signed(a&b)),('or',signed(a|b)),('xor',signed(a^b))]:
-                lines += [f'\tconst int c{i}_{op}={literal(a)} {op} {literal(b)}',f'\tprint(a{i} {op} b{i})',f'\tprint(c{i}_{op})']; expected += [str(value)]*2
+                lines += [f'\tconst int_64 c{i}_{op}={literal(a)} {op} {literal(b)}',f'\tprint(a{i} {op} b{i})',f'\tprint(c{i}_{op})']; expected += [str(value)]*2
             for op,value in [('<<',signed(a<<n)),('>>',a>>n)]:
                 lines.append(f'\tprint(a{i} {op} n{i})');expected.append(str(value))
         self.check_program(program(*lines),'\n'.join(expected)+'\n')
