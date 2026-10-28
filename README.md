@@ -1,4 +1,4 @@
-# QYNO 0.26.12
+# QYNO 0.26.13
 
 C99 で実装した、Linux x64 / Windows x64 向けのコンパイラ。
 UTF-8 の `.qy` ソースから実行ファイルを直接生成する。
@@ -35,10 +35,19 @@ int main();
 
 ## VS Code 拡張
 
-[VSCode Option](vscode-extensions/README.md) は QYNO 0.26.12 のハイライト、
+[VSCode Option](vscode-extensions/README.md) は QYNO 0.26.13 のハイライト、
 ユーザー定義の関数名・変数名の補完、定義への移動、引数ヒントに対応する。
-[vscode-extensions/0.26.12_VSCode_option.vsix](vscode-extensions/0.26.12_VSCode_option.vsix) を
+[vscode-extensions/0.26.13_VSCode_option.vsix](vscode-extensions/0.26.13_VSCode_option.vsix) を
 VS Code の「VSIX からのインストール…」で指定する。
+
+## 複素数（新段階4）
+
+`complex` / `complex_64`はfloat2成分、`complex_128`はdouble2成分。
+`complex(real=3.0, imag=4.0)`、推奨の`3.0 + i4.0`、`3.0 + 4.0i`を使用できる。
+四則演算・整数乗・絶対値・主平方根、配列・ref・型推論・入出力に対応する。
+`.real` / `.imag`で成分を読み、更新は複素数全体へ代入する。
+例は [examples/types/complex.qy](examples/types/complex.qy)、
+詳細は [型の仕様](docs/types-roadmap.md) を参照。
 
 ## 整数型（新段階3）
 

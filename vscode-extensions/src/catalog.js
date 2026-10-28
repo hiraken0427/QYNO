@@ -1,5 +1,5 @@
 'use strict';
-// Reference: QYNO 0.26.12. No runtime dependency on a compiler installation.
+// Reference: QYNO 0.26.13. No runtime dependency on a compiler installation.
 const callable = (path, type, params, documentation) => ({
     kind: 'function', name: path.split('.').at(-1), path, type, rank: 0,
     params: params.map(p => typeof p === 'string' ? { name: p, type: 'value', rank: 0 } : { rank: 0, ...p }),
@@ -7,9 +7,11 @@ const callable = (path, type, params, documentation) => ({
 });
 const INTEGER_TYPES = ['int_8', 'int_16', 'int_32', 'int_64', 'unsigned int', 'unsigned int_8', 'unsigned int_16', 'unsigned int_32', 'unsigned int_64'];
 const STANDARD = [
+    ...['complex','complex_64','complex_128'].map(type=>callable(type,type,[{name:'real',type:type==='complex_128'?'double':'float',optional:true,defaultText:'0.0'},{name:'imag',type:type==='complex_128'?'double':'float',optional:true,defaultText:'0.0'}], '複素数を構築します。complexはcomplex_64の別名。real / imagは実数、値1個なら実数または複素数から変換できます。i4.0 / 4.0iも使用できます。')),
+
     ...INTEGER_TYPES.map(type => callable(type, type, [{name:'value',type:'integer / float / double / str'},{name:'base',type:'int',optional:true,defaultText:'0'}], 'int / unsigned intは32bitの別名です。範囲を検査して整数型へ変換します。strの変換にはbase=0/2/8/10/16を指定できます。')),
-    callable('math.sqrt', 'double / float', ['x'], '平方根を返します。int 引数は double に変換されます。'),
-    callable('math.abs', 'int / float / double', ['x'], '絶対値。QYNO では |x| の表記も使用できます。'),
+    callable('math.sqrt', 'double / float / complex / complex_128', ['x'], '平方根を返します。複素数は主平方根、int引数はdoubleに変換します。'),
+    callable('math.abs', 'int / float / double', ['x'], '絶対値。複素数は実数の大きさを返します。|x| の表記も使用できます。'),
     callable('math.round', 'int / float / double', ['x', { name: 'digits', type: 'int', optional: true, default: '0' }], '指定桁で四捨五入します。'),
     callable('math.roundup', 'int / float / double', ['x', { name: 'digits', type: 'int', optional: true, default: '0' }], '指定桁で天井関数に従って丸めます。'),
     callable('math.rounddown', 'int / float / double', ['x', { name: 'digits', type: 'int', optional: true, default: '0' }], '指定桁で床関数に従って丸めます。'),
@@ -27,8 +29,10 @@ const STANDARD = [
     callable('io.file.write', 'int_64', [{ name: 'destination', type: 'file' }, { name: 'value', type: 'value', placeholder: '"text"' }], 'print と同じ書式で書き込み、UTF-8のバイト数をint_64で返します。改行は自動追加しません。'),
     callable('io.file.exists', 'bool', [{ name: 'path', type: 'str', placeholder: '"path.txt"' }], '通常ファイルの存在を確認します。相対パスは実行時の作業ディレクトリが基準です。')
 ];
-const KEYWORD_COMPLETIONS = ['int', 'int_8', 'int_16', 'int_32', 'int_64', 'unsigned', 'float', 'double', 'bool', 'str', 'char', 'file', 'void', 'auto', 'const', 'ref', 'val', 'return', 'if', 'else', 'for', 'while', 'break', 'continue', 'and', 'or', 'xor', 'bnot', 'not', 'true', 'false', 'none', 'import', 'using', 'as', 'model', 'interface', 'implements', 'public', 'private', 'readonly'];
+const KEYWORD_COMPLETIONS = ['complex', 'complex_64', 'complex_128', 'int', 'int_8', 'int_16', 'int_32', 'int_64', 'unsigned', 'float', 'double', 'bool', 'str', 'char', 'file', 'void', 'auto', 'const', 'ref', 'val', 'return', 'if', 'else', 'for', 'while', 'break', 'continue', 'and', 'or', 'xor', 'bnot', 'not', 'true', 'false', 'none', 'import', 'using', 'as', 'model', 'interface', 'implements', 'public', 'private', 'readonly'];
 const properties = {
+    real: { name:'real',kind:'property',type:'float',readonly:true,documentation:'複素数の実部。読み取り専用です。' },
+    imag: { name:'imag',kind:'property',type:'float',readonly:true,documentation:'複素数の虚部。読み取り専用です。' },
     length: { name: 'length', kind: 'property', type: 'int_64', documentation: '配列の要素数、または文字列のUnicodeスカラー値の数。読み取り専用です。' },
     addr: { name: 'addr', kind: 'property', type: 'address', documentation: '変数の場所。ref 変数の場合は現在参照している場所です。' },
     value: { name: 'value', kind: 'property', documentation: '変数の値。ref 変数では参照先の値です。' },

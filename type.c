@@ -45,6 +45,8 @@ const char *type_name(Type ty)
     case TY_U16: return "unsigned int_16";
     case TY_U32: return "unsigned int";
     case TY_U64: return "unsigned int_64";
+    case TY_C64: return "complex";
+    case TY_C128: return "complex_128";
     case TY_FLOAT:
         return "float";
     case TY_DOUBLE:
@@ -76,6 +78,8 @@ static int is_numeric(Type ty)
     return type_is_integer(ty) || ty == TY_FLOAT || ty == TY_DOUBLE;
 }
 
+static int is_number(Type ty) { return is_numeric(ty) || type_is_complex(ty); }
+
 static Ast *cur_ast;
 static Function *cur_func;
 static int allow_void;          /* 次に調べる呼び出しが文として使われるなら 1 */
@@ -86,6 +90,7 @@ static int function_check_depth;
 typedef struct {
     Type ty;
     long long i;        /* all integer types and bool; unsigned uses the same bits */
+    double imag;
     double d;           /* float・double（float は float に丸めた値） */
     char *s;            /* str */
     int len;
@@ -123,6 +128,7 @@ static int is_float_literal(Node *node)
     Node *arg;
 
     switch (node->kind) {
+    case ND_COMPLEX:
     case ND_FNUM:
     case ND_NUM:
         return 1;
@@ -136,6 +142,7 @@ static int is_float_literal(Node *node)
     case ND_MOD:
     case ND_POW:
         return is_float_literal(node->lhs) && is_float_literal(node->rhs);
+    case ND_CREAL: case ND_CIMAG:
     case ND_ABS:
         return is_float_literal(node->lhs);
     case ND_INT_PARSE:
@@ -225,6 +232,10 @@ static Node *convert(Node *expr, Type to)
     if (from == to) {
         return expr;
     }
+    if (type_is_complex(to) && is_number(from)) {
+        if ((from != TY_C128 && from != TY_DOUBLE) || to == TY_C128 || is_float_literal(expr)) return new_cast(expr, to);
+        return NULL;
+    }
     if (type_is_text(from) && type_is_text(to)) {
         Node *cast = new_cast(expr, to);
         if (to == TY_CHAR && is_const_expr(expr)) {
@@ -234,7 +245,7 @@ static Node *convert(Node *expr, Type to)
     }
     /* 値の形の input は、代入先の型で読む */
     if (expr->kind == ND_INPUT && !expr->input_pattern && from == TY_STR &&
-        (type_is_integer(to) || to == TY_FLOAT || to == TY_DOUBLE || to == TY_BOOL)) {
+        (type_is_integer(to) || to == TY_FLOAT || to == TY_DOUBLE || to == TY_BOOL || type_is_complex(to))) {
         expr->ty = to;
         return expr;
     }
@@ -280,6 +291,11 @@ static Type binary_type(Node *lhs, Node *rhs)
     r = rhs->ty;
     if (l == r) {
         return l;
+    }
+    if (type_is_complex(l) || type_is_complex(r)) {
+        if (l == TY_C64 && is_float_literal(rhs)) return TY_C64;
+        if (r == TY_C64 && is_float_literal(lhs)) return TY_C64;
+        return complex_common(l, r);
     }
     if (type_is_integer(l) && type_is_integer(r)) {
         Type common;
@@ -351,6 +367,10 @@ static void check_cmp(Node *cmp)
         return;
     }
 
+    if ((type_is_complex(l) || type_is_complex(r)) && is_number(l) && is_number(r)) {
+        if (kind != CMP_EQ && kind != CMP_NE) error_tok(cmp->tok, "複素数は == / != で比較してください");
+        cmp->cmp_ty = binary_type(cmp->lhs, cmp->rhs); return;
+    }
     if (is_numeric(l) && is_numeric(r)) {
         cmp->cmp_ty = binary_type(cmp->lhs, cmp->rhs);
         return;
@@ -391,6 +411,7 @@ static void require_bool(Node *node, const char *what)
 #include "models_type.inc"
 #include "initialization_type.inc"
 #include "integer_bases_type.inc"
+#include "complex_type.inc"
 
 static long long round_integer(Node *node, long long x, long long digits, Builtin mode);
 static void check_pow_domain(Node *node);
@@ -439,12 +460,12 @@ static void check_file_builtin(Node *node)
             Node *part;
             check_print_parts(second->lhs);
             for (part = second->lhs; part; part = part->next)
-                if (part->kind != ND_STR && !is_numeric(part->ty) && part->ty != TY_BOOL && !type_is_text(part->ty))
+                if (part->kind != ND_STR && !is_number(part->ty) && part->ty != TY_BOOL && !type_is_text(part->ty))
                     error_tok(part->tok, "write の埋め込みは int・float・double・bool・str・char にしてください");
         }
         else {
             check_expr(second);
-            if (!is_numeric(second->ty) && second->ty != TY_BOOL && !type_is_text(second->ty))
+            if (!is_number(second->ty) && second->ty != TY_BOOL && !type_is_text(second->ty))
                 error_tok(second->tok, "write できるのは int・float・double・bool・str・char です");
         }
         node->ty = TY_I64;
@@ -473,6 +494,7 @@ static void check_builtin(Node *node)
 
     b = (Builtin)node->val;
     if (b >= BI_FILE_OPEN) { check_file_builtin(node); return; }
+    if (b == BI_COMPLEX) { check_complex_constructor(node); return; }
     if (b == BI_INT && node->lhs && integer_unsigned(node->cmp_ty)) check_expected(node->lhs, node->cmp_ty);
     if ((b == BI_INT || b == BI_STR) && check_integer_conversion(node)) return;
     min_args = 1;
@@ -498,6 +520,8 @@ static void check_builtin(Node *node)
         }
         return;
     }
+    if (b == BI_SQRT && type_is_complex(x->ty)) { node->ty = x->ty; return; }
+    if (b == BI_ABS && type_is_complex(x->ty)) { node->ty = complex_component(x->ty); return; }
     if (!is_numeric(x->ty)) {
         error_tok(x->tok, "%s に渡せるのは数値（int・float・double）です（%s が渡されています）",
                  builtin_name(b), type_name(x->ty));
@@ -564,7 +588,7 @@ static void check_input(Node *node)
             Type ty;
             check_expr(node->lhs);
             ty = node->lhs->ty;
-            if (!is_numeric(ty) && ty != TY_BOOL && !type_is_text(ty))
+            if (!is_number(ty) && ty != TY_BOOL && !type_is_text(ty))
                 error_tok(node->lhs->tok, "input のプロンプトは int・float・double・bool・str・char にしてください");
         }
         node->ty = TY_STR;
@@ -576,7 +600,7 @@ static void check_input(Node *node)
         check_place(f->var);
         ty = f->var->ty;
         if (f->base && !type_is_integer(ty)) error_tok(f->var->tok, "基数指定の入力先は int にしてください");
-        if (!is_numeric(ty) && ty != TY_BOOL && !type_is_text(ty))
+        if (!is_number(ty) && ty != TY_BOOL && !type_is_text(ty))
             error_tok(f->var->tok, "%s には直接入力できません。変数または末端の配列要素を指定してください", type_name(ty));
         /* 文字列内の1文字への入力も1スカラー値に制限する。 */
         f->temp->ty = f->var->kind == ND_INDEX && type_is_text(f->var->lhs->ty) ? TY_CHAR : ty;
@@ -770,6 +794,13 @@ static void check_expr(Node *node)
     case ND_MODEL_COPY:
         check_expr(node->lhs); node->ty = node->lhs->ty; return;
     case ND_FIELD:
+        check_expr(node->lhs);
+        if (type_is_complex(node->lhs->ty)) {
+            if (!strcmp(node->name, "real")) node->kind = ND_CREAL;
+            else if (!strcmp(node->name, "imag")) node->kind = ND_CIMAG;
+            else error_tok(node->tok, "複素数の成分は real / imag です");
+            node->ty = complex_component(node->lhs->ty); return;
+        }
         check_model_field(node); return;
     case ND_MODEL_METHOD:
         check_model_method(node); return;
@@ -842,11 +873,11 @@ static void check_expr(Node *node)
         return;
     case ND_ABS:
         check_expr(node->lhs);
-        if (!is_numeric(node->lhs->ty)) {
+        if (!is_number(node->lhs->ty)) {
             error_tok(node->tok, "絶対値 |x| の中は数値（int・float・double）にしてください（%s が指定されています）",
                      type_name(node->lhs->ty));
         }
-        node->ty = node->lhs->ty;
+        node->ty = type_is_complex(node->lhs->ty) ? complex_component(node->lhs->ty) : node->lhs->ty;
         return;
     case ND_CAST:
         return;
@@ -903,7 +934,7 @@ static void check_expr(Node *node)
     case ND_POW:
         check_expr(node->lhs);
         check_expr(node->rhs);
-        if (!is_numeric(node->lhs->ty)) {
+        if (!is_number(node->lhs->ty)) {
             error_tok(node->tok, "^ の底は数値（int・float・double）にしてください（%s が指定されています）",
                      type_name(node->lhs->ty));
         }
@@ -917,7 +948,7 @@ static void check_expr(Node *node)
         return;
     case ND_NEG:
         check_expr(node->lhs);
-        if (!is_numeric(node->lhs->ty)) {
+        if (!is_number(node->lhs->ty)) {
             error_tok(node->tok, "単項 - は数値（int・float・double）にしか使えません（%s には使えません）",
                      type_name(node->lhs->ty));
         }
@@ -937,7 +968,7 @@ static void check_expr(Node *node)
             error_tok(node->tok, "文字列は + で str 同士を連結することしかできません（%s と %s）",
                      type_name(node->lhs->ty), type_name(node->rhs->ty));
         }
-        if (!is_numeric(node->lhs->ty) || !is_numeric(node->rhs->ty)) {
+        if (!is_number(node->lhs->ty) || !is_number(node->rhs->ty)) {
             error_tok(node->tok, "%s と %s は計算できません",
                      type_name(node->lhs->ty), type_name(node->rhs->ty));
         }
@@ -945,6 +976,10 @@ static void check_expr(Node *node)
         node->lhs = coerce(node->lhs, ty, node->tok, "計算");
         node->rhs = coerce(node->rhs, ty, node->tok, "計算");
         node->ty = ty;
+        if (node->kind == ND_DIV && type_is_complex(ty) && is_const_expr(node->rhs)) {
+            Value divisor = eval_const(node->rhs);
+            if (divisor.d == 0 && divisor.imag == 0) error_tok(node->tok, "0 の複素数では割れません");
+        }
         return;
     default:
         fatal("内部エラー: 型検査で未対応の式です");
@@ -991,6 +1026,10 @@ static Value convert_value(Node *node, Value v, Type to)
     if (v.ty == to) {
         return v;
     }
+    if (type_is_complex(to)) {
+        if (!type_is_complex(v.ty)) { v = convert_value(node, v, complex_component(to)); v.imag = 0; }
+        v.ty = to; return complex_rounded(v);
+    }
     if (type_is_text(v.ty) && type_is_text(to)) {
         if (to == TY_CHAR && string_info(node, v, -1, &offset, &length) != 1) {
             const_error(node, "char には Unicode スカラー値をちょうど1つ含む文字列が必要です");
@@ -1021,6 +1060,10 @@ static int compare_values(Value l, Value r, CmpKind kind)
     Node *a;
     Node *b;
 
+    if (type_is_complex(l.ty)) {
+        eq = l.d == r.d && l.imag == r.imag;
+        return kind == CMP_EQ ? eq : !eq;
+    }
     if (type_is_array(l.ty) || type_is_model(l.ty)) {
         eq = l.len == r.len;
         for (a = l.items, b = r.items; eq && a != NULL; a = a->next, b = b->next) {
@@ -1076,6 +1119,10 @@ static void validate_pow(Node *node, Value base, long long exponent)
     if (exponent >= 0) {
         return;
     }
+    if (type_is_complex(base.ty)) {
+        if (base.d == 0 && base.imag == 0) const_error(node, "0 の負の累乗は定義されていません");
+        return;
+    }
     if ((type_is_integer(base.ty) && base.i == 0) ||
         (!type_is_integer(base.ty) && base.d == 0.0)) {
         const_error(node, "0 の負の累乗は定義されていません");
@@ -1118,6 +1165,16 @@ static Value eval_pow(Node *node, Value base, long long e)
     v = base;
     validate_pow(node, base, e);
     n = e < 0 ? 0ULL - (unsigned long long)e : (unsigned long long)e;
+    if (type_is_complex(base.ty)) {
+        Value result = {0}; result.ty = base.ty; result.d = 1;
+        if (e < 0) base = complex_calculate(node, result, base, ND_DIV);
+        while (n) {
+            if (n & 1) result = complex_calculate(node, result, base, ND_MUL);
+            n >>= 1;
+            if (n) base = complex_calculate(node, base, base, ND_MUL);
+        }
+        return result;
+    }
     if (type_is_integer(base.ty)) {
         if (e < 0) {
             v.i = base.i == 1 ? 1 : ((n & 1) ? -1 : 1);
@@ -1175,6 +1232,7 @@ static Value eval_binary(Node *node, Value l, Value r)
 
     v = l;
     v.ty = node->ty;
+    if (type_is_complex(node->ty)) return complex_calculate(node, l, r, node->kind);
     if (node->ty == TY_STR) {
         v.len = l.len + r.len;
         v.s = malloc((size_t)v.len + 1);
@@ -1379,15 +1437,25 @@ static Value eval_builtin(Node *node)
 
     b = (Builtin)node->val;
     if (b >= BI_FILE_OPEN) const_error(node, "ファイル操作は const の初期値に使えません");
+    if (b == BI_COMPLEX) {
+        Node *arg; Value result = {0}; result.ty = node->ty;
+        for (arg = node->lhs; arg; arg = arg->next) {
+            Value component = convert_value(node, eval_const(arg), complex_component(node->ty));
+            if (arg->option_index) result.imag = component.d; else result.d = component.d;
+        }
+        return result;
+    }
     x = eval_const(node->lhs);
     v = x;
     v.ty = node->ty;
     digits = node->lhs->next != NULL ? eval_const(node->lhs->next).i : 0;
     switch (b) {
     case BI_SQRT:
+        if (type_is_complex(x.ty)) return complex_square_root(x);
         v.d = x.ty == TY_FLOAT ? (double)(float)sqrt(x.d) : sqrt(x.d);
         return v;
     case BI_ABS:
+        if (type_is_complex(x.ty)) { v.d = complex_magnitude(x.d, x.imag); v.imag = 0; if (node->ty == TY_FLOAT) v.d = (float)v.d; return v; }
         if (type_is_integer(x.ty)) {
             v.i = !integer_unsigned(x.ty) && x.i < 0 ? (long long)(0ULL - (unsigned long long)x.i) : x.i;
         } else {
@@ -1432,6 +1500,9 @@ static Value eval_const_inner(Node *node)
     memset(&v, 0, sizeof(v));
     v.ty = node->ty;
     switch (node->kind) {
+    case ND_COMPLEX: v.d = node->fval; v.imag = node->imag; return v;
+    case ND_CREAL: case ND_CIMAG:
+        l = eval_const(node->lhs); v.d = node->kind == ND_CREAL ? l.d : l.imag; return v;
     case ND_INT_PARSE:
     case ND_INT_FORMAT:
         return eval_integer_conversion(node);
@@ -1528,7 +1599,7 @@ static Value eval_const_inner(Node *node)
         if (type_is_integer(v.ty)) {
             v.i = (long long)(0ULL - (unsigned long long)v.i);
         } else {
-            v.d = -v.d;
+            v.d = -v.d; if (type_is_complex(v.ty)) v.imag = -v.imag;
         }
         return v;
     case ND_ADD:
@@ -1547,6 +1618,7 @@ static Value eval_const_inner(Node *node)
         return eval_builtin(node);
     case ND_ABS:
         l = eval_const(node->lhs);
+        if (type_is_complex(l.ty)) { v.d = complex_magnitude(l.d, l.imag); if (v.ty == TY_FLOAT) v.d = (float)v.d; return v; }
         if (type_is_integer(l.ty)) {
             l.i = !integer_unsigned(l.ty) && l.i < 0 ? (long long)(0ULL - (unsigned long long)l.i) : l.i;
         } else if (l.d < 0 || (l.d == 0 && 1.0 / l.d < 0)) {
@@ -1604,6 +1676,7 @@ static int is_const_expr(Node *node)
         return 1;
     case ND_ARRAY_COPY:
         return is_const_expr(node->lhs);
+    case ND_COMPLEX:
     case ND_NUM:
     case ND_FNUM:
     case ND_BOOL:
@@ -1611,6 +1684,7 @@ static int is_const_expr(Node *node)
         return 1;
     case ND_VAR:
         return node->var->is_const;
+    case ND_CREAL: case ND_CIMAG:
     case ND_CAST:
     case ND_NEG:
     case ND_BIT_NOT:
@@ -1678,6 +1752,7 @@ static Node *value_node(Value v, Token *tok)
         node->nargs = v.len;
         return node;
     }
+    if (type_is_complex(v.ty)) { node->kind = ND_COMPLEX; node->fval = v.d; node->imag = v.imag; return node; }
     if (type_is_integer(v.ty)) { node->kind = ND_NUM; node->val = v.i; return node; }
     switch (v.ty) {
     case TY_INT:

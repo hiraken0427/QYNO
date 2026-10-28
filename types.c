@@ -190,3 +190,8 @@ Type integer_common(Type a, Type b)
     }
     return integer_type(bits, 0);
 }
+
+int type_is_complex(Type ty) { return ty == TY_C64 || ty == TY_C128; }
+Type complex_component(Type ty) { return ty == TY_C64 ? TY_FLOAT : TY_DOUBLE; }
+Type complex_common(Type a, Type b)
+{ return a == TY_C128 || b == TY_C128 || a == TY_DOUBLE || b == TY_DOUBLE ? TY_C128 : TY_C64; }

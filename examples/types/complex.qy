@@ -1,0 +1,33 @@
+using io
+using math
+
+square(x) = x^2
+complex_128 conjugate(complex_128 z) = complex_128(real=z.real, imag=-z.imag)
+
+increase(ref complex z);
+	z++
+
+model Signal;
+	complex z = 3.0 + i4.0
+	readonly double magnitude() = |this.z|
+
+int main();
+	complex first = complex(real=3.0, imag=4.0)
+	complex second = 3.0 + i4.0
+	complex third = 3.0 + 4.0i
+	print(first == second and second == third)
+	print("real={first.real}, imag={first.imag}, magnitude={|first|}")
+	print(first * second)
+	print(first / second)
+	print(square(first))
+	print(first^-1)
+	print(sqrt(first))
+	print(conjugate(first))
+	complex values[] = [first, second]
+	increase(ref values[0])
+	values.add()
+	print(values)
+	print(first)
+	Signal signal
+	print(signal.magnitude())
+	return 0

@@ -72,7 +72,7 @@ static Node *stmt(void);
 
 /* 変数名などに使えない予約語 */
 static const char *keywords[] = {
-    "int", "int_8", "int_16", "int_32", "int_64", "unsigned", "float", "double", "bool", "str", "char", "void", "file", "const", "auto",
+    "complex", "complex_64", "complex_128", "int", "int_8", "int_16", "int_32", "int_64", "unsigned", "float", "double", "bool", "str", "char", "void", "file", "const", "auto",
     "true", "false", "return", "print", "if", "else", "for", "while",
     "break", "continue", "and", "or", "xor", "bnot", "not", "struct", "enum", "import", "of", "using", "input",
     "ref", "val", "none", "as", "interface", "implements", "model", "public", "private", "readonly",
@@ -187,6 +187,8 @@ static int is_keyword(Token *t)
 /* 型名なら型を、そうでなければ TY_NONE を返す */
 static Type type_keyword(Token *t)
 {
+    if (equal(t, "complex") || equal(t, "complex_64")) return TY_C64;
+    if (equal(t, "complex_128")) return TY_C128;
     if (equal(t, "unsigned")) {
         Type base;
         if (equal(t->next, "unsigned")) error_tok(t, "unsigned は1回だけ指定してください");
@@ -589,10 +591,15 @@ static void call_args(Node *node)
     if (!equal(tok, ")")) {
         for (;;) {
             Token *mark = tok;
-            if (node->kind == ND_BUILTIN && (node->val == BI_STR || node->val == BI_INT) &&
+            if (node->kind == ND_BUILTIN && (node->val == BI_STR || node->val == BI_INT || node->val == BI_COMPLEX) &&
                 tok->kind == TK_IDENT && equal(tok->next, "=")) {
                 Node *arg; int slot;
-                if (equal(tok, "base")) slot = 1;
+                if (node->val == BI_COMPLEX) {
+                    if (equal(tok, "real")) slot = 0;
+                    else if (equal(tok, "imag")) slot = 1;
+                    else { error_tok(tok, "complex の名前付き引数は real / imag です"); slot = 0; }
+                }
+                else if (equal(tok, "base")) slot = 1;
                 else if (equal(tok, "prefix")) slot = 2;
                 else { error_tok(tok, "int / str の名前付き引数は base / prefix です"); slot = 0; }
                 tok = tok->next->next; arg = expr(); arg->option_index = slot;
@@ -675,6 +682,10 @@ static Node *primary(void)
         node->lhs = head.next;
         return node;
     }
+    if (tok->kind == TK_IMAG) {
+        node = new_node(ND_COMPLEX, tok); node->imag = tok->fval; node->ty = TY_C128;
+        tok = tok->next; return node;
+    }
     if (tok->kind == TK_NUM) {
         node = new_num(tok->val, tok);
         if (tok->unsigned_literal) node->ty = TY_U64;
@@ -717,6 +728,10 @@ static Node *primary(void)
             error_tok(tok, "絶対値を閉じる | が必要です");
         }
         return node;
+    }
+    if (type_is_complex(type_keyword(tok)) && equal(tok->next, "(")) {
+        node = new_node(ND_BUILTIN, tok); node->val = BI_COMPLEX; node->cmp_ty = type_keyword(tok);
+        tok = tok->next->next; call_args(node); return node;
     }
     if (((type_is_integer(type_keyword(tok)) && equal((equal(tok, "unsigned") ? tok->next : tok)->next, "(")) || equal(tok, "float") || equal(tok, "double") ||
          equal(tok, "char") || equal(tok, "str")) && (equal(tok, "unsigned") || equal(tok->next, "("))) {

@@ -139,7 +139,7 @@
       ]
     },
     {
-      "match": "^\\s*(?:(public|private)\\s+)?(?:(readonly)\\s+)?((?!(?:if|while|for|print|input|return|(?:unsigned\\s+)?int(?:_(?:8|16|32|64))?|float|double|bool|str|char|file|void|auto)\\b)[A-Za-z_]\\w*)(?=\\s*\\([^\\n]*\\)\\s*(?:;|=))",
+      "match": "^\\s*(?:(public|private)\\s+)?(?:(readonly)\\s+)?((?!(?:if|while|for|print|input|return|(?:unsigned\\s+)?int(?:_(?:8|16|32|64))?|float|double|bool|str|char|file|void|auto|complex(?:_(?:64|128))?)\\b)[A-Za-z_]\\w*)(?=\\s*\\([^\\n]*\\)\\s*(?:;|=))",
       "captures": {
         "1": {
           "name": "storage.modifier.qyno"
@@ -195,7 +195,7 @@
       }
     },
     {
-      "match": "(\\b(?:(?:unsigned\\s+)?int(?:_(?:8|16|32|64))?|float|double|bool|str|char|file|void|auto)\\b)\\s+([A-Za-z_]\\w*)",
+      "match": "(\\b(?:(?:unsigned\\s+)?int(?:_(?:8|16|32|64))?|float|double|bool|str|char|file|void|auto|complex(?:_(?:64|128))?)\\b)\\s+([A-Za-z_]\\w*)",
       "captures": {
         "1": {
           "name": "storage.type.qyno"
@@ -260,6 +260,10 @@
     "numbers": {
       "patterns": [
         {
+          "match": "\\b(?:i[0-9]+(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?|[0-9]+(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?i)\\b",
+          "name": "constant.numeric.qyno"
+        },
+        {
           "match": "\\b(?:0[bB][01]+|0[oO][0-7]+|0[dD][0-9]+|0[xX][0-9a-fA-F]+)\\b",
           "name": "constant.numeric.qyno"
         },
@@ -272,7 +276,7 @@
     "types": {
       "patterns": [
         {
-          "match": "\\b(?:(?:unsigned\\s+)?int(?:_(?:8|16|32|64))?|float|double|bool|str|char|file|void|auto)\\b",
+          "match": "\\b(?:(?:unsigned\\s+)?int(?:_(?:8|16|32|64))?|float|double|bool|str|char|file|void|auto|complex(?:_(?:64|128))?)\\b",
           "name": "storage.type.qyno"
         }
       ]

@@ -5,7 +5,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#define QYC_VERSION "0.26.12"
+#define QYC_VERSION "0.26.13"
 
 typedef struct SourceFile SourceFile;
 typedef struct Module Module;
@@ -92,6 +92,7 @@ typedef struct {
 
 typedef enum {
     TK_NUM,     /* 整数リテラル */
+    TK_IMAG,    /* i4.0 / 4.0i */
     TK_FNUM,    /* 小数リテラル */
     TK_IDENT,   /* 識別子・キーワード */
     TK_PUNCT,   /* 記号 */
@@ -126,6 +127,7 @@ typedef enum {
     TY_U8, TY_U16, TY_U32, TY_U64,
     TY_FLOAT,   /* 32ビット浮動小数点数（C の float） */
     TY_DOUBLE,  /* 64ビット浮動小数点数（C の double） */
+    TY_C64, TY_C128, /* immutable complex values, float/double components */
     TY_BOOL,    /* 真偽値（0 または 1） */
     TY_STR,     /* 文字列（[長さ 8バイト][本体] の先頭を指すポインタ） */
     TY_CHAR,    /* Unicode スカラー値をちょうど1つ含む文字列。表現は str と同じ */
@@ -171,6 +173,7 @@ typedef enum {
     BI_DOUBLE,      /* double(x) */
     BI_CHAR,        /* char(x)：str/char を1スカラー値に制限する */
     BI_STR,         /* str(x)：char/str を str にする */
+    BI_COMPLEX,
     BI_IO_PRINT,    /* io.print(...)：出力文として解析する */
     BI_IO_INPUT,    /* io.input(...)：入力先と形式を保持する */
     BI_FILE_OPEN,
@@ -245,6 +248,7 @@ typedef enum {
     ND_XOR, ND_BIT_AND, ND_BIT_OR, ND_BIT_XOR, ND_BIT_NOT, ND_SHL, ND_SHR,
     ND_INT_PARSE, ND_INT_FORMAT,
     ND_NUM,     /* 整数リテラル */
+    ND_COMPLEX, ND_CREAL, ND_CIMAG,
     ND_FNUM,    /* 小数リテラル */
     ND_BOOL,    /* true / false */
     ND_STRLIT,  /* 文字列リテラル（式の中。str・str_len） */
@@ -308,6 +312,7 @@ struct Node {
     Type ty;            /* 式の型（型検査で決まる） */
     ArrayDim *dims;      /* 配列コピー・ref 引数の制約 */
     long long val;      /* ND_NUM・ND_BOOL の値。ND_PRINT では文字列リテラル直書きなら 1 */
+    double imag;       /* ND_COMPLEX imaginary component */
     double fval;        /* ND_FNUM の値 */
     char *str;          /* ND_STR・ND_STRLIT の内容（エスケープ処理済み） */
     int str_len;
@@ -500,6 +505,9 @@ long long integer_bits(uint64_t n);
 int integer_digit(int c);
 int integer_prefix(int c);
 int integer_base_valid(long long base, int automatic);
+int type_is_complex(Type ty);
+Type complex_component(Type ty);
+Type complex_common(Type a, Type b);
 int type_is_integer(Type ty);
 int integer_width(Type ty);
 int integer_unsigned(Type ty);

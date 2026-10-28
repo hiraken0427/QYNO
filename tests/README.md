@@ -203,3 +203,12 @@ int / int_32、unsigned int / unsigned int_32のref一致とint_64との区別�
 配列・ジェネリック・複数returnの幅、入力の一括保持、length / writeのint_64戻り値、
 開始値からのforカウンター型の決定と明示した幅も検証する。
 既存の64bitビット演算・基数変換・入力・丸め・forの検証はint_64を明示して維持する。
+
+## 0.26.13 の複素数（新段階4、旧段階9・10）
+
+`make test-complex` / `tests/complex_test.py` の36メソッドを全体テストに含む。
+3種類の構築構文・名前付き引数の評価順・iの識別子との区別、成分精度、
+Python complexを参照した四則演算、定数と実行時の一致、主平方根・絶対値、
+0除算・整数乗の定義域、NaN・inf・符号付き0を確認する。
+配列・モデル・値コピー・ref / readonly・interface・ジェネリック・import、
+入力の前置／後置i・指数・範囲・一括保持、file.writeとGCも検証する。

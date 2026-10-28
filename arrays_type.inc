@@ -31,7 +31,8 @@ static void check_array_literal(Node *node, Type expected)
             check_expr(item);
             if (element == TY_NONE) element = item->ty;
             else if (element != item->ty) {
-                if (is_numeric(element) && is_numeric(item->ty)) {
+                if ((type_is_complex(element) || type_is_complex(item->ty)) && is_number(element) && is_number(item->ty)) element = complex_common(element, item->ty);
+                else if (is_numeric(element) && is_numeric(item->ty)) {
                     if (element == TY_DOUBLE || item->ty == TY_DOUBLE) element = TY_DOUBLE;
                     else if (element == TY_FLOAT || item->ty == TY_FLOAT) element = TY_FLOAT;
                     else {
@@ -149,6 +150,7 @@ static Var *check_read_place(Node *place)
         }
         root = root->lhs;
     }
+    if (root->kind == ND_CREAL || root->kind == ND_CIMAG) error_tok(root->tok, "複素数の real / imag は読み取り専用です");
     if (root->kind != ND_VAR) {
         error_tok(root->tok, "更新先は変数、または変数から始まる添字にしてください");
     }
