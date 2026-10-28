@@ -82,7 +82,7 @@ project/
   他の関数・外側のブロック・隣のブロックへ漏れない。
 - import 先が使用している import・using は呼び出し側に引き継がれない。
   同じ依存先を参照する場合は各ファイルで明示する。
-- トップレベルの関数・定数・model・interfaceは省略時public。0.26.16からpublic / privateを指定できる。詳細は[モジュールの公開制御](module-visibility.md)を参照。exportキーワードは導入しない。
+- トップレベルの関数・定数・model・interface・enumは省略時public。0.26.16からpublic / privateを指定できる。詳細は[モジュールの公開制御](module-visibility.md)を参照。exportキーワードは導入しない。
   定数や定数配列は他のモジュールからも変更できない。
 - ライブラリに main は不要。main を定義できるのはエントリファイルのみで、
   エントリには従来どおり引数なしの `int main();` が必要。
@@ -162,3 +162,10 @@ make test
 モジュール用の 78 テストで複数ファイルの動作・診断と標準モジュールの登録を確認する。
 Linux ネイティブ実行に加え、Windows 用 PE ヘッダーと、同名関数を含むアセンブリ出力の
 アセンブル成功も検証する。Windows 上での実行は別途確認が必要。
+
+## enum（0.27.1追加改訂）
+
+enumはmodelとは別の名前付き型。`profile.sex.female` のようにモジュール・型・メンバーを指定できる。
+`using profile.sex` は型sexを、`using profile.sex.female` は値femaleを導入する。
+型のusingで全メンバーを自動展開せず、期待型がenumの位置では未解決の裸名をそのメンバーとして解決する。
+public/privateと公開APIの型検査はenumにも適用する。詳細: [列挙型の仕様](enums-design.md)。

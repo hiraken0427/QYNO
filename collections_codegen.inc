@@ -573,6 +573,10 @@ static void gen_array_print_runtime(void)
           x64_bind(next_model);
       }
     }
+    {EnumDef *e;for(e=emitting_enums;e;e=e->next){
+        int other=rt_label("print.not.enum");rt_cmp(RCX,e->ty);x64_jcc(CC_NZ,other);
+        x64_call(e->name_label);x64_call(print_str_label);x64_jmp(next);x64_bind(other);
+    }}
     {int unit=rt_label("print.not.unit");rt_cmp(RCX,TY_VOID);x64_jcc(CC_NZ,unit);gen_write_const("()");x64_jmp(next);x64_bind(unit);}
     for (i = TY_I64; i <= TY_CHAR; i++) { rt_cmp(RCX, i); x64_jcc(CC_Z, primitive[i]); }
     x64_jmp(next);

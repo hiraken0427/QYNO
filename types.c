@@ -3,6 +3,7 @@
 #include <string.h>
 
 typedef struct {
+    EnumDef *enumeration;
     Model *model;
     Interface *contract;
     Token *tok;
@@ -19,7 +20,7 @@ static int count;
 
 int type_is_array(Type ty)
 {
-    return (int)ty >= TY_ARRAY && types[(int)ty - TY_ARRAY].model == NULL && types[(int)ty - TY_ARRAY].contract == NULL && types[(int)ty - TY_ARRAY].path == NULL;
+    return (int)ty >= TY_ARRAY && types[(int)ty - TY_ARRAY].enumeration == NULL && types[(int)ty - TY_ARRAY].model == NULL && types[(int)ty - TY_ARRAY].contract == NULL && types[(int)ty - TY_ARRAY].path == NULL;
 }
 
 Type array_type(Type element)
@@ -29,7 +30,7 @@ Type array_type(Type element)
     DynamicType *grown;
     const char *name;
     for (i = 0; i < count; i++) {
-        if (!types[i].model && !types[i].contract && !types[i].path && types[i].element == element) {
+        if (!types[i].enumeration && !types[i].model && !types[i].contract && !types[i].path && types[i].element == element) {
             return (Type)(TY_ARRAY + i);
         }
     }
@@ -114,7 +115,7 @@ Type resolve_type(Type ty)
     index = (int)ty - TY_ARRAY;
     if (types[index].resolved) return types[index].resolved;
     if (types[index].path) result = resolve_module_type(types[index].tok, types[index].path, types[index].scope);
-    else if (types[index].model || types[index].contract) return ty;
+    else if (types[index].enumeration || types[index].model || types[index].contract) return ty;
     else { element = resolve_type(types[index].element); result = array_type(element); }
     types[index].resolved = result; return result;
 }
@@ -216,6 +217,7 @@ Type real_common(Type a, Type b) {
 /* Logical payload widths, independently of runtime slots and allocation. */
 int value_bit_width(Type ty)
 {
+    if(type_is_enum(ty))return 32;
     if(type_is_integer(ty))return integer_width(ty);
     if(ty==TY_HALF)return 16;
     if(ty==TY_FLOAT)return 32;
@@ -225,4 +227,11 @@ int value_bit_width(Type ty)
     if(ty==TY_BOOL)return 1;
     if(ty==TY_VOID)return 0;
     return -1;
+}
+
+int type_is_enum(Type ty) { return (int)ty>=TY_ARRAY && types[(int)ty-TY_ARRAY].enumeration!=NULL; }
+EnumDef *type_enum(Type ty) { return types[(int)ty-TY_ARRAY].enumeration; }
+Type enum_type(EnumDef *definition) { DynamicType e={0};e.enumeration=definition;return add_type(e); }
+EnumMember *enum_find(EnumDef *definition,const char *name) {
+    EnumMember *m;for(m=definition->members;m;m=m->next)if(!strcmp(m->name,name))return m;return NULL;
 }

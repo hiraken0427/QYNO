@@ -137,3 +137,15 @@ test('enter indents semicolons outside strings/comments for every declaration fo
     }
     assert.equal(config.onEnterRules[0].action.indent, 'indent');
 });
+
+test('enum declarations and members keep enum scopes across lines',async()=>{
+    const g=await grammar();
+    const header=g.tokenizeLine('private enum sex;');
+    assert.ok(header.tokens.some(t=>t.scopes.includes('entity.name.type.qyno')));
+    const member=g.tokenizeLine('\tfemale = 3',header.ruleStack);
+    assert.ok(member.tokens.some(t=>t.scopes.includes('variable.other.enummember.qyno')));
+    const after=g.tokenizeLine('int main();',member.ruleStack);
+    assert.ok(!after.tokens.some(t=>t.scopes.includes('meta.enum.qyno')));
+    for(const line of ['match(gender);','\tcase male, female;'])
+        assert.ok(g.tokenizeLine(line).tokens.some(t=>t.scopes.includes('keyword.control.qyno')));
+});

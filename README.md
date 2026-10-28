@@ -336,3 +336,29 @@ read_bytesはrb、write_bytesはwb / abで開いたハンドルを使用する�
 UTF-8検証・改行変換・BOM操作はせず、任意のバイトを保持する。パスのUTF-8検証と明示closeの検査は維持する。
 
 詳細: [バイナリI/O仕様](docs/binary-file-design.md)、[実行例](examples/io/binary.qy)。
+
+## enumとmatch（0.27.1追加改訂）
+
+独立した列挙型を `enum sex;` で定義し、typedefなしで `sex gender` のように使用できる。
+先頭0からの連番または明示値に対応し、値0のメンバーを既定値とする。
+名前の表示・入力・明示変換、配列・model・ref・readonly・const・型推論・モジュール公開制御に対応する。
+
+```text
+enum sex;
+	undetermined
+	male
+	female=3
+
+int main();
+	sex gender=female
+	match(gender);
+		case undetermined,male;
+			io.print("other")
+		case female;
+			io.print(gender) // female
+	return 0
+```
+
+matchはenumの全メンバーを列挙するかelseが必要。重複と列挙漏れはコンパイルエラーになり、対象式は1回だけ評価する。
+メソッド定義・呼び出しの括弧は従来どおり必要。回復可能I/Oは今回追加していない。
+[詳細な仕様](docs/enums-design.md)・[ユーザー例](examples/enums/main.qy)。

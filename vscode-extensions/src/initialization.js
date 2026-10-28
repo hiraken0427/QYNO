@@ -3,7 +3,7 @@ const { scopeContains } = require('./analysis');
 
 /** Infer an initializer's contextual type without executing or compiling code.
  * Unknown calls/expressions deliberately produce no named-argument guesses. */
-function initializationContext(project, env, line, character, receiver) {
+function initializationContext(project, env, line, character, receiver, valueOnly = false) {
     const model = project.model, tokens = [];
     for (let row = 0; row <= line; row++) for (const t of model.tokens[row] || [])
         if (t.kind !== 'comment' && (row < line || t.start < character)) tokens.push(t);
@@ -32,7 +32,7 @@ function initializationContext(project, env, line, character, receiver) {
             const text = model.lines[mark.line].slice(0, mark.start).trim();
             return receiver(env, text);
         }
-        if (prefix.at(-1)?.value === 'return')
+        if (prefix[0]?.value === 'return')
             return model.scopes.filter(s => s.kind === 'function' && scopeContains(model, s.id, line, character)).at(-1)?.owner;
         return undefined;
     };
@@ -49,7 +49,7 @@ function initializationContext(project, env, line, character, receiver) {
         } else if (t.value === '(') {
             const path = pathBefore(i), fn = env.resolve(path) || env.names.get(path) || receiver(env, path);
             const add = path.endsWith('.add') ? receiver(env, path.slice(0, -4)) : undefined;
-            stack.push({ kind: '(', start: i, argument: 0, fn: fn?.kind === 'function' ? fn : undefined,
+            stack.push({ kind: '(', start: i, argument: 0, fn: fn?.kind === 'function' ? fn : fn?.kind==='enum'?{params:[{type:fn.name,uri:fn.uri,line:fn.line}]}:undefined,
                 addType: add?.rank ? { ...add, rank: add.rank - 1 } : undefined });
         } else if (['}', ']', ')'].includes(t.value)) {
             stack.pop();
@@ -59,6 +59,7 @@ function initializationContext(project, env, line, character, receiver) {
             else if (t.value === '=' && parent.key) { parent.used.add(parent.key.value); parent.stage = 'value'; }
         } else if (parent?.kind === '(' && t.value === ',') parent.argument++;
     }
+    if(valueOnly)return expected(tokens.length);
     const frame = stack.at(-1);
     if (frame?.kind !== '{' || !frame.model) return undefined;
     return { ...frame, candidates: named(frame).filter(p => frame.model.initializer || env.canAccess(p)),

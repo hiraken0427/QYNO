@@ -136,5 +136,25 @@
       "\treadonly ${2:double} ${3:area}();"
     ],
     "description": "Borrowed interface contract"
+  },
+  "Enum": {
+    "prefix": "enum",
+    "body": [
+      "enum ${1:State};",
+      "\t${2:undetermined}",
+      "\t${3:ready}"
+    ],
+    "description": "独立した列挙型。先頭は既定値0"
+  },
+  "Enum match": {
+    "prefix": "match",
+    "body": [
+      "match(${1:value});",
+      "\tcase ${2:member};",
+      "\t\t$0",
+      "\telse;",
+      "\t\treturn"
+    ],
+    "description": "enumの分岐。全件列挙またはelseが必要"
   }
 }

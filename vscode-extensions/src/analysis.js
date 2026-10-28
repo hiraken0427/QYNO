@@ -1,7 +1,7 @@
 'use strict';
 
 const TYPES = new Set(['complex', 'complex_64', 'complex_128', 'int', 'int_8', 'int_16', 'int_32', 'int_64', 'int_128', 'half', 'quadruple', 'unsigned', 'float', 'double', 'bool', 'str', 'char', 'file', 'void', 'Void', 'auto']);
-const KEYWORDS = new Set([...TYPES, 'const', 'ref', 'val', 'return', 'if', 'else', 'for', 'while', 'break', 'continue', 'and', 'or', 'xor', 'bnot', 'not', 'true', 'false', 'none', 'import', 'using', 'as', 'print', 'input', 'struct', 'enum', 'of', 'model', 'interface', 'implements', 'public', 'private', 'readonly']);
+const KEYWORDS = new Set([...TYPES, 'const', 'ref', 'val', 'return', 'if', 'else', 'for', 'while', 'break', 'continue', 'and', 'or', 'xor', 'bnot', 'not', 'true', 'false', 'none', 'import', 'using', 'as', 'print', 'input', 'struct', 'enum', 'match', 'case', 'of', 'model', 'interface', 'implements', 'public', 'private', 'readonly']);
 const identifierStart = c => /[A-Za-z_]/.test(c || '');
 const identifierPart = c => /[A-Za-z0-9_]/.test(c || '');
 
@@ -179,11 +179,21 @@ function analyze(text, uri = '') {
             continue;
         }
         const visibilityOffset=['public','private'].includes(ts[0]?.value)?1:0;
-        if (['model', 'interface'].includes(ts[visibilityOffset]?.value) && ts[visibilityOffset+1]?.kind === 'id') {
+        if (['model', 'interface', 'enum'].includes(ts[visibilityOffset]?.value) && ts[visibilityOffset+1]?.kind === 'id') {
             const body = newScope(line, indent + 1, ts[visibilityOffset].value, scope, true);
             const model = declare(ts[visibilityOffset+1], { visibility:visibilityOffset?ts[0].value:'public', moduleVisibility:visibilityOffset?ts[0].value:undefined, kind: ts[visibilityOffset].value, type: ts[visibilityOffset+1].value, scopeId: scope.id, bodyScopeId: body.id, members: [], visibleAfter: 0 });
             if (model) model.modelId = `${uri}:${model.line}:${model.start}`;
             body.owner = model; stack.push(body); continue;
+        }
+        if(scope.kind==='enum' && ts[0]?.kind==='id' && !KEYWORDS.has(ts[0].value)){
+            const previous=scope.owner.members.at(-1);
+            const raw=ts[1]?.value==='='?ts.slice(2).map(t=>t.value).join(''):undefined;
+            let enumValue;
+            try{enumValue=raw===undefined?(previous?.enumValue===undefined && previous?undefined:(previous?.enumValue??-1)+1):Number(BigInt(raw.replace(/^0d/i,'')));}catch{}
+            const member=declare(ts[0],{kind:'enumMember',type:scope.owner.name,readonly:true,visibility:scope.owner.visibility,
+                declaringEnumId:scope.owner.modelId,enumValue,scopeId:scope.id,visibleAfter:0});
+            if(member)scope.owner.members.push(member);
+            continue;
         }
         let index = 0;
         const visibility = ['public', 'private'].includes(ts[index]?.value) ? ts[index++].value : 'public';
@@ -243,7 +253,7 @@ function analyze(text, uri = '') {
             stack.some(s => s.kind === 'function')) {
             const name = ts[0].value, ancestors = new Set(stack.map(s => s.id));
             const bound = symbols.some(s => s.name === name && ancestors.has(s.scopeId) &&
-                ['variable', 'constant', 'parameter', 'function', 'model', 'interface'].includes(s.kind));
+                ['variable', 'constant', 'parameter', 'function', 'model', 'interface', 'enum'].includes(s.kind));
             const namespace = ['io', 'math', 'lib', ...imports.map(i => i.path.split('.')[0]),
                 ...usings.filter(u => ancestors.has(u.scopeId)).map(u => u.alias)].includes(name);
             if (!bound && !namespace) declare(ts[0], { kind: 'variable', type: 'auto', implicit: true, scopeId: scope.id });
@@ -262,7 +272,9 @@ function analyze(text, uri = '') {
                 declare(token, { kind: 'variable', type: typed ? typed.name : 'auto', loop: true, scopeId: body.id, visibleAfter: token?.end || 0 });
             }
             stack.push(body);
-        } else if (['if', 'else', 'while'].includes(ts[0].value) && ts.some(t => t.value === ';')) {
+        } else if(ts[0].value==='match'){
+            const body=newScope(line,indent+1,'match',scope);body.targetText=ts.slice(2,ts.findLastIndex(t=>t.value===')')).map(t=>t.value).join('');stack.push(body);
+        } else if (['if', 'else', 'while', 'case'].includes(ts[0].value) && ts.some(t => t.value === ';')) {
             stack.push(newScope(line, indent + 1, ts[0].value, scope));
         }
     }
@@ -276,7 +288,7 @@ function scopeContains(model, scopeId, line, character) {
     return scope.parent === null || scopeContains(model, scope.parent, line, character);
 }
 function visibleSymbols(model, line, character) {
-    return model.symbols.filter(s => s.kind !== 'field' && !['model', 'interface'].includes(model.scopes[s.scopeId]?.kind) && scopeContains(model, s.scopeId, line, character) &&
+    return model.symbols.filter(s => s.kind !== 'field' && !['model', 'interface', 'enum'].includes(model.scopes[s.scopeId]?.kind) && scopeContains(model, s.scopeId, line, character) &&
         (s.scopeId === 0 || s.line < line || s.line === line && s.visibleAfter <= character));
 }
 function visibleUsings(model, line, character) {

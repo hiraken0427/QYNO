@@ -315,7 +315,7 @@ async function run() {
         for (const [before, after] of [
             ['int main();', '\t'], ['\tfor(0 <= i < 3, i++);', '\t\t'],
             ['\tif(true); // comment', '\t\t'], ['complex_128 get();', '\t'],
-            ['private readonly get();', '\t'], ['Point make();', '\t'], ['square(x);', '\t'],
+            ['enum State;', '\t'], ['match(gender);', '\t'], ['case male;', '\t'], ['private readonly get();', '\t'], ['Point make();', '\t'], ['square(x);', '\t'],
             ['\tprint(";")', '\t'], ['\tprint(1) // ;', '\t'], ['\treturn 0', '\t']
         ]) {
             await replace(indentDoc, before);
@@ -410,6 +410,26 @@ async function run() {
         await replace(diagDoc,'int main();\n\tfile f=io.file.open("in","rb")\n\treturn 0\n');
         await vscode.commands.executeCommand('qyno.checkDocument');
         assert.ok(errors(diagDoc).some(d=>/close/.test(d.message)));checks++;
+        await replace(diagDoc,'int main();\n\treturn 0\n');
+        const enumSource='enum sex;\n\tundetermined\n\tmale\n\tfemale=3\n';
+        await replace(diagDoc,enumSource+'int main();\n\tsex gender=fe\n\treturn 0\n');
+        const enumItems=await vscode.commands.executeCommand('vscode.executeCompletionItemProvider',diagDoc.uri,new vscode.Position(5,14));
+        assert.ok(enumItems.items.some(i=>i.label==='female'&&i.kind===vscode.CompletionItemKind.EnumMember));checks++;
+        await replace(diagDoc,enumSource+'int main();\n\tsex gender=female\n\tio.print(gender)\n\treturn 0\n');
+        await vscode.commands.executeCommand('qyno.checkDocument');
+        assert.equal(errors(diagDoc).length,0);checks++;
+        const enumDefinition=await vscode.commands.executeCommand('vscode.executeDefinitionProvider',diagDoc.uri,new vscode.Position(5,15));
+        assert.ok(enumDefinition.some(d=>(d.range||d.targetSelectionRange).start.line===3));checks++;
+        const enumOutline=await vscode.commands.executeCommand('vscode.executeDocumentSymbolProvider',diagDoc.uri);
+        assert.ok(enumOutline.some(s=>s.name==='sex'&&s.kind===vscode.SymbolKind.Enum&&s.children.some(c=>c.name==='female')));checks++;
+        await replace(diagDoc,enumSource+'int main();\n\tsex gender=female\n\tmatch(gender);\n\t\tcase male;\n\t\t\treturn 0\n');
+        await vscode.commands.executeCommand('qyno.checkDocument');
+        assert.ok(errors(diagDoc).some(d=>/case/.test(d.message)));checks++;
+        const caseItems=await vscode.commands.executeCommand('vscode.executeCompletionItemProvider',diagDoc.uri,new vscode.Position(7,7));
+        assert.ok(caseItems.items.some(i=>i.label==='female'));checks++;
+        await replace(diagDoc,enumSource+'int main();\n\tsex gender=female\n\tmatch(gender);\n\t\tcase undetermined,male;\n\t\t\treturn 0\n\t\tcase female;\n\t\t\treturn 0\n');
+        await vscode.commands.executeCommand('qyno.checkDocument');
+        assert.equal(errors(diagDoc).length,0);checks++;
         await replace(diagDoc,'int main();\n\treturn 0\n');
         await config.update('compilerPath', path.join(temporary, 'missing-qyc'), vscode.ConfigurationTarget.Global);
         await vscode.commands.executeCommand('qyno.checkDocument');

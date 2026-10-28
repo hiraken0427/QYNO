@@ -6,6 +6,38 @@
   ],
   "patterns": [
     {
+      "name": "meta.enum.qyno",
+      "begin": "^\\s*(?:(public|private)\\s+)?(enum)\\s+([A-Za-z_]\\w*)\\s*(;)",
+      "beginCaptures": {
+        "1": {
+          "name": "storage.modifier.qyno"
+        },
+        "2": {
+          "name": "storage.type.qyno"
+        },
+        "3": {
+          "name": "entity.name.type.qyno"
+        },
+        "4": {
+          "name": "punctuation.terminator.qyno"
+        }
+      },
+      "end": "^(?![ \\t]|//|$)",
+      "patterns": [
+        {
+          "match": "^\\s+([A-Za-z_]\\w*)(?=\\s*(?:=|//|$))",
+          "captures": {
+            "1": {
+              "name": "variable.other.enummember.qyno"
+            }
+          }
+        },
+        {
+          "include": "$self"
+        }
+      ]
+    },
+    {
       "match": "^\\s*(?:(public|private)\\s+)?(model|interface)\\s+([A-Za-z_]\\w*)",
       "captures": {
         "1": {
@@ -27,7 +59,7 @@
       "include": "#embedded-strings"
     },
     {
-      "match": "^\\s*(?:(public|private)\\s+)?(?:(readonly)\\s+)?((?!(?:if|while|for|print|input|return|(?:unsigned\\s+)?int(?:_(?:8|16|32|64|128))?|half|float|double|quadruple|bool|str|char|file|void|Void|auto|complex(?:_(?:64|128))?)\\b)[A-Za-z_]\\w*)(?=\\s*\\([^\\n]*\\)\\s*(?:;|=))",
+      "match": "^\\s*(?:(public|private)\\s+)?(?:(readonly)\\s+)?((?!(?:match|if|while|for|print|input|return|(?:unsigned\\s+)?int(?:_(?:8|16|32|64|128))?|half|float|double|quadruple|bool|str|char|file|void|Void|auto|complex(?:_(?:64|128))?)\\b)[A-Za-z_]\\w*)(?=\\s*\\([^\\n]*\\)\\s*(?:;|=))",
       "captures": {
         "1": {
           "name": "storage.modifier.qyno"
@@ -94,7 +126,7 @@
       }
     },
     {
-      "match": "\\b(?:return|if|else|for|while|break|continue)\\b",
+      "match": "\\b(?:return|match|case|if|else|for|while|break|continue)\\b",
       "name": "keyword.control.qyno"
     },
     {

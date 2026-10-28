@@ -1,0 +1,29 @@
+using io
+
+enum sex;
+	undetermined
+	male
+	female = 3
+
+model User;
+	str name
+	int age
+	sex gender
+
+	readonly void user_info();
+		print("=== USER INFO ===")
+		print("{this.name}'s age: {this.age}")
+		print("{this.name}'s gender: {this.gender}")
+
+int main();
+	User users[2]
+	users[0].name = "Ken"
+	users[0].age = 23
+
+	users[1].name = "Allice"
+	users[1].age = 20
+	users[1].gender = female  // sex.female または3でも可
+
+	users[0].user_info()
+	users[1].user_info()
+	return 0

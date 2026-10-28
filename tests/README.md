@@ -251,3 +251,9 @@ auto・ジェネリック・モデル・interface・定数・file.write・明示
 モード表・型/次元/readonly・close・評価順・Unicodeパス・OSの短い転送/中断/失敗・確保失敗を検証する。
 Windowsは `QYNO_FILE_TARGET=windows QYNO_FILE_WINE=/path/to/wine python3 tests/binary_file_test.py ./qyc`。
 Linux専用の失敗注入・資源制限の8件はWindowsではスキップする。
+
+## 独立enum・match（0.27.1追加改訂）
+
+`make test-enums` は45メソッドで、連番・飛び番・負値・境界・重複・0欠落、期待型による名前解決、
+名義型・明示変換・表示・入力の原子性・lib・配列・model・const・ref・readonly・型推論・公開制御を検証する。
+matchの網羅性・重複・評価回数・スコープ・return・必須フィールド初期化・ループ制御・closeも含む。
