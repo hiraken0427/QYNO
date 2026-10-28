@@ -71,8 +71,8 @@ static Function *specialize_generic_call(Node *call)
         { Node *value = p->is_ref ? arg->lhs : arg;
           check_expr(value);
           concrete_only(value->ty, value->tok);
-          if (value->ty == TY_NONE || value->ty == TY_VOID || array_base(value->ty) == TY_ADDR)
-              error_tok(value->tok, "推論する引数には具体的な値型が必要です（addr・void は使用できません）");
+          if (value->ty == TY_NONE || array_base(value->ty) == TY_ADDR)
+              error_tok(value->tok, "推論する引数には具体的な値型が必要です（addr は使用できません）");
           types[i] = value->ty;
         }
     }

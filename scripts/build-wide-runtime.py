@@ -17,10 +17,12 @@ with tempfile.TemporaryDirectory(prefix='qyno-wide-build-') as name:
     subprocess.run([cc, '-std=c99', '-O2', '-fPIC', '-ffreestanding', '-fno-builtin',
                     '-fno-stack-protector', '-fno-asynchronous-unwind-tables', '-fno-jump-tables',
                     '-mno-red-zone', '-c', str(root / 'wide_runtime.c'), '-o', str(obj)], check=True)
+    grapheme_obj=work/'grapheme.o'
+    subprocess.run([cc,'-std=c99','-O2','-fPIC','-ffreestanding','-fno-builtin','-fno-stack-protector','-fno-asynchronous-unwind-tables','-fno-jump-tables','-mno-red-zone','-c',str(root/'grapheme_runtime.c'),'-o',str(grapheme_obj)],check=True)
     script = work / 'runtime.ld'
     script.write_text('ENTRY(wide_execute)\nSECTIONS { . = 0; .text : { *(.text .text.*) *(.rodata .rodata.*) } /DISCARD/ : { *(.eh_frame*) *(.comment) *(.note*) } }\n')
     libgcc = subprocess.check_output([cc, '-print-libgcc-file-name'], text=True).strip()
-    subprocess.run(['ld', '-T', str(script), '--gc-sections', '-o', str(elf), str(obj), libgcc], check=True)
+    subprocess.run(['ld', '-T', str(script), '--gc-sections', '-o', str(elf), str(obj), str(grapheme_obj), libgcc], check=True)
     assert not subprocess.check_output(['nm', '-u', str(elf)]).strip(), 'unresolved runtime dependency'
     sections = subprocess.check_output(['size', str(elf)], text=True).splitlines()[-1].split()
     assert sections[1:3] == ['0', '0'], 'runtime must not have writable sections'

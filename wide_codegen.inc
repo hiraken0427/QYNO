@@ -36,7 +36,7 @@ static void gen_wide_runtime(void)
     x64_load(R8,RBP,-208);
     { int ops[]={W_ADD,W_SUB,W_MUL,W_DIV,W_MOD,W_AND,W_OR,W_XOR,W_CMP,W_NEXT};
       for(i=0;i<(int)(sizeof(ops)/sizeof(*ops));i++){rt_cmp(R8,ops[i]);x64_jcc(CC_Z,binary);} }
-    rt_cmp(R8,W_FORMAT);x64_jcc(CC_Z,format);rt_cmp(R8,W_READ);x64_jcc(CC_Z,read);x64_jmp(invoke);
+    rt_cmp(R8,W_FORMAT);x64_jcc(CC_Z,format);rt_cmp(R8,W_READ);x64_jcc(CC_Z,read);rt_cmp(R8,W_TEXT);x64_jcc(CC_Z,read);rt_cmp(R8,W_CURSOR);x64_jcc(CC_Z,read);x64_jmp(invoke);
     x64_bind(binary);x64_load(R9,RBP,-200);wide_unpack(RDI,R9,-240);x64_jmp(invoke);
     x64_bind(format);rt_load(RSI,1);x64_store(RBP,-184,RSI);x64_jmp(invoke);
     x64_bind(read);rt_load(RSI,1);rt_load(RDX,2);x64_sub(RDX,RSI);x64_store(RBP,-168,RDX);
@@ -57,7 +57,7 @@ static void gen_wide_runtime(void)
     x64_bind(out);x64_xor(RAX,RAX);
     x64_bind(restore);rt_load(RSI,1);rt_load(RDX,2);x64_load(R8,RBP,-208);rt_cmp(R8,W_READ);x64_jcc(CC_NZ,scalar=new_label("wide.no.read"));
     x64_load(RCX,RBP,-160);x64_add(RSI,RCX);x64_bind(scalar);
-    x64_load(R8,RBP,-176);x64_mov(RCX,R8);rt_leave();
+    x64_load(R8,RBP,-176);x64_mov(RCX,R8);x64_load(R9,RBP,-216);x64_load(R10,RBP,-160);rt_leave();
     while(prog->text.len%16){unsigned char nop=0x90;x64_blob(&nop,1);}
     x64_directive(".p2align 4");
     x64_blob(wide_blob,WIDE_ENTRY_OFFSET);x64_bind(wide_engine_label);x64_blob(wide_blob+WIDE_ENTRY_OFFSET,sizeof(wide_blob)-WIDE_ENTRY_OFFSET);
@@ -71,3 +71,6 @@ static void gen_wide_parse(Type ty)
 {
     x64_mov_imm(R8,W_READ);x64_mov_imm(R9,wide_tag(ty));x64_mov_imm(R10,0);x64_xor(R11,R11);x64_call(wide_call_label);
 }
+
+static void gen_grapheme_call(void)
+{ x64_mov_imm(R8,W_TEXT);x64_mov_imm(R9,64);x64_xor(R10,R10);x64_xor(R11,R11);x64_call(wide_call_label); }

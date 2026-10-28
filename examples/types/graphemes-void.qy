@@ -1,0 +1,19 @@
+using io
+
+const Void EMPTY = ()
+
+reset(ref void value);
+	value = EMPTY
+
+identity(value) = value
+
+int main();
+	str text = "A🇯🇵é👩🏽‍💻"
+	char letter = text[2]
+	print("{text.length} {letter.length}")
+	text[1] = "👍🏽"
+	print(text)
+	void values[3] = [EMPTY]
+	reset(ref values[0])
+	print(identity(values))
+	return 0

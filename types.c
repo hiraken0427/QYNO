@@ -202,6 +202,7 @@ int type_is_real(Type ty) { return ty == TY_HALF || ty == TY_FLOAT || ty == TY_D
 int type_is_boxed(Type ty) { return ty == TY_I128 || ty == TY_U128 || ty == TY_QUAD; }
 int type_is_wide(Type ty) { return type_is_boxed(ty) || ty == TY_HALF; }
 int wide_tag(Type ty) {
+    if(ty==TY_VOID)return 2000;
     if (type_is_integer(ty)) return integer_unsigned(ty) ? integer_width(ty) : -integer_width(ty);
     return ty == TY_HALF ? W_HALF : ty == TY_FLOAT ? W_FLOAT : ty == TY_DOUBLE ? W_DOUBLE : W_QUAD;
 }

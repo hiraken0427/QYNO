@@ -143,8 +143,8 @@ class GenericFunctionTests(QynoTestCase):
             self.compile_source(program('bad(ref readonly source);', '\t' + operation, 'int main();',
                 '\tfile f', '\tbad(ref f)'), error='readonly')
 
-    def test_pointer_and_void_argument_types_are_not_introduced(self):
-        for value in ['n.addr', '[n.addr]', 'noop()']:
+    def test_pointer_argument_types_are_not_introduced(self):
+        for value in ['n.addr', '[n.addr]']:
             self.compile_source(program('void noop();', '\treturn', 'identity(x) = x', 'int main();',
                 '\tint n = 1', '\tidentity(' + value + ')'), error='エラー')
 

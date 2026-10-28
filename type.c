@@ -255,7 +255,7 @@ static Node *convert(Node *expr, Type to)
     }
     /* 値の形の input は、代入先の型で読む */
     if (expr->kind == ND_INPUT && !expr->input_pattern && from == TY_STR &&
-        (type_is_integer(to) || type_is_real(to) || to == TY_BOOL || type_is_complex(to))) {
+        (type_is_integer(to) || type_is_real(to) || to == TY_VOID || to == TY_BOOL || type_is_complex(to))) {
         expr->ty = to;
         return expr;
     }
@@ -401,7 +401,7 @@ static void check_cmp(Node *cmp)
         cmp->cmp_ty = TY_ADDR;
         return;
     }
-    if ((l == r && (l == TY_BOOL || l == TY_FILE)) || (type_is_text(l) && type_is_text(r))) {
+    if ((l == r && (l == TY_BOOL || l == TY_FILE || l == TY_VOID)) || (type_is_text(l) && type_is_text(r))) {
         if (kind != CMP_EQ && kind != CMP_NE) {
             error_tok(cmp->tok, "%s は == と != でしか比べられません（%s は使えません）",
                      type_name(l), cmp_name(kind));
@@ -436,7 +436,6 @@ static void check_file_builtin(Node *node)
     Builtin b = (Builtin)node->val;
     Node *first = node->lhs;
     Node *second = first != NULL ? first->next : NULL;
-    int allowed = allow_void;
     int expected = b == BI_FILE_READLINE || b == BI_FILE_WRITE ? 2 : 1;
     allow_void = 0;
     if (node->nargs != expected && !(b == BI_FILE_OPEN && node->nargs == 2))
@@ -475,18 +474,17 @@ static void check_file_builtin(Node *node)
             Node *part;
             check_print_parts(second->lhs);
             for (part = second->lhs; part; part = part->next)
-                if (part->kind != ND_STR && !is_number(part->ty) && part->ty != TY_BOOL && !type_is_text(part->ty))
+                if (part->kind != ND_STR && !is_number(part->ty) && part->ty != TY_BOOL && part->ty != TY_VOID && !type_is_text(part->ty))
                     error_tok(part->tok, "write の埋め込みは int・float・double・bool・str・char にしてください");
         }
         else {
             check_expr(second);
-            if (!is_number(second->ty) && second->ty != TY_BOOL && !type_is_text(second->ty))
+            if (!is_number(second->ty) && second->ty != TY_BOOL && second->ty != TY_VOID && !type_is_text(second->ty))
                 error_tok(second->tok, "write できるのは int・float・double・bool・str・char です");
         }
         node->ty = TY_I64;
     } else if (b == BI_FILE_CLOSE) {
         node->ty = TY_VOID;
-        if (!allowed) error_tok(node->tok, "close は戻り値がないので文として使ってください");
     } else node->ty = b == BI_FILE_READ ? TY_STR : TY_BOOL;
 }
 
@@ -528,6 +526,7 @@ static void check_builtin(Node *node)
     check_expr(x);
     if ((b==BI_HALF || b==BI_QUAD) && type_is_text(x->ty)) { node->ty=b==BI_HALF?TY_HALF:TY_QUAD;if(is_const_expr(x))(void)wide_read_value(node,eval_const(x),node->ty,0);return; }
     if(b==BI_STR&&type_is_wide(x->ty)&&type_is_real(x->ty)){node->kind=ND_INT_FORMAT;node->ty=TY_STR;x->option_index=0;return;}
+    if(b==BI_STR&&x->ty==TY_VOID){node->ty=TY_STR;return;}
     if (b == BI_CHAR || b == BI_STR) {
         if (!type_is_text(x->ty)) {
             error_tok(x->tok, "%s() に渡せるのは str・char です", builtin_name(b));
@@ -608,7 +607,7 @@ static void check_input(Node *node)
             Type ty;
             check_expr(node->lhs);
             ty = node->lhs->ty;
-            if (!is_number(ty) && ty != TY_BOOL && !type_is_text(ty))
+            if (!is_number(ty) && ty != TY_BOOL && ty != TY_VOID && !type_is_text(ty))
                 error_tok(node->lhs->tok, "input のプロンプトは int・float・double・bool・str・char にしてください");
         }
         node->ty = TY_STR;
@@ -620,7 +619,7 @@ static void check_input(Node *node)
         check_place(f->var);
         ty = f->var->ty;
         if (f->base && !type_is_integer(ty)) error_tok(f->var->tok, "基数指定の入力先は int にしてください");
-        if (!is_number(ty) && ty != TY_BOOL && !type_is_text(ty))
+        if (!is_number(ty) && ty != TY_BOOL && ty != TY_VOID && !type_is_text(ty))
             error_tok(f->var->tok, "%s には直接入力できません。変数または末端の配列要素を指定してください", type_name(ty));
         /* 文字列内の1文字への入力も1スカラー値に制限する。 */
         f->temp->ty = f->var->kind == ND_INDEX && type_is_text(f->var->lhs->ty) ? TY_CHAR : ty;
@@ -771,10 +770,7 @@ static void check_call(Node *node)
     /* ref は変数の別名。同じ場所を複数の引数に渡しても、通常の実行順で読み書きする。 */
     node->func = fn;
     node->ty = fn->ret;
-    if (fn->ret == TY_VOID && !allow) {
-        error_tok(node->tok, "関数 %.*s は戻り値がない（void）ので、値として使えません",
-                 fn->name_len, fn->name);
-    }
+
 }
 
 static void check_expr(Node *node)
@@ -793,6 +789,7 @@ static void check_expr(Node *node)
 
     if (node->kind == ND_VAR && node->var == NULL) resolve_module_name(node);
     switch (node->kind) {
+    case ND_UNIT: node->ty=TY_VOID;return;
     case ND_WIDE: return;
     case ND_NUM:
         node->ty = node->val >= INT32_MIN && node->val <= INT32_MAX ? TY_INT : TY_I64;
@@ -1018,25 +1015,9 @@ static void const_error(Node *node, const char *msg)
 /* 全体を検証し、文字数と指定添字のバイト範囲を得る。index < 0 は文字数だけ。 */
 static long long string_info(Node *node, Value v, long long index, int *offset, int *length)
 {
-    int pos = 0;
-    long long count = 0;
-    size_t width;
-    uint32_t scalar;
-
-    *offset = -1;
-    *length = 0;
-    while (pos < v.len) {
-        if (!utf8_next((const unsigned char *)v.s + pos, (size_t)(v.len - pos), &scalar, &width)) {
-            const_error(node, "不正な UTF-8 文字列です");
-        }
-        if (count == index) {
-            *offset = pos;
-            *length = (int)width;
-        }
-        pos += (int)width;
-        count++;
-    }
-    return count;
+    uint64_t off,width,count;
+    if(grapheme_scan((const unsigned char *)v.s,(uint64_t)v.len,index,&off,&width,&count))const_error(node,"不正な UTF-8 文字列です");
+    *offset=off==UINT64_MAX?-1:(int)off;*length=(int)width;return (long long)count;
 }
 
 /* 値 v を to 型に変換する（型検査で許した変換のみ） */
@@ -1049,13 +1030,14 @@ static Value convert_value(Node *node, Value v, Type to)
         return v;
     }
     if ((type_is_wide(v.ty)||type_is_wide(to)) && is_numeric(v.ty) && is_numeric(to)) return wide_calculate(node,W_CONVERT,v,(Value){0},to,0);
+    if(v.ty==TY_VOID&&to==TY_STR){v.ty=TY_STR;v.s="()";v.len=2;return v;}
     if (type_is_complex(to)) {
         if (!type_is_complex(v.ty)) { v = convert_value(node, v, complex_component(to)); v.imag = 0; }
         v.ty = to; return complex_rounded(v);
     }
     if (type_is_text(v.ty) && type_is_text(to)) {
         if (to == TY_CHAR && string_info(node, v, -1, &offset, &length) != 1) {
-            const_error(node, "char には Unicode スカラー値をちょうど1つ含む文字列が必要です");
+            const_error(node, "char には 書記素クラスタをちょうど1つ含む文字列が必要です");
         }
         v.ty = to;
         return v;
@@ -1084,6 +1066,7 @@ static int compare_values(Value l, Value r, CmpKind kind)
     Node *b;
 
     if(type_is_wide(l.ty)) { WideRequest request={0};request.op=W_CMP;request.ty=wide_tag(l.ty);request.a=value_bits(l);request.b=value_bits(r);request.aux=kind;wide_execute(&request);return (int)request.out.lo; }
+    if(l.ty==TY_VOID)return kind==CMP_EQ;
     if (type_is_complex(l.ty)) {
         eq = l.d == r.d && l.imag == r.imag;
         return kind == CMP_EQ ? eq : !eq;
@@ -1529,6 +1512,7 @@ static Value eval_const_inner(Node *node)
     memset(&v, 0, sizeof(v));
     v.ty = node->ty;
     switch (node->kind) {
+    case ND_UNIT: return v;
     case ND_WIDE: v.wide=node->wide;return v;
     case ND_COMPLEX: v.d = node->fval; v.imag = node->imag; return v;
     case ND_CREAL: case ND_CIMAG:
@@ -1710,6 +1694,7 @@ static int is_const_expr(Node *node)
         return 1;
     case ND_ARRAY_COPY:
         return is_const_expr(node->lhs);
+    case ND_UNIT:
     case ND_WIDE:
     case ND_COMPLEX:
     case ND_NUM:
@@ -1776,6 +1761,7 @@ static Node *value_node(Value v, Token *tok)
     }
     node->ty = v.ty;
     node->tok = tok;
+    if(v.ty==TY_VOID){node->kind=ND_UNIT;return node;}
     if (type_is_model(v.ty)) {
         node->kind = ND_MODEL_INIT; node->lhs = v.items; node->nargs = v.len; node->constant_value = 1;
         return node;
@@ -1975,8 +1961,8 @@ static void check_stmt(Node *node)
         }
         if (node->var->is_inferred && node->var->ty == TY_NONE) {
             check_expr(node->lhs);
-            if (node->lhs->ty == TY_NONE || node->lhs->ty == TY_VOID || node->lhs->ty == TY_ADDR) {
-                error_tok(node->lhs->tok, "auto の初期値には具体的な値型が必要です（addr・void は使用できません）");
+            if (node->lhs->ty == TY_NONE || node->lhs->ty == TY_ADDR) {
+                error_tok(node->lhs->tok, "auto の初期値には具体的な値型が必要です（addr は使用できません）");
             }
             concrete_only(node->lhs->ty, node->lhs->tok);
             node->var->ty = node->lhs->ty;
@@ -2085,16 +2071,13 @@ static void check_stmt(Node *node)
                 check_expr(node->lhs);
                 check_value_transfer(node->lhs);
                 concrete_only(node->lhs->ty, node->lhs->tok);
-                if (node->lhs->ty == TY_NONE || node->lhs->ty == TY_VOID || array_base(node->lhs->ty) == TY_ADDR)
-                    error_tok(node->lhs->tok, "推論する戻り値には具体的な値型が必要です（addr・void は値として返せません）");
+                if (node->lhs->ty == TY_NONE || array_base(node->lhs->ty) == TY_ADDR)
+                    error_tok(node->lhs->tok, "推論する戻り値には具体的な値型が必要です（addr は値として返せません）");
             }
             return;
         }
         if (cur_func->ret == TY_VOID) {
-            if (node->lhs != NULL) {
-                error_tok(node->lhs->tok, "void の関数 %.*s は値を返せません",
-                         cur_func->name_len, cur_func->name);
-            }
+            if(node->lhs){check_expr(node->lhs);if(node->lhs->ty!=TY_VOID)error_tok(node->lhs->tok,"void の戻り値は () にしてください");}
             return;
         }
         if (node->lhs == NULL) {

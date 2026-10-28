@@ -170,7 +170,6 @@ static Var *check_place(Node *place)
 
 static void check_method(Node *node)
 {
-    int allow = allow_void;
     int expected = node->val == AM_CLEAR ? 0 : 1;
     allow_void = 0;
     check_expr(node->lhs);
@@ -204,7 +203,6 @@ static void check_method(Node *node)
         node->rhs = model_default(array_element(node->lhs->ty), dims ? dims->next : NULL, node->tok);
     }
     node->ty = TY_VOID;
-    if (!allow) error_tok(node->tok, "配列の追加・削除は値を返しません");
 }
 
 static void check_store(Node *node)

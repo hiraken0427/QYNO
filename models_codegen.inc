@@ -115,6 +115,7 @@ static void gen_model_runtime(void)
             else if(type_is_wide(f->ty)){x64_mov_imm(RDI,10);x64_xor(RSI,RSI);gen_wide(W_FORMAT,f->ty,f->ty,0,NULL);x64_call(print_str_label);}
             else if (type_is_complex(f->ty)) x64_call(complex_print_labels[f->ty == TY_C128]);
             else if (type_is_text(f->ty)) x64_call(quoted_string_label);
+            else if(f->ty==TY_VOID)gen_write_const("()");
             else if (f->ty == TY_FILE) gen_write_const("<file>");
             else {
                 if (f->ty == TY_FLOAT) gen_convert(TY_FLOAT, TY_DOUBLE);

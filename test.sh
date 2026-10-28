@@ -164,7 +164,7 @@ printf 'int main();\n\tint a = 3\n\ta = a * 5\n\treturn a\n' > tmp.qy
 ./qyc tmp.qy && ./tmp
 if [ "$?" = "15" ]; then echo "OK  代入と return"; pass=$((pass + 1)); else echo "NG  代入と return"; exit 1; fi
 
-expected_version=$'QYNO version 0.26.14 (PROTOTYPE)\nPlease note that this product is a prototype. No warranties of any kind exist,\nincluding implied warranties of merchantability or fitness for a particular purpose.'
+expected_version=$'QYNO version 0.26.15 (PROTOTYPE)\nPlease note that this product is a prototype. No warranties of any kind exist,\nincluding implied warranties of merchantability or fitness for a particular purpose.'
 if [ "$(./qyc --version)" = "$expected_version" ]; then echo "OK  --version"; pass=$((pass + 1)); else echo "NG  --version"; exit 1; fi
 
 echo "--- 比較・論理演算・if・const ---"
@@ -489,7 +489,7 @@ assert_error 'print の2つ目が end= でない' 'int main();\n\tprint(1, 2)\n'
 assert_error '引数名の重複' 'int f(int x, int x) = 1\nint main();\n\treturn 0\n'
 assert_error 'double の変数を float に' 'int main();\n\tdouble d = 2.5\n\tfloat g = d\n'
 assert_error 'const の初期値に関数' 'int f() = 1\nconst int C = f()\nint main();\n\treturn 0\n'
-assert_error 'print に void' 'void v();\n\treturn\nint main();\n\tprint(v())\n'
+assert_output $'()\n' 'print に void の唯一の値' 'void v();\n\treturn\nint main();\n\tprint(v())\n'
 
 assert_error '&& は廃止' 'int main();\n\tbool b = true && false\n'
 assert_error '|| は廃止' 'int main();\n\tbool b = true || false\n'

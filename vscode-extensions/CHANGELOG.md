@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.26.15
+
+- Voidの型名・宣言・補完・引数ヒントを追加。
+- char / strの説明をUnicode 17の拡張書記素クラスタへ変更。
+- 診断・表示名・同梱VSIXを0.26.15へ更新。
+
 ## 0.26.14
 
 - int_128 / unsigned int_128 / half / quadrupleのハイライト・宣言解析・型名補完を追加。

@@ -106,8 +106,8 @@ class AutoTests(QynoTestCase):
             with self.subTest(declaration=declaration):
                 self.compile_source(program('int main();', '\tint value = 3', '\t' + declaration), error='auto')
 
-    def test_address_and_void_are_not_inferred_as_storable_types(self):
-        for value in ['n.addr', 'none', 'noop()', 'io.print(1)']:
+    def test_address_is_not_inferred_and_void_is_storable(self):
+        for value in ['n.addr', 'none', 'io.print(1)']:
             with self.subTest(value=value):
                 self.compile_source(program('void noop();', '\treturn', 'int main();',
                     '\tint n = 1', '\tauto value = ' + value), error='エラー')

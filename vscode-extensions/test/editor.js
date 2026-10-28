@@ -291,7 +291,13 @@ async function run() {
     assert.equal(wideHint.signatures[0].label,'unsigned int_128 echo(ref int_128 n)');checks++;
     const quadHint=await vscode.commands.executeCommand('vscode.executeSignatureHelpProvider',wideDoc.uri,new vscode.Position(6,11));
     assert.ok(quadHint.signatures[0].label.startsWith('quadruple quadruple('));checks++;
-    assert.equal(extension.packageJSON.displayName, 'QYNO 0.26.14'); checks++;
+    assert.equal(extension.packageJSON.displayName, 'QYNO 0.26.15'); checks++;
+    const unitDoc=await vscode.workspace.openTextDocument({language:'qyno',content:'Void echo(ref void value)=value\nint main();\n\tVoid units[3]\n\tuni\n\techo(ref \n'});
+    await vscode.window.showTextDocument(unitDoc);
+    const unitItems=await vscode.commands.executeCommand('vscode.executeCompletionItemProvider',unitDoc.uri,new vscode.Position(3,4));
+    assert.ok(unitItems.items.some(i=>i.label==='units'&&i.detail==='Void units[]'));checks++;
+    const unitHint=await vscode.commands.executeCommand('vscode.executeSignatureHelpProvider',unitDoc.uri,new vscode.Position(4,10));
+    assert.equal(unitHint.signatures[0].label,'Void echo(ref void value)');checks++;
     const config = vscode.workspace.getConfiguration('qyno');
     const settings = ['compilerPath', 'diagnostics.enabled', 'diagnostics.delay', 'entryFile', 'moduleRoots'];
     const original = settings.map(name => config.inspect(name).globalValue);

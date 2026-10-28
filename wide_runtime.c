@@ -3,6 +3,7 @@
  * uses integer ratios and one ties-to-even rounding at the destination format.
  * No libc or libquadmath is needed by generated programs. */
 #include "wide_runtime.h"
+#include "grapheme_runtime.h"
 __extension__ typedef unsigned __int128 U;
 __extension__ typedef __int128 I;
 __extension__ typedef __float128 Q;
@@ -286,6 +287,9 @@ encode:
 void wide_execute(WideRequest *r) {
     U a=0,b=0,v=0,n;Q x=0,y=0,z=0;int op=r->op,ty=r->ty,st=0,neg=0;int64_t e;
     r->status=0;r->out=parts(0);r->used=0;
+    if(op==W_CURSOR){r->out.lo=grapheme_cursor((const unsigned char *)r->input,(uint64_t)r->length,r->b.lo,(int)r->aux);return;}
+    if(op==W_TEXT){uint64_t off,width,count;r->status=grapheme_scan((const unsigned char *)r->input,(uint64_t)r->length,(int64_t)r->b.lo,&off,&width,&count);r->out.lo=off;r->out.hi=width;r->used=(int64_t)count;return;}
+    if(op==W_READ&&ty==2000){int i=0;while(i<r->length&&whitespace(r->input[i]))i++;if(i+1>=r->length||r->input[i]!='('||r->input[i+1]!=')'){r->status=1;return;}r->used=i+2;return;}
     if(op==W_READ){r->status=ty<1000?read_integer(r):read_real(r);return;}
     if(op==W_FORMAT){r->status=ty<1000?integer_format(r):real_format(r);return;}
     if(op==W_ROUND&&ty>=1000){r->out=decimal_round(r);return;}

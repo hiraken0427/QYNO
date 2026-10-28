@@ -72,7 +72,7 @@ static Node *stmt(void);
 
 /* 変数名などに使えない予約語 */
 static const char *keywords[] = {
-    "complex", "complex_64", "complex_128", "int", "int_8", "int_16", "int_32", "int_64", "int_128", "half", "quadruple", "unsigned", "float", "double", "bool", "str", "char", "void", "file", "const", "auto",
+    "complex", "complex_64", "complex_128", "int", "int_8", "int_16", "int_32", "int_64", "int_128", "half", "quadruple", "unsigned", "float", "double", "bool", "str", "char", "void", "Void", "file", "const", "auto",
     "true", "false", "return", "print", "if", "else", "for", "while",
     "break", "continue", "and", "or", "xor", "bnot", "not", "struct", "enum", "import", "of", "using", "input",
     "ref", "val", "none", "as", "interface", "implements", "model", "public", "private", "readonly",
@@ -203,6 +203,7 @@ static Type type_keyword(Token *t)
     if (equal(t, "int_128")) return TY_I128;
     if (equal(t, "half")) return TY_HALF;
     if (equal(t, "quadruple")) return TY_QUAD;
+    if (equal(t,"void")||equal(t,"Void"))return TY_VOID;
     if (equal(t, "file")) return TY_FILE;
     if (equal(t, "int")) {
         return TY_INT;
@@ -271,9 +272,6 @@ static ArrayDim *dimensions(Type *ty)
         tail = tail->next = dim;
         if (++rank > MAX_ARRAY_RANK) {
             error_tok(dim->tok, "配列の次元数は %d 以下にしてください", MAX_ARRAY_RANK);
-        }
-        if (*ty == TY_VOID) {
-            error_tok(dim->tok, "void の配列は作れません");
         }
         *ty = array_type(*ty);
     }
@@ -650,6 +648,7 @@ static Node *primary(void)
     const char *member;
 
     if (consume("(")) {
+        if(consume(")")){node=new_node(ND_UNIT,tok);node->ty=TY_VOID;return node;}
         node = expr();
         expect(")");
         return node;
@@ -1947,9 +1946,6 @@ static Function *function_def(int is_readonly)
     start = tok;
     if (consume("=")) {
         if (fn->is_initializer) error_tok(start, "init の本体はブロック形式にしてください");
-        if (fn->ret == TY_VOID) {
-            error_tok(start, "void の関数は数式の形（= 式）では書けません");
-        }
         fn->is_math_form = 1;
         fn->body = new_node(ND_RETURN, start);
         fn->body->lhs = expr();
@@ -2034,7 +2030,6 @@ static Model *model_def(Function **tail)
             ModelField *f = calloc(1, sizeof(*f));
             if (is_readonly) error_tok(name, "readonly はメソッドと ref 引数に指定してください");
             if (!f) fatal("フィールドを確保できません");
-            if (ty == TY_VOID) error_tok(name, "フィールドに void は使えません");
             if (equal(tok, "init")) error_tok(tok, "init はモデル生成専用の名前です");
             if (equal(tok, "this") || equal(tok, "addr") || equal(tok, "value") || equal(tok, "length"))
                 error_tok(tok, "this・addr・value・length はモデルのフィールド名に使えません");

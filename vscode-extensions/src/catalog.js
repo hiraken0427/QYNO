@@ -1,5 +1,5 @@
 'use strict';
-// Reference: QYNO 0.26.14. No runtime dependency on a compiler installation.
+// Reference: QYNO 0.26.15. No runtime dependency on a compiler installation.
 const callable = (path, type, params, documentation) => ({
     kind: 'function', name: path.split('.').at(-1), path, type, rank: 0,
     params: params.map(p => typeof p === 'string' ? { name: p, type: 'value', rank: 0 } : { rank: 0, ...p }),
@@ -17,7 +17,7 @@ const STANDARD = [
     callable('math.rounddown', 'integer / half / float / double / quadruple', ['x', { name: 'digits', type: 'int', optional: true, default: '0' }], '指定桁で床関数に従って丸めます。'),
     callable('int','int',[{name:'value',type:'int / float / double / str'},{name:'base',type:'int',optional:true,defaultText:'0'}], '数値を32bit符号付きint（int_32）に範囲検査付きで変換します。64bitはint_64を明示します。strは接頭辞を自動判定し、base=0/2/8/10/16を指定できます。baseはstrの変換にだけ使えます。'),
     ...['half', 'float', 'double', 'quadruple'].map(type => callable(type, type, ['value'], `数値を ${type} に変換します。halfはbinary16、quadrupleはbinary128。half / quadrupleは10進文字列からも変換できます。`)),
-    callable('char', 'char', [{ name: 'text', type: 'str / char' }], 'Unicodeスカラー値を1個含む文字列へ変換します。'),
+    callable('char', 'char', [{ name: 'text', type: 'str / char' }], 'Unicode拡張書記素クラスタを1個含む文字列へ変換します。'),
     callable('str','str',[{name:'value',type:'integer / half / quadruple / str / char'},{name:'base',type:'int',optional:true,defaultText:'10'},{name:'prefix',type:'bool',optional:true,defaultText:'false'}], '整数を2/8/10/16進に文字列化します。prefix=trueで接頭辞を付けます。base/prefixはintの変換にだけ使えます。half / quadrupleは10進表示で文字列化できます。str/charの従来の変換も利用できます。'),
     callable('io.print', 'void', [{ name: 'value', type: 'value', optional: true, placeholder: '"text"' }], '値を表示します。既定の終端は改行。文字列リテラルの {式} と end= を使用できます。'),
     callable('io.input', 'context / bool', [{ name: 'target', type: 'value', optional: true }], 'input(target) は直接入力。値を返す形式は input() / input(prompt=message)。入力先を指定した形式は bool を返します。'),
@@ -29,11 +29,11 @@ const STANDARD = [
     callable('io.file.write', 'int_64', [{ name: 'destination', type: 'file' }, { name: 'value', type: 'value', placeholder: '"text"' }], 'print と同じ書式で書き込み、UTF-8のバイト数をint_64で返します。改行は自動追加しません。'),
     callable('io.file.exists', 'bool', [{ name: 'path', type: 'str', placeholder: '"path.txt"' }], '通常ファイルの存在を確認します。相対パスは実行時の作業ディレクトリが基準です。')
 ];
-const KEYWORD_COMPLETIONS = ['complex', 'complex_64', 'complex_128', 'int', 'int_8', 'int_16', 'int_32', 'int_64', 'int_128', 'half', 'quadruple', 'unsigned', 'float', 'double', 'bool', 'str', 'char', 'file', 'void', 'auto', 'const', 'ref', 'val', 'return', 'if', 'else', 'for', 'while', 'break', 'continue', 'and', 'or', 'xor', 'bnot', 'not', 'true', 'false', 'none', 'import', 'using', 'as', 'model', 'interface', 'implements', 'public', 'private', 'readonly'];
+const KEYWORD_COMPLETIONS = ['complex', 'complex_64', 'complex_128', 'int', 'int_8', 'int_16', 'int_32', 'int_64', 'int_128', 'half', 'quadruple', 'unsigned', 'float', 'double', 'bool', 'str', 'char', 'file', 'void', 'Void', 'auto', 'const', 'ref', 'val', 'return', 'if', 'else', 'for', 'while', 'break', 'continue', 'and', 'or', 'xor', 'bnot', 'not', 'true', 'false', 'none', 'import', 'using', 'as', 'model', 'interface', 'implements', 'public', 'private', 'readonly'];
 const properties = {
     real: { name:'real',kind:'property',type:'float',readonly:true,documentation:'複素数の実部。読み取り専用です。' },
     imag: { name:'imag',kind:'property',type:'float',readonly:true,documentation:'複素数の虚部。読み取り専用です。' },
-    length: { name: 'length', kind: 'property', type: 'int_64', documentation: '配列の要素数、または文字列のUnicodeスカラー値の数。読み取り専用です。' },
+    length: { name: 'length', kind: 'property', type: 'int_64', documentation: '配列の要素数、または文字列のUnicode拡張書記素クラスタの数。読み取り専用です。' },
     addr: { name: 'addr', kind: 'property', type: 'address', documentation: '変数の場所。ref 変数の場合は現在参照している場所です。' },
     value: { name: 'value', kind: 'property', documentation: '変数の値。ref 変数では参照先の値です。' },
     add: callable('add', 'void', [{ name: 'value', optional: true }], '要素を追加します。add() は型ごとの初期値を1個追加します。配列上限と参照中の変更を検査します。'),

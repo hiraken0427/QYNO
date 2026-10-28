@@ -1,4 +1,4 @@
-"""UTF-8 scalar indexing, character constraints, replacement and errors."""
+"""UTF-8 grapheme indexing, character constraints, replacement and errors."""
 
 from support import QynoTestCase, program, run_suite
 
@@ -6,13 +6,13 @@ from support import QynoTestCase, program, run_suite
 class TextTests(QynoTestCase):
     def test_scalar_length_and_index_constant_and_runtime(self):
         text = "A日😀e\u0301"
-        for index, scalar in enumerate(text):
+        for index, scalar in enumerate(["A","日","😀","e\u0301"]):
             with self.subTest(index=index, scalar=scalar):
                 self.check_program(program(
                     f'const str S = "{text}"', f"const str C = S[{index}]",
                     "int main();", f'\tstr s = "{text}"',
                     '\tprint("{S.length} {s.length}")', "\tprint(C)", f"\tprint(s[{index}])",
-                ), f"5 5\n{scalar}\n{scalar}\n")
+                ), f"4 4\n{scalar}\n{scalar}\n")
 
     def test_empty_string_and_embedded_nul(self):
         self.check_program(program(
@@ -52,9 +52,9 @@ class TextTests(QynoTestCase):
                            "😀\n", stdin="😀\n")
 
     def test_constant_character_rejects_zero_or_multiple_scalars(self):
-        for text in ("", "ab", "e\u0301"):
+        for text in ("", "ab", "e\u0301x"):
             with self.subTest(text=text):
-                self.compile_source(program("int main();", f'\tchar c = char("{text}")'), error="スカラー")
+                self.compile_source(program("int main();", f'\tchar c = char("{text}")'), error="書記素")
 
     def test_runtime_character_rejects_multiple_scalars(self):
         self.check_program(program(
@@ -87,7 +87,7 @@ class TextTests(QynoTestCase):
         for source, message in (
             (program("int main();", '\tstr s = "abc"', "\ts.length = 2"), "読み取り専用"),
             (program('const str S = "abc"', "int main();", '\tS[0] = "x"'), "const"),
-            (program("int main();", '\tstr s = "abc"', '\ts[0] = "xy"'), "スカラー"),
+            (program("int main();", '\tstr s = "abc"', '\ts[0] = "xy"'), "書記素"),
         ):
             with self.subTest(source=source):
                 self.compile_source(source, error=message)

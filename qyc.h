@@ -4,9 +4,10 @@
 #include <stddef.h>
 #include <stdint.h>
 #include "wide_runtime.h"
+#include "grapheme_runtime.h"
 #include <stdio.h>
 
-#define QYC_VERSION "0.26.14"
+#define QYC_VERSION "0.26.15"
 
 typedef struct SourceFile SourceFile;
 typedef struct Module Module;
@@ -137,7 +138,7 @@ typedef enum {
     TY_STR,     /* 文字列（[長さ 8バイト][本体] の先頭を指すポインタ） */
     TY_CHAR,    /* Unicode スカラー値をちょうど1つ含む文字列。表現は str と同じ */
     TY_FILE,    /* 共有されるファイル管理領域。0 は未オープン */
-    TY_VOID,    /* 戻り値なし（関数の戻り値の型のみ） */
+    TY_VOID,    /* unique value (), logical width zero; scalar ABI slot retained */
     TY_ADDR,    /* 変数の場所（x.addr・none。指す先の型は cmp_ty） */
     TY_ARRAY    /* この値以降は types.c で管理する配列・モデル・interface・未解決の名前付き型のID */
 } Type;
@@ -238,6 +239,7 @@ struct Var {
 };
 
 typedef enum {
+    ND_UNIT,
     ND_WIDE,
     ND_ADD,     /* + （str 同士なら連結） */
     ND_SUB,     /* - */

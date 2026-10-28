@@ -115,7 +115,7 @@ class ArrayTests(QynoTestCase):
             ("\tint a[] = [1]\n\ta.clear(0)", "引数"),
             ("\tint a[] = [1]\n\ta.remove_at(-1)", "範囲外"),
             ("\tint a[0]\n\ta.add(1)", "上限0"),
-            ("\tint a[] = [1]\n\tprint(a.add(2))", "値を返しません"),
+            ("\tint a[] = [1]\n\tint result=a.add(2)", "変換"),
             ("\tconst int a[] = [1]\n\ta[0] = 2", "const"),
             ("\tconst int a[] = [1]\n\ta.clear()", "const"),
             ("\tint a" + "[]" * 33, "次元数"),

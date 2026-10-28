@@ -43,8 +43,7 @@ class ReturnInferenceTests(QynoTestCase):
         self.check_program(program('announce();', '\tprint("hello")', 'auto stop(bool b);',
             '\tif(b);', '\t\treturn', '\tprint("continue")', 'int main();',
             '\tannounce()', '\tstop(true)', '\tstop(false)'), 'hello\ncontinue\n')
-        self.compile_source(program('announce();', '\tprint("hello")', 'int main();',
-            '\tauto result = announce()'), error='void')
+        self.check_program(program('announce();','\tprint("hello")','int main();','\tauto result=announce()','\tprint(result)'), 'hello\n()\n')
 
     def test_mixed_value_and_bare_returns_are_rejected(self):
         for first, second in [('return 3', 'return'), ('return', 'return 3')]:
@@ -52,7 +51,7 @@ class ReturnInferenceTests(QynoTestCase):
                 'int main();', '\treturn 0'), error='混在')
 
     def test_void_expression_bodies_and_raw_addresses_are_rejected(self):
-        for definition in ['auto call() = noop()', 'auto address(ref int n) = n.addr',
+        for definition in ['auto address(ref int n) = n.addr',
                            'auto addresses(ref int n) = [n.addr]']:
             self.compile_source(program('void noop();', '\treturn', definition,
                 'int main();', '\treturn 0'), error='エラー')
