@@ -7,7 +7,7 @@ import modules_test as projects
 from support import QynoTestCase, program, run_suite
 
 
-LIMITS = "const int MIN = -9223372036854775807 - 1\nconst int MAX = 9223372036854775807\n"
+LIMITS = "const int_64 MIN = -9223372036854775807 - 1\nconst int_64 MAX = 9223372036854775807\n"
 
 
 class ForTests(QynoTestCase):
@@ -71,7 +71,7 @@ class ForTests(QynoTestCase):
 
     def test_overflow_after_body_does_not_recheck_endpoint(self):
         self.check_program(LIMITS + program(
-            "int finish(ref int calls);", "\tcalls++", "\treturn MAX", "int main();", "\tint calls = 0",
+            "int_64 finish(ref int calls);", "\tcalls++", "\treturn MAX", "int main();", "\tint calls = 0",
             "\tfor(MAX <= i <= finish(ref calls), i++);", "\t\tio.print(i)", "\tio.print(calls)",
         ), "9223372036854775807\n1\n")
 
@@ -93,13 +93,13 @@ class ForTests(QynoTestCase):
         for header, expected in (
             ("MIN < i <= 0, i -= MIN", "0\n"),
             ("MIN <= i <= 0, i -= MIN", "-9223372036854775808\n0\n"),
-            ("0 > i >= MIN, i += MIN", "-9223372036854775808\n"),
+            ("0 > int_64 i >= MIN, i += MIN", "-9223372036854775808\n"),
         ):
             with self.subTest(header=header):
                 self.check_program(LIMITS + program("int main();", f"\tfor({header});", "\t\tio.print(i)"), expected)
 
     def test_normal_integer_arithmetic_still_wraps(self):
-        self.check_program(LIMITS + program("int main();", "\tint n = MAX", "\tn++", "\tio.print(n)"),
+        self.check_program(LIMITS + program("int main();", "\tint_64 n = MAX", "\tn++", "\tio.print(n)"),
                            "-9223372036854775808\n")
 
     def test_continue_break_and_nested_scopes(self):
@@ -203,7 +203,7 @@ class ForTests(QynoTestCase):
             ("double", "9007199254740991.0", "9007199254740996.0", "9007199254740991\n9007199254740992\n"),
         ):
             with self.subTest(ty=ty):
-                self.check_program(program("int main();", f"\tfor({start} <= {ty} x <= {limit}, x++);", "\t\tio.print(int(x))"),
+                self.check_program(program("int main();", f"\tfor({start} <= {ty} x <= {limit}, x++);", "\t\tio.print(int_64(x))"),
                                    expected, status=70, error="前進")
 
     def test_break_does_not_perform_unnecessary_update(self):

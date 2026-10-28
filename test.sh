@@ -164,7 +164,7 @@ printf 'int main();\n\tint a = 3\n\ta = a * 5\n\treturn a\n' > tmp.qy
 ./qyc tmp.qy && ./tmp
 if [ "$?" = "15" ]; then echo "OK  代入と return"; pass=$((pass + 1)); else echo "NG  代入と return"; exit 1; fi
 
-expected_version=$'QYNO version 0.26.11 (PROTOTYPE)\nPlease note that this product is a prototype. No warranties of any kind exist,\nincluding implied warranties of merchantability or fitness for a particular purpose.'
+expected_version=$'QYNO version 0.26.12 (PROTOTYPE)\nPlease note that this product is a prototype. No warranties of any kind exist,\nincluding implied warranties of merchantability or fitness for a particular purpose.'
 if [ "$(./qyc --version)" = "$expected_version" ]; then echo "OK  --version"; pass=$((pass + 1)); else echo "NG  --version"; exit 1; fi
 
 echo "--- 比較・論理演算・if・const ---"
@@ -207,7 +207,7 @@ assert_output $'2 5 7\n' '% の優先順位' 'int main();\n\tprint("{2 * 3 % 4} 
 assert_output $'100 1024 1 1\n' '^ の基本' 'int main();\n\tint a = 10^2\n\tprint("{a} {2^10} {3^0} {0^0}")\n'
 assert_output $'512 -4 4 -8 12\n' '^ の右結合と単項マイナス' 'int main();\n\tprint("{2^3^2} {-2^2} {(-2)^2} {(-2)^3} {2^2 * 3}")\n'
 assert_output $'1 -1 1\n' 'int の負の指数' 'int main();\n\tprint("{1^-5} {(-1)^-3} {(-1)^-4}")\n'
-assert_output $'4611686018427387904 -9223372036854775808 0\n' 'int の累乗の桁あふれ' 'int main();\n\tprint("{2^62} {2^63} {2^64}")\n'
+assert_output $'4611686018427387904 -9223372036854775808 0\n' 'int_64 の累乗の桁あふれ' 'int main();\n\tprint("{int_64(2)^62} {int_64(2)^63} {int_64(2)^64}")\n'
 assert_output $'1024.0 6.25 0.25 0.001\n' 'double の累乗' 'int main();\n\tprint("{2.0^10} {2.5^2} {2.0^-2} {10.0^-3}")\n'
 assert_output $'2.25 0.666667\n' 'float の累乗' 'int main();\n\tfloat f = 1.5\n\tprint("{f^2} {f^-1}")\n'
 assert_output $'144 0.5 2\n' 'const の % と ^' 'const int SQ = 12^2\nconst double HALF = 2.0^-1\nconst int R = 17 % 5\nint main();\n\tprint("{SQ} {HALF} {R}")\n'
@@ -266,7 +266,7 @@ assert_input $'30\n山田 太郎 は 25 歳\n' 0 '空白区切りと日本語の
 assert_input $'整数> 整数で入力してください\n整数> 整数で入力してください\n整数> a = 7\n' 0 'while で聞き直す' 'int main();\n\tint a\n\twhile(not input("整数> {a}"));\n\t\tprint("整数で入力してください")\n\tprint("a = {a}")\n' 'abc\n3.5\n7\n'
 assert_input $'ng 7 8\n' 0 '失敗しても変数は変わらない' 'int main();\n\tint x = 7\n\tint y = 8\n\tif(input("{x}, {y}"));\n\t\tprint("ok")\n\telse;\n\t\tprint("ng {x} {y}")\n' '1, 2, 3\n'
 assert_input $'true\n' 0 '読み込んだ小数はリテラルと同じ値' 'int main();\n\tdouble d = input()\n\tdouble e = input()\n\tprint(d == 0.1 and e == 22727350723955.130859375)\n' '0.1\n22727350723955.130859375\n'
-assert_input $'-9223372036854775808\n' 0 'int の最小値' 'int main();\n\tint a = input()\n\tprint(a)\n' '-9223372036854775808\n'
+assert_input $'-9223372036854775808\n' 0 'int_64 の最小値' 'int main();\n\tint_64 a = input()\n\tprint(a)\n' '-9223372036854775808\n'
 assert_input '' 65 '形に合わない入力は終了コード 65' 'int main();\n\tint a\n\tstr b\n\tinput("{a}, {b}")\n' '54321 Mary\n'
 assert_input '' 65 'int として読めない入力は終了コード 65' 'int main();\n\tint a = input()\n' '12個\n'
 assert_input '' 65 '範囲外の入力は終了コード 65' 'int main();\n\tint a = input()\n' '99999999999999999999\n'

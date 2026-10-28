@@ -5,7 +5,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#define QYC_VERSION "0.26.11"
+#define QYC_VERSION "0.26.12"
 
 typedef struct SourceFile SourceFile;
 typedef struct Module Module;
@@ -121,7 +121,7 @@ struct Token {
 
 typedef enum {
     TY_NONE,    /* 型なし（文など） */
-    TY_INT,     /* signed 64bit; int / int_64 until stage 3 */
+    TY_I64,     /* explicit signed 64bit */
     TY_I8, TY_I16, TY_I32,
     TY_U8, TY_U16, TY_U32, TY_U64,
     TY_FLOAT,   /* 32ビット浮動小数点数（C の float） */
@@ -134,6 +134,8 @@ typedef enum {
     TY_ADDR,    /* 変数の場所（x.addr・none。指す先の型は cmp_ty） */
     TY_ARRAY    /* この値以降は types.c で管理する配列・モデル・interface・未解決の名前付き型のID */
 } Type;
+
+#define TY_INT TY_I32  /* int and int_32 are the same nominal type */
 
 #define MAX_ARRAY_RANK 32
 #define MAX_PLACE_DEPTH 128
@@ -318,6 +320,7 @@ struct Node {
     Node *step;         /* ND_FOR の増分（ND_ASSIGN） */
     Node *inc;          /* ND_FOR の増分の量（i += 2 なら 2、i++ なら 1） */
     int inc_sign;       /* ND_FOR の増分の向き（+= と ++ は 1、-= と -- は -1） */
+    int for_infer;      /* omitted counter type: integer start, at least signed 32bit */
     int for_open;       /* ND_FOR：開始側の境界を含まない */
     Node *for_amount;   /* ND_FOR：ループ変数の型へ変換した定数の増分 */
     Function *func;     /* ND_CALL の呼び出し先（型検査で決まる） */

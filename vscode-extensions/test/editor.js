@@ -260,6 +260,16 @@ async function run() {
     assert.ok(conversionHint.signatures[0].label.startsWith('unsigned int_64 unsigned int_64(')); checks++;
     const integersHover=await vscode.commands.executeCommand('vscode.executeHoverProvider',integersDoc.uri,new vscode.Position(3,12));
     assert.ok(integersHover.some(h=>h.contents.some(c=>c.value?.includes('unsigned int_16 values[]')))); checks++;
+    const countsDoc=await vscode.workspace.openTextDocument({language:'qyno',content:
+        'int main();\n\tint values[]=[1]\n\tfor(values.length > i >= 0,i--);\n\t\tprint(i)\n\tio.file.write('});
+    await vscode.window.showTextDocument(countsDoc);
+    const lengths=await vscode.commands.executeCommand('vscode.executeCompletionItemProvider',countsDoc.uri,
+        new vscode.Position(2,countsDoc.lineAt(2).text.indexOf('values.')+7));
+    assert.ok(lengths.items.some(i=>i.label==='length' && i.detail==='int_64 length')); checks++;
+    const counters=await vscode.commands.executeCommand('vscode.executeCompletionItemProvider',countsDoc.uri,new vscode.Position(3,9));
+    assert.ok(counters.items.some(i=>i.label==='i' && i.detail==='auto i')); checks++;
+    const writeHint=await vscode.commands.executeCommand('vscode.executeSignatureHelpProvider',countsDoc.uri,new vscode.Position(4,15));
+    assert.ok(writeHint.signatures[0].label.startsWith('int_64 io.file.write(')); checks++;
     console.log(`QYNO VS Code integration: ${checks} checks passed`);
 }
 module.exports={run};

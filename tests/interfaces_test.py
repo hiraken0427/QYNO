@@ -182,7 +182,7 @@ class InterfaceTests(QynoTestCase):
 
     def test_template_locals_arrays_strings_input_and_const_sharing(self):
         self.check_program(CONTRACT+MODEL+program('int compute(ref readonly Value v, int count);', '\tconst int N=2','\tint a[2]=[v.get(),N]',
-            '\tstr s="abc"','\tint result','\tfor(0 <= i < count, i++);','\t\tresult += a[i % 2]', '\treturn result + s.length',
+            '\tstr s="abc"','\tint result','\tfor(0 <= i < count, i++);','\t\tresult += a[i % 2]', '\treturn result + int(s.length)',
             'int main();','\tCounter a={n=3}','\tCounter b={n=5}','\tprint(compute(ref a,4))','\tprint(compute(ref b,4))'),'13\n17\n')
 
     def test_frequent_gc_and_borrow_prevents_array_resize(self):

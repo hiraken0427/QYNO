@@ -143,7 +143,7 @@ void resolve_model_types(Ast *ast)
 }
 
 /* Logical integer widths; runtime scalar slots stay eight bytes. */
-int type_is_integer(Type ty) { return ty >= TY_INT && ty <= TY_U64; }
+int type_is_integer(Type ty) { return ty >= TY_I64 && ty <= TY_U64; }
 int integer_unsigned(Type ty) { return ty >= TY_U8 && ty <= TY_U64; }
 int integer_width(Type ty)
 {
@@ -157,7 +157,7 @@ int integer_width(Type ty)
 Type integer_type(int bits, int u)
 {
     return bits == 8 ? (u ? TY_U8 : TY_I8) : bits == 16 ? (u ? TY_U16 : TY_I16) :
-           bits == 32 ? (u ? TY_U32 : TY_I32) : (u ? TY_U64 : TY_INT);
+           bits == 32 ? (u ? TY_U32 : TY_I32) : (u ? TY_U64 : TY_I64);
 }
 long long integer_normalize(long long value, Type ty)
 {

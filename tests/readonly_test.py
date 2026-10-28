@@ -135,7 +135,7 @@ class ReadonlyTests(QynoTestCase):
 
     def test_const_borrow_materializes_declared_array_capacity(self):
         self.check_program(program("model Box;", "\tint a[2] = [7]", "\treadonly int length() = size(ref this.a)",
-            "int size(ref readonly int a[2]) = a.length", "int matrix(ref readonly int a[2][2]) = a[1].length",
+            "int size(ref readonly int a[2]) = int(a.length)", "int matrix(ref readonly int a[2][2]) = int(a[1].length)",
             "int main();", "\tconst int a[2] = [1]", "\tconst int m[2][2] = []", "\tconst Box box = {}",
             '\tprint("{size(ref a)} {matrix(ref m)} {box.length()} {size(ref box.a)}")'), "2 2 2 2\n")
 
@@ -160,7 +160,7 @@ class ReadonlyTests(QynoTestCase):
             "\tfor(0 <= i < 500, i++);", "\t\ttotal += count(ref p, 2)", "\tprint(total)"), "1500\n")
 
     def test_explicit_ref_type_rank_capacity_loop_and_lifetime_rules(self):
-        prefix=POINT+program("double read(ref readonly Point p) = p.x", "int sized(ref readonly int a[1]) = a.length")
+        prefix=POINT+program("double read(ref readonly Point p) = p.x", "int sized(ref readonly int a[1]) = int(a.length)")
         for body, error in [("Point p\n\tread(p)","ref"), ("read(ref Point())","更新先"),
                 ("int n\n\tread(ref n)","型"), ("int a[][] = [[1]]\n\tsized(ref a)","型"),
                 ("int a[2]\n\tsized(ref a)","上限"), ("for(0 <= i < 2, i++);\n\t\tsized(ref i)","繰り返し")]:

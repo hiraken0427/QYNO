@@ -197,7 +197,7 @@ static Type type_keyword(Token *t)
     if (equal(t, "int_8")) return TY_I8;
     if (equal(t, "int_16")) return TY_I16;
     if (equal(t, "int_32")) return TY_I32;
-    if (equal(t, "int_64")) return TY_INT;
+    if (equal(t, "int_64")) return TY_I64;
     if (equal(t, "file")) return TY_FILE;
     if (equal(t, "int")) {
         return TY_INT;
@@ -533,8 +533,8 @@ static Node *input_expr(Token *start)
     }
     expect(")");
     node->in_line = hidden_var(TY_STR, start);
-    node->in_cur = hidden_var(TY_INT, start);
-    node->in_end = hidden_var(TY_INT, start);
+    node->in_cur = hidden_var(TY_I64, start);
+    node->in_end = hidden_var(TY_I64, start);
     return node;
 }
 
@@ -678,6 +678,7 @@ static Node *primary(void)
     if (tok->kind == TK_NUM) {
         node = new_num(tok->val, tok);
         if (tok->unsigned_literal) node->ty = TY_U64;
+        else if (tok->val > INT32_MAX || tok->val < 0) node->ty = TY_I64;
         tok = tok->next;
         return node;
     }
@@ -855,10 +856,20 @@ static Node *unary(void)
     if (consume("bnot")) return new_unary(ND_BIT_NOT, unary(), start);
     if (consume("-")) {
         if (tok->kind == TK_NUM && tok->unsigned_literal && !tok->decimal_min) error_tok(tok, "負の整数リテラルが範囲外です");
-        if (tok->kind == TK_NUM && tok->decimal_min && !equal(tok->next, "^")) {
-            Node *minimum = new_num(tok->val, start); tok = tok->next; return minimum;
+        if (tok->kind == TK_NUM && (tok->decimal_min || tok->val == INT64_C(2147483648)) && !equal(tok->next, "^")) {
+            Node *minimum = new_num(tok->decimal_min ? INT64_MIN : INT32_MIN, start); tok = tok->next; return minimum;
         }
-        return new_unary(ND_NEG, unary(), start);
+        { Node *operand = unary();
+          /* Parentheses and unary + do not change a minimum literal's type. */
+          if (operand->kind == ND_NUM && operand->tok->kind == TK_NUM) {
+              if (operand->tok->unsigned_literal) {
+                  if (!operand->tok->decimal_min) error_tok(operand->tok, "負の整数リテラルが範囲外です");
+                  return new_num(INT64_MIN, start);
+              }
+              if (operand->val == INT64_C(2147483648)) return new_num(INT32_MIN, start);
+          }
+          return new_unary(ND_NEG, operand, start);
+        }
     }
     return power();
 }
@@ -1513,7 +1524,7 @@ static Node *while_stmt(Token *start)
  *
  * 開始側が < / > なら、開始値をヘッダーの更新で1回進めてから判定する。
  * 左右の比較と更新は同じ方向でなければならない。
- * ループ変数は for の中で新しく宣言し、型を省略すると int になる。
+ * ループ変数は for の中で新しく宣言する。型省略時は整数の開始値から32bit以上の型を選ぶ。
  * 条件「変数 比較 終了値」は毎周評価する（終了値も毎周評価される）。
  */
 static Node *for_stmt(Token *start)
@@ -1546,9 +1557,10 @@ static Node *for_stmt(Token *start)
     node->for_open = equal(op1, "<") || equal(op1, ">");
     tok = tok->next;
 
-    /* ループ変数（型を省略すると int） */
+    /* 省略時は一旦 int。型検査で整数の開始値を考慮して確定する。 */
     ty = type_keyword(tok);
     explicit_type = ty != TY_NONE;
+    node->for_infer = !explicit_type;
     if (ty != TY_NONE) {
         skip_type();
     } else {

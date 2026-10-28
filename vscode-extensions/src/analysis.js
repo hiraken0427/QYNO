@@ -253,7 +253,7 @@ function analyze(text, uri = '') {
             if (counter >= 0) {
                 const typed = TYPES.has(ts[counter]?.value) ? readType(ts, counter) : null;
                 const token = ts[typed ? typed.end : counter];
-                declare(token, { kind: 'variable', type: typed ? typed.name : 'int', loop: true, scopeId: body.id, visibleAfter: token?.end || 0 });
+                declare(token, { kind: 'variable', type: typed ? typed.name : 'auto', loop: true, scopeId: body.id, visibleAfter: token?.end || 0 });
             }
             stack.push(body);
         } else if (['if', 'else', 'while'].includes(ts[0].value) && ts.some(t => t.value === ';')) {

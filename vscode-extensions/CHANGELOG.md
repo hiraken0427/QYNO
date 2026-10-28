@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.26.12
+
+- int / unsigned intの32bit化に合わせて型変換の説明と候補を更新。
+- lengthとfile.writeの戻り値をint_64、型省略のforカウンターをautoと表示。
+- `0.26.12_VSCode_option.vsix` を同梱。
+
 ## 0.26.11
 
 - int_8 / int_16 / int_32 / int_64とunsigned整数型のハイライト・名前補完に対応。
