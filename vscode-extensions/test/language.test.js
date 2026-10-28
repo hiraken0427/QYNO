@@ -281,7 +281,7 @@ test('signature help handles qualified aliases, ref arguments, nested calls and 
     assert.equal(hint('void f(int a[], int b);\n\treturn\nint main();\n\tf([1, 2], ¦').activeParameter,1);
 });
 test('stdlib catalog includes fixed-width conversions and close requirements', () => {
-    assert.equal(STANDARD.length,28);
+    assert.equal(STANDARD.length,31);
     assert.ok(!STANDARD.some(s=>s.path==='bool'));
     assert.match(STANDARD.find(s=>s.path==='io.file.open').documentation,/close/);
     assert.equal(STANDARD.find(s=>s.path==='io.file.readline').params[1].ref,true);
@@ -622,4 +622,20 @@ test('default integer aliases are documented and wide count properties keep int6
     assert.ok(STANDARD.find(s=>s.path==='int').documentation.includes('32bit'));
     assert.equal(STANDARD.find(s=>s.path==='io.file.write').type,'int_64');
     assert.equal(items('int main();\n\tint values[]\n\tvalues.¦').find(i=>i.label==='length').detail,'int_64 length');
+});
+
+test('imaginary literals are numeric tokens and i alone remains an identifier',()=> {
+    assert.deepEqual(lexLine('i i4.0 4.0i i4e-2 4e2i').map(t=>[t.kind,t.value]),[['id','i'],['number','i4.0'],['number','4.0i'],['number','i4e-2'],['number','4e2i']]);
+});
+test('complex declarations and array components provide precision-specific properties',()=> {
+    assert.equal(items('int main();\n\tcomplex z\n\tz.¦').find(i=>i.label==='real').detail,'float real');
+    assert.equal(items('int main();\n\tcomplex_128 values[]\n\tvalues[0].¦').find(i=>i.label==='imag').detail,'double imag');
+    assert.ok(!labels('int main();\n\tcomplex z\n\tz.¦').includes('length'));
+    assert.equal(at('int main();\n\tcomplex z\n\tprint(z.re¦al)').type,'float');
+});
+test('complex constructor names and named signatures match the compiler',()=> {
+    const item=items('int main();\n\tcom¦').find(i=>i.label==='complex');
+    assert.equal(item.insertText,'complex(real=${1:0.0}, imag=${2:0.0})');
+    assert.equal(hint('int main();\n\tcomplex(imag=¦').activeParameter,1);
+    assert.ok(hint('int main();\n\tcomplex_128(¦').label.startsWith('complex_128 complex_128('));
 });

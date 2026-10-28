@@ -11,9 +11,14 @@ async function grammar() {
     const registry = new textmate.Registry({ onigLib: Promise.resolve({ createOnigScanner: patterns => new oniguruma.OnigScanner(patterns), createOnigString: text => new oniguruma.OnigString(text) }), loadGrammar: async scope => scope === 'source.qyno' ? textmate.parseRawGrammar(fs.readFileSync(path.join(__dirname, '../syntaxes/qyno.tmLanguage.json'),'utf8'),'qyno.json') : null });
     return registry.loadGrammar('source.qyno');
 }
-test('TextMate highlights actual QYNO 0.26.12 syntax and resets one-line strings', async () => {
+test('TextMate highlights actual QYNO 0.26.13 syntax and resets one-line strings', async () => {
     const g = await grammar();
     function scope(text, word, expected) { const token = g.tokenizeLine(text).tokens.find(t => t.startIndex <= text.indexOf(word) && t.endIndex > text.indexOf(word)); assert.ok(token?.scopes.includes(expected), JSON.stringify(token)); }
+    scope('complex z = 3.0+i4.0', 'complex', 'storage.type.qyno');
+    scope('complex_128 z = 4.0i', 'complex_128', 'storage.type.qyno');
+    scope('print(i4.0)', 'i4.0', 'constant.numeric.qyno');
+    scope('print(4.0i)', '4.0i', 'constant.numeric.qyno');
+    scope('print(i4e-2)', 'i4e-2', 'constant.numeric.qyno');
     scope('print(0b1111)','0b1111','constant.numeric.qyno');
     scope('print(0o17)','0o17','constant.numeric.qyno');
     scope('print(0d15)','0d15','constant.numeric.qyno');
@@ -73,7 +78,7 @@ test('TextMate highlights actual QYNO 0.26.12 syntax and resets one-line strings
 });
 test('manifest paths and snippets exist with QYNO indentation', () => {
     const base=path.join(__dirname,'..'), pkg=require('../package.json');
-    assert.equal(pkg.version,'0.26.12'); assert.equal(pkg.publisher,'hiraken0427');
+    assert.equal(pkg.version,'0.26.13'); assert.equal(pkg.publisher,'hiraken0427');
     for (const file of [pkg.main,...pkg.contributes.grammars.map(g=>g.path),...pkg.contributes.snippets.map(s=>s.path),pkg.contributes.languages[0].configuration]) assert.ok(fs.existsSync(path.join(base,file)),file);
     const snippets=require('../snippets/qyno.json');
     assert.ok(snippets.Main.body.includes('\treturn 0'));

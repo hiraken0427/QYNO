@@ -1,6 +1,6 @@
 'use strict';
 
-const TYPES = new Set(['int', 'int_8', 'int_16', 'int_32', 'int_64', 'unsigned', 'float', 'double', 'bool', 'str', 'char', 'file', 'void', 'auto']);
+const TYPES = new Set(['complex', 'complex_64', 'complex_128', 'int', 'int_8', 'int_16', 'int_32', 'int_64', 'unsigned', 'float', 'double', 'bool', 'str', 'char', 'file', 'void', 'auto']);
 const KEYWORDS = new Set([...TYPES, 'const', 'ref', 'val', 'return', 'if', 'else', 'for', 'while', 'break', 'continue', 'and', 'or', 'xor', 'bnot', 'not', 'true', 'false', 'none', 'import', 'using', 'as', 'print', 'input', 'struct', 'enum', 'of', 'model', 'interface', 'implements', 'public', 'private', 'readonly']);
 const identifierStart = c => /[A-Za-z_]/.test(c || '');
 const identifierPart = c => /[A-Za-z0-9_]/.test(c || '');
@@ -61,6 +61,9 @@ function lexLine(text, line = 0) {
                 i++;
             }
             add('string', start, i, { closed, interpolations });
+        } else if (/^(?:i[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?|[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?i)(?![A-Za-z0-9_])/.test(text.slice(i))) {
+            const value=/^(?:i[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?|[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?i)(?![A-Za-z0-9_])/.exec(text.slice(i))[0];
+            i+=value.length; add('number',start,i);
         } else if (identifierStart(text[i])) {
             while (identifierPart(text[++i])) { /* consume */ }
             add('id', start, i);

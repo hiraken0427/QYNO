@@ -73,6 +73,31 @@ static const char *lex_basic(const char *p, int line, const char *line_start, To
     double fval;
     int i;
 
+    /* i alone remains an identifier; i followed by digits is reserved. */
+    if ((*p == 'i' && isdigit((unsigned char)p[1])) || isdigit((unsigned char)*p)) {
+        int prefix = *p == 'i'; const char *number = p + prefix, *end = number;
+        while (isdigit((unsigned char)*end)) end++;
+        if (end[0] == '.' && isdigit((unsigned char)end[1])) {
+            end++; while (isdigit((unsigned char)*end)) end++;
+        }
+        if (*end == 'e' || *end == 'E') {
+            const char *exponent = end + 1;
+            if (*exponent == '+' || *exponent == '-') exponent++;
+            if (isdigit((unsigned char)*exponent)) { end = exponent + 1; while (isdigit((unsigned char)*end)) end++; }
+        }
+        if (prefix || *end == 'i') {
+            const char *after = end + !prefix;
+            if (is_ident_char(*after) || (*after == '.' && isdigit((unsigned char)after[1])))
+                error_at(line, col_of(after, line_start), "虚数リテラルの後に数字・英字・_ は書けません");
+            if ((size_t)(end - number) >= sizeof(num_buf)) error_at(line, col_of(p, line_start), "虚数の桁が多すぎます");
+            memcpy(num_buf, number, (size_t)(end - number)); num_buf[end - number] = 0;
+            errno = 0; fval = strtod(num_buf, NULL);
+            if (errno == ERANGE) error_at(line, col_of(p, line_start), "虚数が大きすぎるか小さすぎます");
+            *cur = (*cur)->next = new_token(TK_IMAG, p, (int)(after - p), line, col_of(p, line_start));
+            (*cur)->fval = fval; return after;
+        }
+    }
+
     /* 小数リテラル（数字 . 数字） */
     if (isdigit((unsigned char)*p) && !(p[0] == '0' && integer_prefix((unsigned char)p[1]))) {
         start = p;

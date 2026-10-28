@@ -5,6 +5,7 @@ static Type common_return_type(Type a, Type b, Token *site)
     if (a == TY_NONE || a == b) return b;
     if (a == TY_VOID || b == TY_VOID)
         error_tok(site, "値を返す return と値のない return は混在できません");
+    if ((type_is_complex(a) || type_is_complex(b)) && is_number(a) && is_number(b)) return complex_common(a, b);
     if (is_numeric(a) && is_numeric(b)) {
         if (a == TY_DOUBLE || b == TY_DOUBLE) return TY_DOUBLE;
         if (a == TY_FLOAT || b == TY_FLOAT) return TY_FLOAT;

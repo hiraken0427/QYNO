@@ -399,6 +399,11 @@ static void gen_array_equal_runtime(void)
           x64_bind(next_model);
       }
     }
+    { int scalar_value = rt_label("equal.not.complex"), complex_value = rt_label("equal.complex");
+      rt_cmp(RCX, TY_C64); x64_jcc(CC_Z, complex_value); rt_cmp(RCX, TY_C128); x64_jcc(CC_NZ, scalar_value);
+      x64_bind(complex_value); x64_call(complex_equal_label); x64_test(RAX, RAX); x64_jcc(CC_Z, no); x64_jmp(next);
+      x64_bind(scalar_value);
+    }
     rt_cmp(RCX, TY_STR); x64_jcc(CC_Z, text_value);
     rt_cmp(RCX, TY_CHAR); x64_jcc(CC_Z, text_value);
     rt_cmp(RCX, TY_FLOAT); x64_jcc(CC_Z, float_value);
@@ -570,7 +575,7 @@ static void gen_array_print_runtime(void)
     for (i = TY_I64; i <= TY_CHAR; i++) {
         x64_bind(primitive[i]);
         if (i == TY_FLOAT) { x64_movd_to_xmm(0, RAX); x64_cvtss2sd(0, 0); x64_movq_from_xmm(RAX, 0); }
-        x64_call(type_is_integer((Type)i) ? (integer_unsigned((Type)i) ? print_uint_label : print_int_label) : i == TY_BOOL ? print_bool_label :
+        x64_call(type_is_complex((Type)i) ? complex_print_labels[i == TY_C128] : type_is_integer((Type)i) ? (integer_unsigned((Type)i) ? print_uint_label : print_int_label) : i == TY_BOOL ? print_bool_label :
                  i == TY_FLOAT ? print_float_label : i == TY_DOUBLE ? print_double_label : quoted_string_label);
         x64_jmp(next);
     }

@@ -270,6 +270,17 @@ async function run() {
     assert.ok(counters.items.some(i=>i.label==='i' && i.detail==='auto i')); checks++;
     const writeHint=await vscode.commands.executeCommand('vscode.executeSignatureHelpProvider',countsDoc.uri,new vscode.Position(4,15));
     assert.ok(writeHint.signatures[0].label.startsWith('int_64 io.file.write(')); checks++;
+    const complexDoc=await vscode.workspace.openTextDocument({language:'qyno',content:
+        'int main();\n\tcomplex z=3+i4\n\tcomplex_128 values[]=[3+4i]\n\tz.\n\tvalues[0].\n\tcomplex(imag=\n\tprint(z.real)'});
+    await vscode.window.showTextDocument(complexDoc);
+    const complexFields=await vscode.commands.executeCommand('vscode.executeCompletionItemProvider',complexDoc.uri,new vscode.Position(3,3));
+    assert.ok(complexFields.items.some(i=>i.label==='real' && i.detail==='float real')); checks++;
+    const wideComplexFields=await vscode.commands.executeCommand('vscode.executeCompletionItemProvider',complexDoc.uri,new vscode.Position(4,11));
+    assert.ok(wideComplexFields.items.some(i=>i.label==='imag' && i.detail==='double imag')); checks++;
+    const complexHint=await vscode.commands.executeCommand('vscode.executeSignatureHelpProvider',complexDoc.uri,new vscode.Position(5,14));
+    assert.equal(complexHint.activeParameter,1); checks++;
+    const complexHover=await vscode.commands.executeCommand('vscode.executeHoverProvider',complexDoc.uri,new vscode.Position(6,11));
+    assert.ok(complexHover.some(h=>h.contents.some(c=>c.value?.includes('float real')))); checks++;
     console.log(`QYNO VS Code integration: ${checks} checks passed`);
 }
 module.exports={run};

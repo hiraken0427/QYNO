@@ -84,6 +84,10 @@ static int depth;
 static int main_label;
 static int write_label;
 static int print_int_label;
+static int complex_make_labels[2], complex_op_labels[2][4], complex_pow_labels[2], complex_print_labels[2];
+static int complex_sqrt_labels[2];
+static int complex_equal_label, complex_abs_label, complex_parse_labels[2], complex_real_label;
+static int parse_real_label, skip_ws_label, word_follows_label;
 static int print_uint_label;
 static int parse_int_label;
 static int integer_format_label;
@@ -1293,11 +1297,27 @@ static void gen_parse_integer(Type ty)
 {
     x64_mov_imm(R11, ty); x64_call(parse_int_label);
 }
+static void gen_complex_unpack(Reg pointer, int re, int im)
+{
+    int zero = new_label("complex.unpack.zero"), done = new_label("complex.unpack.done");
+    x64_test(pointer, pointer); x64_jcc(CC_Z, zero);
+    x64_load(R10, pointer, 0); x64_movq_to_xmm(re, R10); x64_load(R10, pointer, 8); x64_movq_to_xmm(im, R10); x64_jmp(done);
+    x64_bind(zero); x64_xor(R10, R10); x64_movq_to_xmm(re, R10); x64_movq_to_xmm(im, R10); x64_bind(done);
+}
 /* rax の値を from 型から to 型に変換する */
 static void gen_convert(Type from, Type to)
 {
     if (from == to) {
         return;
+    }
+    if (type_is_complex(to)) {
+        if (type_is_complex(from)) {
+            if (to == TY_C128) return;
+            gen_complex_unpack(RAX, 0, 1); x64_movq_from_xmm(RAX, 0); x64_movq_from_xmm(RDI, 1);
+        } else {
+            gen_convert(from, complex_component(to)); gen_convert(complex_component(to), TY_DOUBLE); x64_xor(RDI, RDI);
+        }
+        x64_call(complex_make_labels[to == TY_C128]); return;
     }
     if (type_is_text(from) && type_is_text(to)) {
         return;  /* 表現は共通。char の制約検査は gen_cast で行う。 */
@@ -1361,6 +1381,7 @@ static void gen_char_check(Token *tok, int code)
 
 #include "collections_codegen.inc"
 #include "file_runtime.inc"
+#include "complex_codegen.inc"
 
 static void gen_cast(Node *node)
 {
@@ -1436,6 +1457,10 @@ static void gen_text_operation(Node *node)
 static void gen_neg(Node *node)
 {
     gen_expr(node->lhs);
+    if (type_is_complex(node->ty)) {
+        gen_complex_unpack(RAX, 0, 1); x64_movq_from_xmm(RAX, 0); x64_movq_from_xmm(RDI, 1);
+        x64_btc(RAX, 63); x64_btc(RDI, 63); x64_call(complex_make_labels[node->ty == TY_C128]); return;
+    }
     if (type_is_integer(node->ty)) { x64_neg(RAX); return; }
     switch (node->ty) {
     case TY_DOUBLE:
@@ -1532,6 +1557,10 @@ static void gen_binary(Node *node)
     x64_mov(RDI, RAX);
     pop(RAX);
 
+    if (type_is_complex(node->ty)) {
+        int op = node->kind == ND_ADD ? 0 : node->kind == ND_SUB ? 1 : node->kind == ND_MUL ? 2 : 3;
+        collection_context(node->tok); x64_call(complex_op_labels[node->ty == TY_C128][op]); return;
+    }
     if (type_is_integer(node->ty)) {
         switch (node->kind) {
         case ND_ADD:
@@ -1619,6 +1648,11 @@ static void gen_compare(Node *cmp)
 
     kind = (CmpKind)cmp->val;
     ty = cmp->cmp_ty;
+    if (type_is_complex(ty)) {
+        push(); x64_mov(RAX, RDI); gen_convert(cmp->lhs->ty, ty); push();
+        x64_load(RAX, RSP, 8); gen_convert(cmp->rhs->ty, ty); pop(RDI); x64_add_imm(RSP, 8); depth--;
+        x64_call(complex_equal_label); if (kind == CMP_NE) x64_xor_imm(RAX, 1); return;
+    }
     if (type_is_model(ty)) {
         x64_mov(RCX, RAX); x64_mov(RAX, RDI); x64_mov(RDI, RCX);
         x64_call(type_model(ty)->equal_label);
@@ -1827,6 +1861,7 @@ static void gen_builtin(Node *node)
         return;
     case BI_SQRT:
         gen_expr(x);
+        if (type_is_complex(ty)) { x64_call(complex_sqrt_labels[ty == TY_C128]); return; }
         if (ty == TY_FLOAT) {
             x64_movd_to_xmm(0, RAX);
             x64_sqrtss(0, 0);
@@ -1839,6 +1874,7 @@ static void gen_builtin(Node *node)
         return;
     case BI_ABS:
         gen_expr(x);
+        if (type_is_complex(ty)) { x64_call(complex_abs_label); gen_convert(TY_DOUBLE, node->ty); return; }
         gen_abs_rax(ty);
         return;
     case BI_ROUND:
@@ -1926,9 +1962,6 @@ static void gen_builtin(Node *node)
 
 static int getc_label;
 static int readline_label;
-static int skip_ws_label;
-static int word_follows_label;
-static int parse_real_label;
 static int parse_bool_label;
 static int match_sep_label;
 static int find_sep_label;
@@ -4673,6 +4706,8 @@ static void gen_lineedit_routines(void)
     gen_edit_line();
 }
 
+#include "complex_input.inc"
+
 static void gen_input_routines(void)
 {
     gen_getc();
@@ -4683,6 +4718,7 @@ static void gen_input_routines(void)
     gen_integer_format_runtime();
     gen_dec_to_double();
     gen_parse_real();
+    gen_complex_input_runtime();
     gen_parse_bool();
     gen_match_sep();
     gen_find_sep();
@@ -4879,6 +4915,7 @@ static void gen_input_value(Node *node)
     x64_jcc(CC_AE, missing);
     if (type_is_integer(ty)) x64_mov_imm(RDI, 0);
     if (type_is_integer(ty)) gen_parse_integer(ty);
+    else if (type_is_complex(ty)) x64_call(complex_parse_labels[ty == TY_C128]);
     else x64_call(ty == TY_BOOL ? parse_bool_label : parse_real_label);
     x64_mov_imm(R8, 1);
     x64_cmp(RCX, R8);
@@ -5087,6 +5124,7 @@ static void gen_input_pattern(Node *node)
         x64_store(RBP, -f->temp->offset, RSI);          /* 値の先頭（float の範囲外の表示に使う） */
         if (type_is_integer(ty)) x64_mov_imm(RDI, f->base);
         if (type_is_integer(ty)) gen_parse_integer(ty);
+        else if (type_is_complex(ty)) x64_call(complex_parse_labels[ty == TY_C128]);
         else x64_call(ty == TY_BOOL ? parse_bool_label : parse_real_label);
         x64_mov_imm(R8, 1);
         x64_cmp(RCX, R8);
@@ -5354,6 +5392,12 @@ static void gen_expr(Node *node)
 static void gen_expr_inner(Node *node)
 {
     switch (node->kind) {
+    case ND_COMPLEX:
+        x64_mov_imm(RAX, double_bits(node->fval)); x64_mov_imm(RDI, double_bits(node->imag));
+        x64_call(complex_make_labels[node->ty == TY_C128]); return;
+    case ND_CREAL: case ND_CIMAG:
+        gen_expr(node->lhs); gen_complex_unpack(RAX, 0, 1);
+        x64_movq_from_xmm(RAX, node->kind == ND_CREAL ? 0 : 1); gen_convert(TY_DOUBLE, node->ty); return;
     case ND_CONSTRUCT:
         gen_construction(node); return;
     case ND_MODEL_SEED:
@@ -5413,11 +5457,13 @@ static void gen_expr_inner(Node *node)
         gen_call(node);
         return;
     case ND_BUILTIN:
+        if (node->val == BI_COMPLEX) { gen_complex_constructor(node); return; }
         if (node->val >= BI_FILE_OPEN) gen_file_builtin(node);
         else gen_builtin(node);
         return;
     case ND_ABS:
         gen_expr(node->lhs);
+        if (type_is_complex(node->lhs->ty)) { x64_call(complex_abs_label); gen_convert(TY_DOUBLE, node->ty); return; }
         gen_abs_rax(node->ty);
         return;
     case ND_INPUT:
@@ -5505,6 +5551,7 @@ static void gen_expr_inner(Node *node)
         gen_expr(node->rhs);
         x64_mov(RDI, RAX);
         pop(RAX);
+        if (type_is_complex(node->ty)) { collection_context(node->tok); x64_call(complex_pow_labels[node->ty == TY_C128]); return; }
         gen_pow_check(node);
         if (type_is_integer(node->ty)) {
             x64_call(pow_int_label);
@@ -5529,6 +5576,7 @@ static void gen_print_value(Node *expr)
         x64_mov_imm(RDI, expr->format_base); x64_mov_imm(RSI, 1); gen_format_integer(expr->ty);
         x64_call(print_str_label); return;
     }
+    if (type_is_complex(expr->ty)) { x64_call(complex_print_labels[expr->ty == TY_C128]); return; }
     if (type_is_array(expr->ty)) { x64_call(array_print_label); return; }
     if (type_is_model(expr->ty)) { x64_call(type_model(expr->ty)->print_label); return; }
     if (type_is_integer(expr->ty)) { x64_call(integer_unsigned(expr->ty) ? print_uint_label : print_int_label); return; }
@@ -6000,6 +6048,15 @@ void codegen(Ast *ast, Program *out_prog, FILE *out_text, Target out_target)
             main_label = fn->label;
         }
     }
+    { int mode, op;
+      for (mode = 0; mode < 2; mode++) {
+          complex_make_labels[mode] = new_label("complex.make"); complex_pow_labels[mode] = new_label("complex.pow");
+          complex_sqrt_labels[mode] = new_label("complex.sqrt");
+          complex_print_labels[mode] = new_label("complex.print"); complex_parse_labels[mode] = new_label("complex.parse");
+          for (op = 0; op < 4; op++) complex_op_labels[mode][op] = new_label("complex.binary");
+      }
+      complex_equal_label = new_label("complex.equal"); complex_abs_label = new_label("complex.abs"); complex_real_label = new_label("complex.real.parse");
+    }
     write_label = x64_new_label(".L.qy_write");
     print_uint_label = x64_new_label(".L.qy_print_uint");
     integer_format_label = x64_new_label(".L.qy_integer_format");
@@ -6123,6 +6180,7 @@ void codegen(Ast *ast, Program *out_prog, FILE *out_text, Target out_target)
     gen_round_integer(BI_ROUNDUP, 1);
     gen_round_integer(BI_ROUNDDOWN, 0);
     gen_round_integer(BI_ROUNDDOWN, 1);
+    gen_complex_runtime();
     gen_input_routines();
     gen_file_runtime();
     gen_model_runtime();
