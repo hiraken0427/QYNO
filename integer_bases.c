@@ -28,7 +28,7 @@ int integer_base_valid(long long base, int automatic)
 }
 /* Whole text, unlike the token parser used for delimited input. Space/tab
  * trimming and optional signs match the language's existing int input. */
-int integer_read(const char *s, size_t len, int base, long long *value)
+int integer_read_typed(const char *s, size_t len, int base, Type ty, long long *value)
 {
     size_t i = 0, digits; int negative = 0, detected, digit; uint64_t n = 0, limit;
     while (i < len && (s[i] == ' ' || s[i] == '\t')) i++;
@@ -40,7 +40,9 @@ int integer_read(const char *s, size_t len, int base, long long *value)
     }
     if (!base) base = 10;
     if (!integer_base_valid(base, 0)) return 1;
-    limit = base == 10 ? (uint64_t)INT64_MAX + (unsigned)negative : UINT64_MAX;
+    if (integer_unsigned(ty) && negative) return 2;
+    limit = integer_width(ty) == 64 ? UINT64_MAX : (UINT64_C(1) << integer_width(ty)) - 1;
+    if (base == 10 && !integer_unsigned(ty)) limit = (limit >> 1) + (unsigned)negative;
     digits = i;
     for (; i < len; i++) {
         digit = integer_digit((unsigned char)s[i]);
@@ -49,13 +51,14 @@ int integer_read(const char *s, size_t len, int base, long long *value)
         n = n * (unsigned)base + (unsigned)digit;
     }
     if (digits == i) return 1;
-    *value = integer_bits(negative ? UINT64_C(0) - n : n); return 0;
+    *value = integer_normalize(integer_bits(negative ? UINT64_C(0) - n : n), ty); return 0;
 }
-char *integer_format(long long value, int base, int prefix, int *length)
+char *integer_format_typed(long long value, int base, int prefix, Type ty, int *length)
 {
-    char digits[64], *s; int count = 0, i, pos = 0, negative = base == 10 && value < 0;
+    char digits[64], *s; int count = 0, i, pos = 0, negative = base == 10 && !integer_unsigned(ty) && value < 0;
     uint64_t n = (uint64_t)value;
     if (negative) n = UINT64_C(0) - n;
+    else if (integer_width(ty) < 64) n &= (UINT64_C(1) << integer_width(ty)) - 1;
     if (!integer_base_valid(base, 0)) return NULL;
     do { digits[count++] = "0123456789abcdef"[n % (unsigned)base]; n /= (unsigned)base; } while (n);
     s = malloc((size_t)count + 4); if (!s) fatal("整数の文字列を確保できません");
@@ -64,3 +67,8 @@ char *integer_format(long long value, int base, int prefix, int *length)
     for (i = count - 1; i >= 0; i--) s[pos++] = digits[i];
     s[pos] = '\0'; *length = pos; return s;
 }
+
+int integer_read(const char *s, size_t len, int base, long long *value)
+{ return integer_read_typed(s, len, base, TY_INT, value); }
+char *integer_format(long long value, int base, int prefix, int *length)
+{ return integer_format_typed(value, base, prefix, TY_INT, length); }

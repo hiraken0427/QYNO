@@ -74,7 +74,7 @@ function environment(project, line, character) {
 
 function snippetCall(symbol, name = symbol.name) {
     // QYNO declarations put dimensions after names, but call arguments use names alone.
-    const params=symbol.builtin && ['int','str'].includes(symbol.path) ? symbol.params.filter(p=>!p.optional) : symbol.params;
+    const params=symbol.builtin && /^(?:(?:unsigned )?int(?:_(?:8|16|32|64))?|str)$/.test(symbol.path) ? symbol.params.filter(p=>!p.optional) : symbol.params;
     return `${name}(${params.map((p, i) => `${p.ref ? 'ref ' : ''}\${${i + 1}:${p.placeholder || p.default || p.name}}`).join(', ')})`;
 }
 function completion(symbol, label = symbol.name) {
@@ -159,7 +159,7 @@ function complete(project, line, character) {
         if (!items.length) items = receiverMembers(project, env, before).map(s => completion(s));
     } else {
         items = [...env.names].map(([label, s]) => completion(s, label));
-        for (const keyword of KEYWORD_COMPLETIONS) if (!env.names.has(keyword)) items.push({ label: keyword, kind: TYPES.has(keyword) ? 'type' : 'keyword', insertText: keyword, detail: 'QYNO 0.26.10' });
+        for (const keyword of KEYWORD_COMPLETIONS) if (!env.names.has(keyword)) items.push({ label: keyword, kind: TYPES.has(keyword) ? 'type' : 'keyword', insertText: keyword, detail: 'QYNO 0.26.11' });
     }
     // A completion immediately before '(' must not insert a second argument list.
     const next = project.model.lines[line].slice(character).match(/^\s*\(/);
@@ -182,7 +182,7 @@ function symbolAt(project, line, character) {
     const after = full.slice(before.length), stop = after.indexOf('.');
     const path = stop < 0 ? full : full.slice(0, before.length + stop);
     const env = environment(project, line, character);
-    const qualified = /([A-Za-z_]\w*(?:(?:\[[^\]\n]*\])|(?:\.[A-Za-z_]\w*))*)$/.exec(text.slice(context.start, start + path.length))?.[1] || path;
+    const qualified = /((?:unsigned\s+)?[A-Za-z_]\w*(?:(?:\[[^\]\n]*\])|(?:\.[A-Za-z_]\w*))*)$/.exec(text.slice(context.start, start + path.length))?.[1] || path;
     return env.resolve(path) || env.names.get(path) || receiverSymbol(env, qualified, true);
 }
 
@@ -198,7 +198,7 @@ function callAt(model, line, character) {
             let j = i - 1, path = '';
             while (j >= 0 && (ts[j].kind === 'id' || ts[j].value === '.')) path = ts[j--].value + path;
             const prefix = model.lines[line].slice(context.start, ts[i].start);
-            path = /([A-Za-z_]\w*(?:(?:\[[^\]\n]*\])|(?:\.[A-Za-z_]\w*))*)$/.exec(prefix)?.[1] || path;
+            path = /((?:unsigned\s+)?[A-Za-z_]\w*(?:(?:\[[^\]\n]*\])|(?:\.[A-Za-z_]\w*))*)$/.exec(prefix)?.[1] || path;
             stack.push({ kind: '(', path, argument: 0 });
         } else if (value === '[' || value === '{') stack.push({ kind: value });
         else if (value === ')' || value === ']' || value === '}') stack.pop();
@@ -222,7 +222,7 @@ function signature(project, line, character) {
         const candidate = properties[last];
         if (candidate?.kind === 'function' && receiverMembers(project, env, call.path.slice(0, -last.length)).some(s => s.name === last)) symbol = candidate;
     }
-    const index=symbol?.builtin && ['int','str'].includes(symbol.path) && call.argName ? symbol.params.findIndex(p=>p.name===call.argName) : call.argument;
+    const index=symbol?.builtin && /^(?:(?:unsigned )?int(?:_(?:8|16|32|64))?|str)$/.test(symbol.path) && call.argName ? symbol.params.findIndex(p=>p.name===call.argName) : call.argument;
     return symbol?.kind === 'function' ? { symbol, label: functionLabel(symbol, call.path), activeParameter: Math.min(Math.max(0,index), Math.max(0, symbol.params.length - 1)) } : undefined;
 }
 module.exports = { environment, complete, symbolAt, callAt, signature, completion, snippetCall };

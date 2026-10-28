@@ -280,8 +280,8 @@ test('signature help handles qualified aliases, ref arguments, nested calls and 
     assert.equal(hint('int sum(int a, int b) = a + b\nint main();\n\tsum(math.abs(1), ¦').activeParameter,1);
     assert.equal(hint('void f(int a[], int b);\n\treturn\nint main();\n\tf([1, 2], ¦').activeParameter,1);
 });
-test('stdlib catalog matches 0.25.2 functions and close requirements', () => {
-    assert.equal(STANDARD.length,19);
+test('stdlib catalog includes fixed-width conversions and close requirements', () => {
+    assert.equal(STANDARD.length,28);
     assert.ok(!STANDARD.some(s=>s.path==='bool'));
     assert.match(STANDARD.find(s=>s.path==='io.file.open').documentation,/close/);
     assert.equal(STANDARD.find(s=>s.path==='io.file.readline').params[1].ref,true);
@@ -599,4 +599,19 @@ test('malformed or unfinished format strings remain usable while editing',()=>{
     for (const suffix of ['{value:','{value:0','{value:0x','{int("0xff") + value:0x']) {
         assert.doesNotThrow(()=>labels('int main();\n\tint value\n\tio.print("'+suffix+'¦'));
     }
+});
+
+test('integer widths and unsigned declarations keep full type labels and parameter definitions', () => {
+    const source = 'unsigned int_64 count(ref unsigned int_8 value) = value\nint main();\n\tunsigned int_16 bytes[] = [1]\n\t¦';
+    const result = items(source);
+    assert.equal(result.find(i=>i.label==='count').detail,'unsigned int_64 count(ref unsigned int_8 value)');
+    assert.equal(result.find(i=>i.label==='bytes').detail,'unsigned int_16 bytes[]');
+    assert.equal(at('void f(unsigned int_8 value);\n\tprint(val¦ue)').start,22);
+    assert.equal(hint('int main();\n\tunsigned int_64(¦').label,'unsigned int_64 unsigned int_64(integer / float / double / str value, int base=0)');
+});
+test('unsigned for counters and integer keyword completions remain scoped', () => {
+    const result = items('int main();\n\tfor(0 <= unsigned int_8 i < 3,i++);\n\t\t¦');
+    assert.equal(result.find(i=>i.label==='i').detail,'unsigned int_8 i');
+    assert.ok(result.some(i=>i.label==='int_32'));
+    assert.ok(result.some(i=>i.label==='unsigned'));
 });

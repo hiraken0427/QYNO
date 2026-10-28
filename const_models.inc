@@ -9,6 +9,7 @@ static Value eval_const(Node *node)
     Value v;
     if (const_eval_depth++ == 0) const_model_budget = 1000000;
     v = eval_const_inner(node);
+    if (type_is_integer(v.ty)) v.i = integer_normalize(v.i, v.ty);
     const_eval_depth--;
     return v;
 }

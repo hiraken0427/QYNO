@@ -6,7 +6,7 @@ static void check_dims(ArrayDim *dims)
         if (dims->bound != NULL) {
             Value v;
             check_expr(dims->bound);
-            if (dims->bound->ty != TY_INT || !is_const_expr(dims->bound)) {
+            if (!type_is_integer(dims->bound->ty) || !is_const_expr(dims->bound)) {
                 error_tok(dims->tok, "配列の上限はコンパイル時に確定する非負の int にしてください");
             }
             v = eval_const(dims->bound);
@@ -34,6 +34,11 @@ static void check_array_literal(Node *node, Type expected)
                 if (is_numeric(element) && is_numeric(item->ty)) {
                     if (element == TY_DOUBLE || item->ty == TY_DOUBLE) element = TY_DOUBLE;
                     else if (element == TY_FLOAT || item->ty == TY_FLOAT) element = TY_FLOAT;
+                    else {
+                        Type common = integer_common(element, item->ty);
+                        if (common == TY_NONE) error_tok(item->tok, "配列の整数要素型を安全に統一できません");
+                        element = common;
+                    }
                 } else if (type_is_text(element) && type_is_text(item->ty)) element = TY_STR;
                 else error_tok(item->tok, "配列の要素型と次元数をそろえてください");
             }
@@ -58,6 +63,9 @@ static void check_array_literal(Node *node, Type expected)
 
 static void check_expected(Node *node, Type expected)
 {
+    if (node->kind == ND_NUM && integer_unsigned(expected) && node->val < 0 && node->tok->kind == TK_NUM &&
+        node->tok->len > 2 && node->tok->loc[0] == '0' && integer_prefix(node->tok->loc[1]) && integer_prefix(node->tok->loc[1]) != 10)
+        node->ty = TY_U64;
     if (node->kind == ND_MODEL_INIT) check_model_init(node, expected);
     else if (node->kind == ND_ARRAY_LITERAL && type_is_array(expected)) check_array_literal(node, expected);
     else check_expr(node);
@@ -177,7 +185,7 @@ static void check_method(Node *node)
         Type to = node->val == AM_ADD ? array_element(node->lhs->ty) : TY_INT;
         check_expected(node->rhs, to);
         if (node->val == AM_ADD) check_value_transfer(node->rhs);
-        node->rhs = coerce(node->rhs, to, node->rhs->tok, "配列操作の引数");
+        node->rhs = node->val == AM_REMOVE_AT && type_is_integer(node->rhs->ty) ? new_cast(node->rhs, TY_INT) : coerce(node->rhs, to, node->rhs->tok, "配列操作の引数");
         if (node->val == AM_REMOVE_AT && is_const_expr(node->rhs) && eval_const(node->rhs).i < 0) {
             const_error(node, "配列の添字が範囲外です");
         }

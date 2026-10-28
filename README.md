@@ -1,4 +1,4 @@
-# QYNO 0.26.10
+# QYNO 0.26.11
 
 C99 で実装した、Linux x64 / Windows x64 向けのコンパイラ。
 UTF-8 の `.qy` ソースから実行ファイルを直接生成する。
@@ -35,10 +35,20 @@ int main();
 
 ## VS Code 拡張
 
-[VSCode Option](vscode-extensions/README.md) は QYNO 0.26.10 のハイライト、
+[VSCode Option](vscode-extensions/README.md) は QYNO 0.26.11 のハイライト、
 ユーザー定義の関数名・変数名の補完、定義への移動、引数ヒントに対応する。
-[vscode-extensions/0.26.10_VSCode_option.vsix](vscode-extensions/0.26.10_VSCode_option.vsix) を
+[vscode-extensions/0.26.11_VSCode_option.vsix](vscode-extensions/0.26.11_VSCode_option.vsix) を
 VS Code の「VSIX からのインストール…」で指定する。
+
+## 整数型（新段階2）
+
+`int_8` / `int_16` / `int_32` / `int_64` と、`unsigned int_8` などの符号なし整数型を使用できる。
+この段階では `int` = `int_64`、`unsigned int` = `unsigned int_64`。
+配列・モデル・ref・型推論、math・入出力・基数変換も対応する。
+狭い型や符号の異なる型への変換は範囲を検査し、暗黙の切り捨てを行わない。
+演算結果は型のbit幅で折り返し、forの範囲外更新ではループを終了する。
+例は [examples/types/integers.qy](examples/types/integers.qy)、詳細は
+[整数型の仕様](docs/types-roadmap.md) を参照。
 
 ## ローカル変数の型推論
 

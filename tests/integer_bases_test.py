@@ -20,9 +20,9 @@ class IntegerBasesTests(QynoTestCase):
         values=[MAX,MIN,-1,MIN,-1,MIN,MIN,-255,1]
         self.check_program(program('int main();',*[f'\tprint({e})' for e in expressions]),''.join(str(v)+'\n' for v in values))
 
-    def test_invalid_literals_and_unsigned_decimal_rejected(self):
+    def test_invalid_literals_and_overflow_rejected(self):
         for value in ['0b102','0o8','0d1A','0xGG','0b','0o','0d','0x','0x10000000000000000',
-            '18446744073709551615','0d18446744073709551615','9223372036854775808','+9223372036854775808',
+            '18446744073709551616','0d18446744073709551616',
             '-9223372036854775809','0b1_0','0x1.2','0o2000000000000000000000']:
             with self.subTest(value=value): self.compile_source(program('int main();',f'\tprint({value})'),error='エラー')
 

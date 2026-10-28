@@ -539,7 +539,7 @@ static void gen_array_print_runtime(void)
     int scalar = rt_label("print.array.scalar");
     int next = rt_label("print.array.next");
     int done = rt_label("print.array.done");
-    int primitive[7];
+    int primitive[TY_CHAR + 1];
     int i;
     for (i = TY_INT; i <= TY_CHAR; i++) primitive[i] = rt_label("print.array.primitive");
     rt_enter(array_print_label, 5);
@@ -570,7 +570,7 @@ static void gen_array_print_runtime(void)
     for (i = TY_INT; i <= TY_CHAR; i++) {
         x64_bind(primitive[i]);
         if (i == TY_FLOAT) { x64_movd_to_xmm(0, RAX); x64_cvtss2sd(0, 0); x64_movq_from_xmm(RAX, 0); }
-        x64_call(i == TY_INT ? print_int_label : i == TY_BOOL ? print_bool_label :
+        x64_call(type_is_integer((Type)i) ? (integer_unsigned((Type)i) ? print_uint_label : print_int_label) : i == TY_BOOL ? print_bool_label :
                  i == TY_FLOAT ? print_float_label : i == TY_DOUBLE ? print_double_label : quoted_string_label);
         x64_jmp(next);
     }

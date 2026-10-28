@@ -110,7 +110,7 @@ static const char *lex_basic(const char *p, int line, const char *line_start, To
         { uint64_t magnitude = 0, limit; int base = 10, digit, prefixed = 0, decimal_min;
           if (p[0] == '0' && (base = integer_prefix((unsigned char)p[1]))) { p += 2; prefixed = 1; }
           else base = 10;
-          limit = base == 10 ? (UINT64_C(1) << 63) : UINT64_MAX;
+          limit = UINT64_MAX;
           q = p;
           while (is_ident_char(*p)) {
               digit = integer_digit((unsigned char)*p);
@@ -123,6 +123,7 @@ static const char *lex_basic(const char *p, int line, const char *line_start, To
           decimal_min = base == 10 && magnitude == (UINT64_C(1) << 63);
           *cur = (*cur)->next = new_token(TK_NUM, start, (int)(p - start), line, col_of(start, line_start));
           (*cur)->val = integer_bits(magnitude); (*cur)->decimal_min = decimal_min;
+          (*cur)->unsigned_literal = base == 10 && magnitude > INT64_MAX;
           return p;
         }
     }
