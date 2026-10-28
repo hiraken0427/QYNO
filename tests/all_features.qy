@@ -1,4 +1,5 @@
 // 自己検証する統合テスト。失敗数を終了コードとして返す。
+using io
 using math.sqrt, math.round
 const int BASE = LATER + 1
 const int LATER = 6

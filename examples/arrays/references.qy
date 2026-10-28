@@ -6,13 +6,13 @@ int main();
 		for(0 <= j < matrix[i].length, j++);
 			increase_element(ref matrix[i][j])
 	increase_all(ref matrix)
-	print(matrix)
+	io.print(matrix)
 
 	int rows[][]
 	increase_length_of_matrix(ref rows)
 	increase_length_of_matrix(ref rows)
 	rows[0].add()
-	print(rows)
+	io.print(rows)
 
 void increase_element(ref int value);
 	value++

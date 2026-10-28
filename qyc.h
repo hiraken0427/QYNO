@@ -7,7 +7,7 @@
 #include "grapheme_runtime.h"
 #include <stdio.h>
 
-#define QYC_VERSION "0.26.16"
+#define QYC_VERSION "0.27.0"
 
 typedef struct SourceFile SourceFile;
 typedef struct Module Module;
@@ -182,6 +182,10 @@ typedef enum {
     BI_COMPLEX, BI_HALF, BI_QUAD,
     BI_IO_PRINT,    /* io.print(...)：出力文として解析する */
     BI_IO_INPUT,    /* io.input(...)：入力先と形式を保持する */
+    BI_LIB_SIZE, BI_LIB_LENGTH,
+    BI_PATH_JOIN, BI_PATH_BASENAME, BI_PATH_DIRNAME, BI_PATH_EXTENSION,
+    BI_PATH_STEM, BI_PATH_IS_ABSOLUTE, BI_PATH_IS_RELATIVE,
+    BI_PATH_NORMALIZE, BI_PATH_WITH_EXTENSION,
     BI_FILE_OPEN,
     BI_FILE_CLOSE,
     BI_FILE_IS_OPEN,
@@ -551,7 +555,8 @@ Type array_element(Type array);
 Type array_base(Type array);
 int array_rank(Type array);
 const char *array_type_name(Type array);
-void typecheck(Ast *ast);
+void typecheck(Ast *ast, Target target);
+int value_bit_width(Type ty);
 int type_is_model(Type ty);
 Model *type_model(Type ty);
 Type model_type(Model *model);
@@ -588,6 +593,7 @@ typedef enum {
 } Reg;
 
 typedef enum {
+    CC_NO = 0x1,    /* no signed overflow */
     CC_O = 0x0,     /* 符号付き演算のオーバーフロー */
     CC_B = 0x2,     /* 符号なしで小さい */
     CC_AE = 0x3,    /* 符号なしで以上 */

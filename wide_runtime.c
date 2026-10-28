@@ -284,9 +284,37 @@ encode:
     }
     return parsed.out;
 }
+#include "path_runtime.inc"
+/* Compare exact binary values to exact integer powers of ten. */
+static void decimal_digits(WideRequest *r)
+{
+    int n=1;
+    if(r->from<1000){
+        U a=integer(r->a,(int)r->from);
+        if(negative(a,(int)r->from))a=0-a;
+        while(a>=10){a/=10;n++;}
+    }else{
+        Quad q;Big a,p;U m;int e;
+        q.q=real(r->a,(int)r->from);q.u&=~((U)1<<127);
+        if(!finite_q(q.q)){r->status=70;return;}
+        m=q.u&(((U)1<<112)-1);e=(int)(q.u>>112)&32767;
+        if(e)m|=(U)1<<112;else e=1;
+        e-=16383+112;
+        big_u(&a,m);
+        if(e>=0)shift(&a,e);else {
+            int w=-e,i;
+            if(w>=128)big_u(&a,0);else {for(i=0;i<w;i++)m>>=1;big_u(&a,m);}
+        }
+        big_u(&p,10);
+        while(cmp(&a,&p)>=0){n++;mul_small(&p,10);}
+    }
+    r->out=parts((unsigned)n);
+}
 void wide_execute(WideRequest *r) {
     U a=0,b=0,v=0,n;Q x=0,y=0,z=0;int op=r->op,ty=r->ty,st=0,neg=0;int64_t e;
     r->status=0;r->out=parts(0);r->used=0;
+    if(op==W_DIGITS){decimal_digits(r);return;}
+    if(op==W_PATH){path_execute(r);return;}
     if(op==W_CURSOR){r->out.lo=grapheme_cursor((const unsigned char *)r->input,(uint64_t)r->length,r->b.lo,(int)r->aux);return;}
     if(op==W_TEXT){uint64_t off,width,count;r->status=grapheme_scan((const unsigned char *)r->input,(uint64_t)r->length,(int64_t)r->b.lo,&off,&width,&count);r->out.lo=off;r->out.hi=width;r->used=(int64_t)count;return;}
     if(op==W_READ&&ty==2000){int i=0;while(i<r->length&&whitespace(r->input[i]))i++;if(i+1>=r->length||r->input[i]!='('||r->input[i+1]!=')'){r->status=1;return;}r->used=i+2;return;}

@@ -12,9 +12,9 @@ int main();
 	half small = 1.5
 	quadruple precise = 1.0000000000000000000000000000000002
 	increase(ref n)
-	print("{n} {mask:0x}")
-	print("{small} {precise}")
-	print(sqrt(quadruple(2)))
+	io.print("{n} {mask:0x}")
+	io.print("{small} {precise}")
+	io.print(sqrt(quadruple(2)))
 	for(LIMIT - 1 <= int_128 i <= LIMIT, i++);
-		print(i)
+		io.print(i)
 	return 0

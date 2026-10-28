@@ -22,7 +22,7 @@ int main();
 	half small = 1.5
 	quadruple precise = 1.0000000000000000000000000000000002
 	increase(ref n)
-	print("{n}, {mask:0x}, {small}, {precise}")
+	io.print("{n}, {mask:0x}, {small}, {precise}")
 	return 0
 ```
 

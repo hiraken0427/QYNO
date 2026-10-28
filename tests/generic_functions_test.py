@@ -5,56 +5,56 @@ from support import QynoTestCase, program, run_suite
 class GenericFunctionTests(QynoTestCase):
     def test_square_omitted_and_explicit_auto_parameters(self):
         self.check_program(program('square(x) = x^2', 'auto twice(auto x) = x * 2', 'int main();',
-            '\tprint("{square(3)} {square(1.5)} {twice(4)} {twice(2.5)}")'), '9 2.25 8 5.0\n')
+            '\tio.print("{square(3)} {square(1.5)} {twice(4)} {twice(2.5)}")'), '9 2.25 8 5.0\n')
 
     def test_fixed_return_type_is_a_constraint_not_an_argument_type(self):
-        self.check_program(program('int square(x) = x^2', 'int main();', '\tprint(square(3))'), '9\n')
-        self.compile_source(program('int square(x) = x^2', 'int main();', '\tprint(square(1.5))'), error='変換できません')
-        self.check_program(program('int square(x) = int(x^2)', 'int main();', '\tprint(square(1.5))'), '2\n')
+        self.check_program(program('int square(x) = x^2', 'int main();', '\tio.print(square(3))'), '9\n')
+        self.compile_source(program('int square(x) = x^2', 'int main();', '\tio.print(square(1.5))'), error='変換できません')
+        self.check_program(program('int square(x) = int(x^2)', 'int main();', '\tio.print(square(1.5))'), '2\n')
 
     def test_mixed_explicit_and_inferred_parameters_keep_typed_context(self):
         self.check_program(program('model Point;', '\tint n', 'add(Point point, x, double extra) = point.n + x + extra',
-            'int main();', '\tprint(add({n=3}, 4, 1))', '\tprint(add({n=3}, 0.5, 1.0))'), '8.0\n4.5\n')
+            'int main();', '\tio.print(add({n=3}, 4, 1))', '\tio.print(add({n=3}, 0.5, 1.0))'), '8.0\n4.5\n')
 
     def test_operator_lowering_is_independent_for_bool_and_int_instances(self):
         for first, second in [('true, false', '3, 5'), ('3, 5', 'true, false')]:
             expected = 'false\n1\n' if first.startswith('true') else '1\nfalse\n'
             self.check_program(program('combine(x, y) = x and y', 'int main();',
-                '\tprint(combine(' + first + '))', '\tprint(combine(' + second + '))'), expected)
+                '\tio.print(combine(' + first + '))', '\tio.print(combine(' + second + '))'), expected)
 
     def test_bool_short_circuit_and_integer_eagerness_are_preserved(self):
-        self.check_program(program('probe(x);', '\tprint("probe")', '\treturn x', 'combine(x) = x and probe(x)',
-            'int main();', '\tprint(combine(false))', '\tprint(combine(0))',
-            '\tprint(combine(true))', '\tprint(combine(3))'), 'false\nprobe\n0\nprobe\ntrue\nprobe\n3\n')
+        self.check_program(program('probe(x);', '\tio.print("probe")', '\treturn x', 'combine(x) = x and probe(x)',
+            'int main();', '\tio.print(combine(false))', '\tio.print(combine(0))',
+            '\tio.print(combine(true))', '\tio.print(combine(3))'), 'false\nprobe\n0\nprobe\ntrue\nprobe\n3\n')
 
     def test_local_inference_and_const_state_are_not_shared_between_instances(self):
         self.check_program(program('identity(x);', '\tconst N = 2', '\tint scratch[N]', '\tscratch[0] = 1',
-            '\ty = x', '\treturn y', 'int main();', '\tprint(identity(3))', '\tprint(identity("hello"))',
-            '\tprint(identity(2.5))', '\tprint(identity(4))'), '3\nhello\n2.5\n4\n')
+            '\ty = x', '\treturn y', 'int main();', '\tio.print(identity(3))', '\tio.print(identity("hello"))',
+            '\tio.print(identity(2.5))', '\tio.print(identity(4))'), '3\nhello\n2.5\n4\n')
 
     def test_char_and_float_types_are_preserved(self):
         self.check_program(program('identity(x) = x', 'void character(ref char c);', '\tc = "B"',
             'void single(ref float value);', '\tvalue += 0.5', 'int main();', '\tc = identity(char("A"))',
-            '\tf = identity(float(1.5))', '\tcharacter(ref c)', '\tsingle(ref f)', '\tprint("{c} {f}")'), 'B 2.0\n')
+            '\tf = identity(float(1.5))', '\tcharacter(ref c)', '\tsingle(ref f)', '\tio.print("{c} {f}")'), 'B 2.0\n')
 
     def test_array_element_types_and_ranks_are_inferred(self):
-        self.check_program(program('first(x) = x[0]', 'int main();', '\tprint(first([1, 2]))',
-            '\tprint(first([1.5, 2.5]))', '\tprint(first(["a", "b"]))', '\tprint(first([[3], [4]]))'), '1\n1.5\na\n[3]\n')
+        self.check_program(program('first(x) = x[0]', 'int main();', '\tio.print(first([1, 2]))',
+            '\tio.print(first([1.5, 2.5]))', '\tio.print(first(["a", "b"]))', '\tio.print(first([[3], [4]]))'), '1\n1.5\na\n[3]\n')
 
     def test_value_arrays_and_models_remain_independent_copies(self):
         self.check_program(program('model Point;', '\tint n', 'change(x);', '\tx[0] = x[0] + 1', '\treturn x',
             'change_point(x);', '\tx.n++', '\treturn x', 'int main();', '\tvalues = [1, 2]',
-            '\tPoint p = {n=3}', '\tprint(change(values))', '\tprint(values)',
-            '\tprint(change_point(p).n)', '\tprint(p.n)'), '[2, 2]\n[1, 2]\n4\n3\n')
+            '\tPoint p = {n=3}', '\tio.print(change(values))', '\tio.print(values)',
+            '\tio.print(change_point(p).n)', '\tio.print(p.n)'), '[2, 2]\n[1, 2]\n4\n3\n')
 
     def test_ref_elements_and_whole_arrays(self):
         self.check_program(program('increase(ref x);', '\tx++', 'append(ref auto values, x);', '\tvalues.add(x)',
             'int main();', '\tvalues = [1, 2]', '\tincrease(ref values[0])', '\tappend(ref values, 3)',
-            '\td = 1.5', '\tincrease(ref d)', '\tprint(values)', '\tprint(d)'), '[2, 2, 3]\n2.5\n')
+            '\td = 1.5', '\tincrease(ref d)', '\tio.print(values)', '\tio.print(d)'), '[2, 2, 3]\n2.5\n')
 
     def test_readonly_ref_accepts_constant_arrays_and_models(self):
         self.check_program(program('const VALUES = [1, 2]', 'first(ref readonly x) = x[0]',
-            'int main();', '\tprint(first(ref VALUES))', '\tstr values[] = ["a", "b"]', '\tprint(first(ref values))'), '1\na\n')
+            'int main();', '\tio.print(first(ref VALUES))', '\tstr values[] = ["a", "b"]', '\tio.print(first(ref values))'), '1\na\n')
 
     def test_ref_modes_and_readonly_are_checked_for_each_instance(self):
         for call in ['increase(1)', 'increase(ref 1)']:
@@ -71,7 +71,7 @@ class GenericFunctionTests(QynoTestCase):
 
     def test_readonly_owned_arrays_can_be_copied(self):
         self.check_program(program('copy(ref readonly x);', '\tresult = x', '\tresult[0] = 9', '\treturn result',
-            'int main();', '\tint values[] = [1, 2]', '\tprint(copy(ref values))', '\tprint(values)'), '[9, 2]\n[1, 2]\n')
+            'int main();', '\tint values[] = [1, 2]', '\tio.print(copy(ref values))', '\tio.print(values)'), '[9, 2]\n[1, 2]\n')
 
     def test_inferred_parameter_dimensions_must_be_omitted(self):
         for header in ['f(x[])', 'f(auto x[])', 'f(ref x[][])']:
@@ -80,15 +80,15 @@ class GenericFunctionTests(QynoTestCase):
     def test_model_methods_keep_lexical_private_access(self):
         self.check_program(program('model Counter;', '\tprivate int bias = 3',
             '\treadonly add(x) = this.bias + x', 'int main();', '\tCounter c',
-            '\tprint("{c.add(4)} {c.add(0.5)}")'), '7 3.5\n')
+            '\tio.print("{c.add(4)} {c.add(0.5)}")'), '7 3.5\n')
         self.compile_source(program('leak(x) = x.secret', 'model Point;', '\tprivate int secret = 3',
-            '\tread() = leak(this)', 'int main();', '\tPoint p', '\tprint(p.read())'), error='private')
+            '\tread() = leak(this)', 'int main();', '\tPoint p', '\tio.print(p.read())'), error='private')
 
     def test_explicit_interface_borrows_can_mix_with_generic_values(self):
         self.check_program(program('interface Value;', '\treadonly int get();', 'model Counter implements Value;',
             '\treadonly int get() = 3', 'const VALUES = [4]', 'first(ref readonly x) = x[0]',
             'read(ref readonly Value value, x) = first(ref VALUES) + value.get() + x',
-            'int main();', '\tCounter c', '\tprint(read(ref c, 4))', '\tprint(read(ref c, 0.5))'), '11\n7.5\n')
+            'int main();', '\tCounter c', '\tio.print(read(ref c, 4))', '\tio.print(read(ref c, 0.5))'), '11\n7.5\n')
 
     def test_interface_contracts_and_initializers_keep_explicit_parameter_types(self):
         for definition in ['interface Value;\n\tint get(x);',
@@ -98,37 +98,37 @@ class GenericFunctionTests(QynoTestCase):
 
     def test_typed_recursive_generic_function(self):
         self.check_program(program('int fact(n);', '\tif(n <= 1);', '\t\treturn 1', '\treturn n * fact(n - 1)',
-            'int main();', '\tprint(fact(5))'), '120\n')
+            'int main();', '\tio.print(fact(5))'), '120\n')
 
     def test_inferred_recursive_return_still_requires_an_annotation(self):
         self.compile_source(program('fact(n);', '\tif(n <= 1);', '\t\treturn 1', '\treturn n * fact(n - 1)',
-            'int main();', '\tprint(fact(3))'), error='戻り値型を明示')
+            'int main();', '\tio.print(fact(3))'), error='戻り値型を明示')
 
     def test_polymorphic_recursion_is_bounded(self):
-        self.compile_source(program('int grow(x) = grow([x])', 'int main();', '\tprint(grow(1))'), error='次元数')
+        self.compile_source(program('int grow(x) = grow([x])', 'int main();', '\tio.print(grow(1))'), error='次元数')
 
     def test_all_branches_are_checked_for_the_selected_types(self):
         self.compile_source(program('bad(x);', '\tif(true);', '\t\treturn x', '\treturn x + true',
-            'int main();', '\tprint(bad(1))'), error='エラー')
+            'int main();', '\tio.print(bad(1))'), error='エラー')
 
     def test_argument_evaluation_order_and_single_evaluation(self):
         self.check_program(program('next(ref int count);', '\tcount++', '\treturn count', 'pair(a, b) = a * 10 + b',
-            'int main();', '\tcount = 0', '\tprint(pair(next(ref count), next(ref count)))', '\tprint(count)'), '12\n2\n')
+            'int main();', '\tcount = 0', '\tio.print(pair(next(ref count), next(ref count)))', '\tio.print(count)'), '12\n2\n')
 
     def test_print_interpolation_and_input_temporaries_are_instance_local(self):
-        self.check_program(program('show(x);', '\tprint("value: {x}")', 'read(ref x);', '\tinput(x)',
-            'read_pattern(ref x);', '\tinput("{x}")',
+        self.check_program(program('show(x);', '\tio.print("value: {x}")', 'read(ref x);', '\tio.input(x)',
+            'read_pattern(ref x);', '\tio.input("{x}")',
             'int main();', '\tint n', '\tstr text', '\tread(ref n)', '\tread(ref text)',
             '\tshow(n)', '\tshow(text)', '\tread_pattern(ref n)', '\tread_pattern(ref text)',
             '\tshow(n)', '\tshow(text)'), 'value: 7\nvalue: hello\nvalue: 8\nvalue: world\n', stdin='7\nhello\n8\nworld\n')
 
     def test_builtin_overloads_do_not_share_lowered_nodes_between_types(self):
-        self.check_program(program('text(x) = str(x)', 'int main();', '\tprint(text(15))',
-            '\tprint(text(char("A")))', '\tprint(text("QYNO"))', '\tprint(text(16))'), '15\nA\nQYNO\n16\n')
+        self.check_program(program('text(x) = str(x)', 'int main();', '\tio.print(text(15))',
+            '\tio.print(text(char("A")))', '\tio.print(text("QYNO"))', '\tio.print(text(16))'), '15\nA\nQYNO\n16\n')
 
     def test_format_constraints_are_checked_on_each_instance(self):
-        self.check_program(program('show(x);', '\tprint("{x:0x}")', 'int main();', '\tshow(15)'), '0xf\n')
-        self.compile_source(program('show(x);', '\tprint("{x:0x}")', 'int main();', '\tshow(1.5)'), error='int')
+        self.check_program(program('show(x);', '\tio.print("{x:0x}")', 'int main();', '\tshow(15)'), '0xf\n')
+        self.compile_source(program('show(x);', '\tio.print("{x:0x}")', 'int main();', '\tshow(1.5)'), error='int')
 
     def test_file_values_keep_shared_handles_and_close_responsibility(self):
         path = (self.directory / 'generic.txt').as_posix()
@@ -159,11 +159,11 @@ class GenericFunctionTests(QynoTestCase):
         (self.directory / 'helper.qy').write_text(program('using math.sqrt', 'const BIAS = 1',
             'square(x) = x^2 + BIAS', 'root(x) = sqrt(x)'))
         self.check_program(program('import helper', 'using helper as h', 'int main();',
-            '\tprint(h.square(3))', '\tprint(h.square(1.5))', '\tprint(h.root(9))'), '10\n3.25\n3.0\n')
+            '\tio.print(h.square(3))', '\tio.print(h.square(1.5))', '\tio.print(h.root(9))'), '10\n3.25\n3.0\n')
 
     def test_imported_instance_errors_report_source_file(self):
         (self.directory / 'helper.qy').write_text('int square(x) = x^2\n')
-        self.compile_source(program('import helper', 'int main();', '\tprint(helper.square(1.5))'),
+        self.compile_source(program('import helper', 'int main();', '\tio.print(helper.square(1.5))'),
             error='変換できません', error_source='helper.qy')
 
     def test_unused_templates_are_not_emitted_or_instantiated(self):
@@ -172,7 +172,7 @@ class GenericFunctionTests(QynoTestCase):
 
     def test_unused_local_warnings_are_per_source_template(self):
         self.check_program(program('identity(x);', '\tunused = x', '\treturn x', 'int main();',
-            '\tprint(identity(1))', '\tprint(identity("x"))'), '1\nx\n', warnings=('変数 unused は未使用',))
+            '\tio.print(identity(1))', '\tio.print(identity("x"))'), '1\nx\n', warnings=('変数 unused は未使用',))
 
     def test_specialization_budget_is_enforced(self):
         names = ', '.join(f'x{i}' for i in range(13))

@@ -469,6 +469,7 @@ static Node *input_expr(Token *start)
     Type ty;
 
     node = new_node(ND_INPUT, start);
+    node->name = "input";
     expect("(");
     if (equal(tok, "prompt") && equal(tok->next, "=")) {
         tok = tok->next->next;
@@ -1258,6 +1259,7 @@ static Node *print_stmt(Token *start)
     int literal;
 
     node = new_node(ND_PRINT, start);
+    node->name = "print";
     expect("(");
     if (!equal(tok, ")") && !is_end_arg(tok)) {
         node->lhs = print_arg(&literal);

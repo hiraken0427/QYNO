@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.27.0
+
+- 標準関数の省略名はusingで導入。usingなしの補完は修飾名を提示。
+- lib.size / lib.length、io.path基本9関数の補完・引数ヒントを追加。
+- QYNO 0.27.0の診断・表示名・VSIXに更新。
+
 ## 0.26.16
 
 - トップレベルのpublic / privateの宣言解析・ハイライトに対応。

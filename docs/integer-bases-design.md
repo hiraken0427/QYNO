@@ -192,10 +192,10 @@ using io
 
 int main();
 	int n
-	if(input("hex> {n:0x}"));
-		print("{n:0b} / {n:0o} / {n:0d} / {n:0x}")
+	if(io.input("hex> {n:0x}"));
+		io.print("{n:0b} / {n:0o} / {n:0d} / {n:0x}")
 	else;
-		print("16進数を入力してください")
+		io.print("16進数を入力してください")
 	return 0
 ```
 
@@ -258,15 +258,15 @@ using io
 
 int main();
 	int n
-	if(input("number> {n}"));
-		print("binary  : {n:0b}")
-		print("octal   : {n:0o}")
-		print("decimal : {n}")
-		print("explicit: {n:0d}")
-		print("hex     : {n:0x}")
+	if(io.input("number> {n}"));
+		io.print("binary  : {n:0b}")
+		io.print("octal   : {n:0o}")
+		io.print("decimal : {n}")
+		io.print("explicit: {n:0d}")
+		io.print("hex     : {n:0x}")
 		str saved = str(n, base=16, prefix=true)
 		int restored = int(saved)
-		print(restored == n)
+		io.print(restored == n)
 	return 0
 ```
 

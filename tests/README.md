@@ -237,3 +237,10 @@ auto・ジェネリック・モデル・interface・定数・file.write・明示
 選択usingの拒否、using-allの非公開名除外と衝突、公開APIのprivate型漏れ、推論・ジェネリック・
 配列・モデル・interface・mainを検証する。以前はトップレベルで拒否していたpublic / privateの
 テストは、新しい成功ケースへ移行し、修飾子の重複・無効な配置・予約語の検査を維持する。
+
+## 標準ライブラリ（0.27.0）
+
+`make test-standard-library` はusing必須化、lib.size/length、io.pathの基本9関数を検証する。
+整数128bit・全小数型・Unicode書記素・多次元/不規則配列・model・定数評価・副作用・不正引数を含む。
+全体テストにも含む。Windows向け実行時は `QYNO_TEST_WINDOWS=1` を設定して同じケースを確認する。
+既存ケースの裸のprint/inputは修飾名、using、別名による記述へ移行した。

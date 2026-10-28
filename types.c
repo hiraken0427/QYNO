@@ -212,3 +212,17 @@ Type real_common(Type a, Type b) {
     if (a == TY_FLOAT || b == TY_FLOAT) return TY_FLOAT;
     return TY_HALF;
 }
+
+/* Logical payload widths, independently of runtime slots and allocation. */
+int value_bit_width(Type ty)
+{
+    if(type_is_integer(ty))return integer_width(ty);
+    if(ty==TY_HALF)return 16;
+    if(ty==TY_FLOAT)return 32;
+    if(ty==TY_DOUBLE)return 64;
+    if(ty==TY_QUAD)return 128;
+    if(type_is_complex(ty))return ty==TY_C128?128:64;
+    if(ty==TY_BOOL)return 1;
+    if(ty==TY_VOID)return 0;
+    return -1;
+}

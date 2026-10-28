@@ -19,7 +19,7 @@ from support import QynoTestCase, program, run_suite
 class LineEditTests(QynoTestCase):
     input_name = "input"
     output_name = "print"
-    preamble = ""
+    preamble = "using io\n"
 
     def exchange(self, source, *, steps, status=0):
         binary = self.compile_source(self.preamble + source)

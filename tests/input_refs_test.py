@@ -25,7 +25,7 @@ class InputRefTests(QynoTestCase):
             with self.subTest(type=ty):
                 self.check_program(program(
                     "using io", "int main();", f"\t{ty} value = {initial}",
-                    "\tinput(value)", "\tprint(value)",
+                    "\tio.input(value)", "\tio.print(value)",
                 ), expected + "\n", stdin=expected + "\n")
 
     def test_direct_input_all_array_element_types(self):
@@ -40,7 +40,7 @@ class InputRefTests(QynoTestCase):
         self.check_program(program(
             "using io", "int main();", "\tint matrix[2][3]",
             "\tfor(0 <= i < 2, i++);", "\t\tfor(0 <= j < 3, j++);",
-            "\t\t\tinput(matrix[i][j])", "\tprint(matrix[0])", "\tprint(matrix[1])",
+            "\t\t\tio.input(matrix[i][j])", "\tio.print(matrix[0])", "\tio.print(matrix[1])",
         ), "[0, 1, 2]\n[3, 4, 5]\n", stdin="0\n1\n2\n3\n4\n5\n")
 
     def test_formatted_array_input_all_types(self):
@@ -171,7 +171,7 @@ class InputRefTests(QynoTestCase):
             "\tfor(0 <= i < matrix.length, i++);",
             "\t\tfor(0 <= j < matrix[i].length, j++);",
             "\t\t\tincrease_element(ref matrix[i][j])",
-            "\tincrease_all(ref matrix)", "\tprint(matrix)",
+            "\tincrease_all(ref matrix)", "\tio.print(matrix)",
             "void increase_element(ref int value);", "\tvalue++",
             "void increase_all(ref int matrix[][]);",
             "\tfor(0 <= i < matrix.length, i++);",

@@ -14,7 +14,7 @@ int main();
 	int values[SIZE]
 	point = ORIGIN
 	point.x++
-	print("{LABEL}: {values.length}")
-	print(cfg.MATRIX)
-	print("{ORIGIN.x}, {ORIGIN.y}; copy: {point.x}, {point.y}")
+	io.print("{LABEL}: {values.length}")
+	io.print(cfg.MATRIX)
+	io.print("{ORIGIN.x}, {ORIGIN.y}; copy: {point.x}, {point.y}")
 	return 0
