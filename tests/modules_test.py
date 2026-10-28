@@ -48,14 +48,14 @@ class ModuleTests(QynoTestCase):
     def test_namespace_alias_and_constant(self):
         self.run_project({
             "main.qy": program("import geometry.circle", "using geometry.circle as circle",
-                               "int main();", '\tprint("{circle.area(2)} {circle.PI}")'),
+                               "int main();", '\tio.print("{circle.area(2)} {circle.PI}")'),
             "geometry/circle.qy": CIRCLE,
         }, "12.0 3.0\n")
 
     def test_fully_qualified_and_same_names_in_three_modules(self):
         self.run_project({
             "main.qy": program("import a, b", "const int N = 3", "int f() = N",
-                               "int main();", '\tprint("{a.f()} {b.f()} {f()}")'),
+                               "int main();", '\tio.print("{a.f()} {b.f()} {f()}")'),
             "a.qy": "const int N = 1\nint f() = N\n",
             "b.qy": "const int N = 2\nint f() = N\n",
         }, "1 2 3\n")
@@ -63,20 +63,20 @@ class ModuleTests(QynoTestCase):
     def test_selective_function_and_constant(self):
         self.run_project({
             "main.qy": program("import geometry.circle", "using geometry.circle.area, geometry.circle.PI",
-                               "int main();", '\tprint("{area(2)} {PI}")'),
+                               "int main();", '\tio.print("{area(2)} {PI}")'),
             "geometry/circle.qy": CIRCLE,
         }, "12.0 3.0\n")
 
     def test_whole_namespace_using(self):
         self.run_project({
             "main.qy": program("import geometry.circle", "using geometry.circle",
-                               "int main();", '\tprint("{area(2)} {PI}")'),
+                               "int main();", '\tio.print("{area(2)} {PI}")'),
             "geometry/circle.qy": CIRCLE,
         }, "12.0 3.0\n")
 
     def test_global_import_and_using_are_file_wide(self):
         self.run_project({
-            "main.qy": program("int main();", "\tprint(area(2))",
+            "main.qy": program("int main();", "\tio.print(area(2))",
                                "using geometry.circle.area", "import geometry.circle"),
             "geometry/circle.qy": CIRCLE,
         }, "12.0\n")
@@ -85,59 +85,59 @@ class ModuleTests(QynoTestCase):
         self.run_project({
             "main.qy": program("import geometry.circle", "int main();", "\tif(true);",
                                "\t\tusing geometry.circle as c", "\t\tusing c.area",
-                               "\t\tprint(area(2))", "\tprint(geometry.circle.area(3))"),
+                               "\t\tio.print(area(2))", "\tio.print(geometry.circle.area(3))"),
             "geometry/circle.qy": CIRCLE,
         }, "12.0\n27.0\n")
 
     def test_block_alias_does_not_leak(self):
         self.compile_project({
             "main.qy": program("import geometry.circle", "int main();", "\tif(true);",
-                               "\t\tusing geometry.circle as c", "\t\tprint(c.area(2))", "\tprint(c.area(3))"),
+                               "\t\tusing geometry.circle as c", "\t\tio.print(c.area(2))", "\tio.print(c.area(3))"),
             "geometry/circle.qy": CIRCLE,
         }, error="c.area")
 
     def test_block_selective_using_does_not_leak(self):
         self.compile_project({
             "main.qy": program("import a", "int main();", "\tif(true);", "\t\tusing a.f",
-                               "\t\tprint(f())", "\tprint(f())"),
+                               "\t\tio.print(f())", "\tio.print(f())"),
             "a.qy": "int f() = 1\n",
         }, error="using")
 
     def test_block_using_not_visible_before_declaration(self):
         self.compile_project({
-            "main.qy": program("import a", "int main();", "\tprint(f())", "\tusing a.f"),
+            "main.qy": program("import a", "int main();", "\tio.print(f())", "\tusing a.f"),
             "a.qy": "int f() = 1\n",
         }, error="using")
 
     def test_using_does_not_leak_between_functions(self):
         self.compile_project({
             "main.qy": program("import a", "int first();", "\tusing a.f", "\treturn f()",
-                               "int main();", "\tprint(f())"),
+                               "int main();", "\tio.print(f())"),
             "a.qy": "int f() = 1\n",
         }, error="using")
 
     def test_dependency_uses_its_own_imports_and_aliases(self):
         self.run_project({
-            "main.qy": program("import services.worker", "int main();", "\tprint(services.worker.run())"),
+            "main.qy": program("import services.worker", "int main();", "\tio.print(services.worker.run())"),
             "services/worker.qy": "import geometry.circle\nusing geometry.circle as c\ndouble run() = c.area(2)\n",
             "geometry/circle.qy": CIRCLE,
         }, "12.0\n")
 
     def test_transitive_import_is_not_visible(self):
         self.compile_project({
-            "main.qy": "import a\nint main();\n\tprint(b.f())\n",
+            "main.qy": "import a\nint main();\n\tio.print(b.f())\n",
             "a.qy": "import b\nint run() = b.f()\n", "b.qy": "int f() = 1\n",
         }, error="b.f")
 
     def test_dependency_using_is_not_exported(self):
         self.compile_project({
-            "main.qy": "import a\nint main();\n\tprint(sqrt(4))\n",
+            "main.qy": "import a\nint main();\n\tio.print(sqrt(4))\n",
             "a.qy": "using math.sqrt\ndouble f() = sqrt(4)\n",
         }, error="using")
 
     def test_diamond_and_duplicate_imports(self):
         self.run_project({
-            "main.qy": "import a, b, common\nimport common\nint main();\n\tprint(a.f() + b.f())\n",
+            "main.qy": "import a, b, common\nimport common\nint main();\n\tio.print(a.f() + b.f())\n",
             "a.qy": "import common\nint f() = common.f() + 1\n",
             "b.qy": "import common\nint f() = common.f() + 2\n",
             "common.qy": "int f() = 10\n",
@@ -163,19 +163,19 @@ class ModuleTests(QynoTestCase):
 
     def test_using_does_not_load_a_file(self):
         self.compile_project({
-            "main.qy": "using a.f\nint main();\n\tprint(f())\n", "a.qy": "int f() = 1\n",
+            "main.qy": "using a.f\nint main();\n\tio.print(f())\n", "a.qy": "int f() = 1\n",
         }, error="import")
 
     def test_qualified_name_does_not_load_a_file(self):
         self.compile_project({
-            "main.qy": "int main();\n\tprint(a.f())\n", "a.qy": "int f() = 1\n",
+            "main.qy": "int main();\n\tio.print(a.f())\n", "a.qy": "int f() = 1\n",
         }, error="a.f")
 
     def test_unknown_export(self):
         for expression in ("a.no_such_function()", "a.NO_SUCH_CONSTANT"):
             with self.subTest(expression=expression):
                 self.compile_project({
-                    "main.qy": f"import a\nint main();\n\tprint({expression})\n", "a.qy": "int f() = 1\n",
+                    "main.qy": f"import a\nint main();\n\tio.print({expression})\n", "a.qy": "int f() = 1\n",
                 }, error="no_such" if "no_such" in expression else "NO_SUCH")
 
     def test_alias_only_accepts_modules(self):
@@ -206,19 +206,19 @@ class ModuleTests(QynoTestCase):
 
     def test_different_aliases_can_coexist(self):
         self.run_project({
-            "main.qy": "import a, b\nusing a as left, b as right\nint main();\n\tprint(left.f() + right.f())\n",
+            "main.qy": "import a, b\nusing a as left, b as right\nint main();\n\tio.print(left.f() + right.f())\n",
             "a.qy": "int f() = 1\n", "b.qy": "int f() = 2\n",
         }, "3\n")
 
     def test_duplicate_using_is_idempotent(self):
         self.run_project({
-            "main.qy": "import a\nusing a.f, a.f\nusing a as c\nusing a as c\nint main();\n\tprint(f() + c.f())\n",
+            "main.qy": "import a\nusing a.f, a.f\nusing a as c\nusing a as c\nint main();\n\tio.print(f() + c.f())\n",
             "a.qy": "int f() = 1\n",
         }, "2\n")
 
     def test_alias_chain_and_using_through_alias(self):
         self.run_project({
-            "main.qy": "import geometry.circle\nusing geometry.circle as c\nusing c as d\nusing d.area\nint main();\n\tprint(area(2))\n",
+            "main.qy": "import geometry.circle\nusing geometry.circle as c\nusing c as d\nusing d.area\nint main();\n\tio.print(area(2))\n",
             "geometry/circle.qy": CIRCLE,
         }, "12.0\n")
 
@@ -248,7 +248,7 @@ class ModuleTests(QynoTestCase):
                 }, error="衝突")
 
     def test_parent_directory_root_with_split_and_attached_I(self):
-        files = {"app/main.qy": "import geometry.circle\nint main();\n\tprint(geometry.circle.area(2))\n",
+        files = {"app/main.qy": "import geometry.circle\nint main();\n\tio.print(geometry.circle.area(2))\n",
                  "modules/geometry/circle.qy": CIRCLE}
         self.run_project(files, "12.0\n", entry="app/main.qy", includes=("modules",))
         self.run_project(files, "12.0\n", entry="app/main.qy", flags=("-Imodules",))
@@ -257,25 +257,25 @@ class ModuleTests(QynoTestCase):
         elsewhere = self.directory / "elsewhere"
         elsewhere.mkdir()
         self.run_project({
-            "main.qy": "import a\nint main();\n\tprint(a.f())\n", "a.qy": "int f() = 1\n",
+            "main.qy": "import a\nint main();\n\tio.print(a.f())\n", "a.qy": "int f() = 1\n",
         }, "1\n", cwd=elsewhere)
 
     def test_roots_are_not_relative_to_each_dependency(self):
         self.run_project({
-            "main.qy": "import nested.a\nint main();\n\tprint(nested.a.f())\n",
+            "main.qy": "import nested.a\nint main();\n\tio.print(nested.a.f())\n",
             "nested/a.qy": "import nested.b\nint f() = nested.b.f()\n",
             "nested/b.qy": "int f() = 42\n",
         }, "42\n")
 
     def test_entry_root_precedes_additional_roots(self):
         self.run_project({
-            "main.qy": "import a\nint main();\n\tprint(a.f())\n", "a.qy": "int f() = 1\n",
+            "main.qy": "import a\nint main();\n\tio.print(a.f())\n", "a.qy": "int f() = 1\n",
             "external/a.qy": "int f() = 2\n",
         }, "1\n", includes=("external",))
 
     def test_additional_roots_keep_command_line_order(self):
         self.run_project({
-            "app/main.qy": "import a\nint main();\n\tprint(a.f())\n",
+            "app/main.qy": "import a\nint main();\n\tio.print(a.f())\n",
             "first/a.qy": "int f() = 1\n", "second/a.qy": "int f() = 2\n",
         }, "1\n", entry="app/main.qy", includes=("first", "second"))
 
@@ -289,12 +289,12 @@ class ModuleTests(QynoTestCase):
 
     def test_root_with_spaces(self):
         self.run_project({
-            "app/main.qy": "import a\nint main();\n\tprint(a.f())\n",
+            "app/main.qy": "import a\nint main();\n\tio.print(a.f())\n",
             "my modules/a.qy": "int f() = 7\n",
         }, "7\n", entry="app/main.qy", includes=("my modules",))
 
     def test_empty_library_does_not_need_main(self):
-        self.run_project({"main.qy": "import empty\nint main();\n\tprint(42)\n", "empty.qy": ""}, "42\n")
+        self.run_project({"main.qy": "import empty\nint main();\n\tio.print(42)\n", "empty.qy": ""}, "42\n")
 
     def test_library_cannot_define_main(self):
         self.compile_project({
@@ -318,33 +318,33 @@ class ModuleTests(QynoTestCase):
 
     def test_utf8_bom_and_crlf_in_library(self):
         self.run_project({
-            "main.qy": "import a\nint main();\n\tprint(a.f())\n",
+            "main.qy": "import a\nint main();\n\tio.print(a.f())\n",
             "a.qy": b'\xef\xbb\xbfstr f();\r\n\treturn "\xe6\x97\xa5\xe6\x9c\xac"\r\n',
         }, "日本\n")
 
     def test_runtime_error_reports_library_file(self):
         result = self.run_project({
-            "main.qy": "import a\nint main();\n\tprint(a.divide())\n",
-            "a.qy": "int divide();\n\tint n = input()\n\treturn 10 / n\n",
+            "main.qy": "import a\nint main();\n\tio.print(a.divide())\n",
+            "a.qy": "int divide();\n\tint n = io.input()\n\treturn 10 / n\n",
         }, "", stdin="0\n", status=70, diagnostic="a.qy:3:")
         self.assertIn("QYNO 実行時エラー", result.stderr)
 
     def test_library_input_error_reports_correct_source_line(self):
         result = self.run_project({
             "main.qy": "import a\nint main();\n\ta.read()\n",
-            "a.qy": 'void read();\n\tint n\n\tinput("{n}")\n',
+            "a.qy": 'void read();\n\tint n\n\tio.input("{n}")\n',
         }, "", stdin="invalid\n", status=65, diagnostic="a.qy:3:")
-        self.assertIn('input("{n}")', result.stderr)
+        self.assertIn('io.input("{n}")', result.stderr)
 
     def test_array_return_and_reference_parameter_across_modules(self):
         self.run_project({
-            "main.qy": "import a\nusing a as items\nint main();\n\tint x[] = items.make()\n\titems.change(ref x)\n\tprint(x[0])\n",
+            "main.qy": "import a\nusing a as items\nint main();\n\tint x[] = items.make()\n\titems.change(ref x)\n\tio.print(x[0])\n",
             "a.qy": "int make()[];\n\treturn [1, 2]\nvoid change(ref int values[]);\n\tvalues[0] = 42\n",
         }, "42\n")
 
     def test_constants_and_text_properties_across_modules(self):
         self.run_project({
-            "main.qy": "import a\nusing a.N\nconst int M = N + a.T.length\nint main();\n\tprint(M)\n\tprint(a.V[1])\n",
+            "main.qy": "import a\nusing a.N\nconst int M = N + a.T.length\nint main();\n\tio.print(M)\n\tio.print(a.V[1])\n",
             "a.qy": 'const int N = LATER\nconst int LATER = 40\nconst str T = "日😀"\nconst int V[] = [7, 8]\n',
         }, "42\n8\n")
 
@@ -355,18 +355,18 @@ class ModuleTests(QynoTestCase):
 
     def test_export_names_can_match_value_properties(self):
         self.run_project({
-            "main.qy": "import a\nint main();\n\tprint(a.length + a.value + a.addr + a.add())\n",
+            "main.qy": "import a\nint main();\n\tio.print(a.length + a.value + a.addr + a.add())\n",
             "a.qy": "const int length = 1\nconst int value = 2\nconst int addr = 3\nint add() = 4\n",
         }, "10\n")
 
     def test_builtin_math_alias_and_explicit_import(self):
         self.run_project({
-            "main.qy": "import math\nusing math as m\nusing m.sqrt\nint main();\n\tprint(m.round(2.5) + sqrt(4))\n",
+            "main.qy": "import math\nusing math as m\nusing m.sqrt\nint main();\n\tio.print(m.round(2.5) + sqrt(4))\n",
         }, "5.0\n")
 
     def test_library_recursion_and_forward_reference(self):
         self.run_project({
-            "main.qy": "import a\nint main();\n\tprint(a.f(6))\n",
+            "main.qy": "import a\nint main();\n\tio.print(a.f(6))\n",
             "a.qy": "int f(int n);\n\tif(n == 0);\n\t\treturn 1\n\treturn n * f(n - 1)\n",
         }, "720\n")
 
@@ -391,15 +391,15 @@ class ModuleTests(QynoTestCase):
 
     def test_same_basename_in_different_directories(self):
         self.run_project({
-            "main.qy": "import left.circle, right.circle\nusing left.circle as l, right.circle as r\nint main();\n\tprint(l.f() + r.f())\n",
+            "main.qy": "import left.circle, right.circle\nusing left.circle as l, right.circle as r\nint main();\n\tio.print(l.f() + r.f())\n",
             "left/circle.qy": "int f() = 10\n", "right/circle.qy": "int f() = 20\n",
         }, "30\n")
 
     def test_disjoint_blocks_can_reuse_an_alias(self):
         self.run_project({
             "main.qy": program("import a, b", "int main();", "\tif(true);",
-                               "\t\tusing a as c", "\t\tprint(c.f())", "\tif(true);",
-                               "\t\tusing b as c", "\t\tprint(c.f())"),
+                               "\t\tusing a as c", "\t\tio.print(c.f())", "\tif(true);",
+                               "\t\tusing b as c", "\t\tio.print(c.f())"),
             "a.qy": "int f() = 1\n", "b.qy": "int f() = 2\n",
         }, "1\n2\n")
 
@@ -411,7 +411,7 @@ class ModuleTests(QynoTestCase):
 
     def test_aliases_are_independent_between_modules(self):
         self.run_project({
-            "main.qy": "import a, b\nint main();\n\tprint(a.f() + b.f())\n",
+            "main.qy": "import a, b\nint main();\n\tio.print(a.f() + b.f())\n",
             "a.qy": "using math as m\ndouble f() = m.sqrt(4)\n",
             "b.qy": "import other\nusing other as m\ndouble f() = m.sqrt(4)\n",
             "other.qy": "double sqrt(double n) = n + 1\n",
@@ -422,7 +422,7 @@ class ModuleTests(QynoTestCase):
 
     def test_parent_directories_are_not_searched_implicitly(self):
         self.compile_project({
-            "app/main.qy": "import a\nint main();\n\tprint(a.f())\n", "a.qy": "int f() = 1\n",
+            "app/main.qy": "import a\nint main();\n\tio.print(a.f())\n", "a.qy": "int f() = 1\n",
         }, entry="app/main.qy", error="見つかりません")
 
     def test_parameters_cannot_shadow_aliases(self):
@@ -432,24 +432,24 @@ class ModuleTests(QynoTestCase):
 
     def test_call_argument_error_points_to_caller(self):
         self.compile_project({
-            "main.qy": 'import a\nint main();\n\tprint(a.f("wrong"))\n', "a.qy": "int f(int n) = n\n",
+            "main.qy": 'import a\nint main();\n\tio.print(a.f("wrong"))\n', "a.qy": "int f(int n) = n\n",
         }, error="main.qy:3:")
 
     def test_constant_error_points_to_defining_module(self):
         self.compile_project({
-            "main.qy": "import a\nconst int C = a.N\nint main();\n\tprint(C)\n",
+            "main.qy": "import a\nconst int C = a.N\nint main();\n\tio.print(C)\n",
             "a.qy": "const int N = 1 / 0\n",
         }, error="a.qy:1:")
 
     def test_array_runtime_error_points_to_defining_module(self):
         self.run_project({
-            "main.qy": "import a\nint main();\n\tprint(a.f())\n",
-            "a.qy": "int f();\n\tint items[] = [1]\n\tint index = input()\n\treturn items[index]\n",
+            "main.qy": "import a\nint main();\n\tio.print(a.f())\n",
+            "a.qy": "int f();\n\tint items[] = [1]\n\tint index = io.input()\n\treturn items[index]\n",
         }, "", stdin="3\n", status=70, diagnostic="a.qy:4:")
 
     def test_syntax_error_in_interpolation_points_to_library(self):
         self.compile_project({
-            "main.qy": "import a\nint main();\n\treturn 0\n", "a.qy": 'void f();\n\tprint("{1:.1}")\n',
+            "main.qy": "import a\nint main();\n\treturn 0\n", "a.qy": 'void f();\n\tio.print("{1:.1}")\n',
         }, error="a.qy:2:")
 
     def test_many_long_function_names_still_have_unique_assembly_labels(self):
@@ -475,7 +475,7 @@ class ModuleTests(QynoTestCase):
 
     def test_standard_modules_do_not_require_import(self):
         self.run_project({
-            "main.qy": 'using io, math\nint main();\n\tio.print(sqrt(9))\n\tprint(math.round(2.5))\n',
+            "main.qy": 'using io, math\nint main();\n\tio.print(sqrt(9))\n\tio.print(math.round(2.5))\n',
         }, "3.0\n3.0\n")
 
     def test_standard_modules_ignore_local_files_even_with_explicit_import(self):
@@ -488,7 +488,7 @@ class ModuleTests(QynoTestCase):
 
     def test_standard_module_imports_are_idempotent(self):
         self.run_project({
-            "main.qy": 'import io, io, math\nusing io, io.print, io.input\nint main();\n\tprint(math.sqrt(9))\n',
+            "main.qy": 'import io, io, math\nusing io, io.print, io.input\nint main();\n\tio.print(math.sqrt(9))\n',
         }, "3.0\n")
 
     def test_standard_namespace_alias_chain(self):

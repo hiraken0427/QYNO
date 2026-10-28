@@ -77,7 +77,7 @@ async function checkProject(command, project, signal) {
         let issue;
         if (execution.error && !diagnostics.some(d => d.severity === 'error')) {
             issue = execution.error.code === 'ENOENT'
-                ? 'qyc が見つかりません。QYNO 0.26.16 のコンパイラをインストールし、qyno.compilerPath に実行ファイルを指定してください。'
+                ? 'qyc が見つかりません。QYNO 0.27.0 のコンパイラをインストールし、qyno.compilerPath に実行ファイルを指定してください。'
                 : `qyc の検査を完了できません: ${execution.stderr.trim() || execution.error.message}`;
         }
         return { diagnostics, issue };

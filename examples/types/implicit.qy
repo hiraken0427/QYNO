@@ -16,8 +16,8 @@ int main();
 	if(true);
 		count = count + 1
 		auto count = str(count)
-		print(count + "!")
-	print("{name}: {count}, {point.x}, {point.y}")
-	print(matrix)
-	print(copied)
+		io.print(count + "!")
+	io.print("{name}: {count}, {point.x}, {point.y}")
+	io.print(matrix)
+	io.print(copied)
 	return 0

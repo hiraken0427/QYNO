@@ -22,8 +22,8 @@ make_point(int x, int y);
 int main();
 	point = make_point(3, 4)
 	values = numbers(5)
-	print("{square(3)} {twice(4)}")
-	print("{choose(true)} {choose(false)}")
-	print(values)
-	print(point.length_squared())
+	io.print("{square(3)} {twice(4)}")
+	io.print("{choose(true)} {choose(false)}")
+	io.print(values)
+	io.print(point.length_squared())
 	return 0

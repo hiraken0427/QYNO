@@ -13,18 +13,18 @@ class AutoTests(QynoTestCase):
             '\tauto d = 2.5', '\tauto c = char("A")', '\tauto s = "hello"',
             '\tauto b = true', '\tinteger(ref n)', '\tsingle(ref f)',
             '\tdecimal(ref d)', '\tcharacter(ref c)',
-            '\tprint("{n} {f} {d} {c} {s} {b}")'), '4 2.0 3.0 B hello true\n')
+            '\tio.print("{n} {f} {d} {c} {s} {b}")'), '4 2.0 3.0 B hello true\n')
 
     def test_current_64_bit_integer_semantics_are_preserved(self):
         self.check_program(program('int main();', '\tauto n = 9223372036854775807',
-            '\tauto bits = 0xffffffffffffffff', '\tprint(n)', '\tprint(bits)'),
+            '\tauto bits = 0xffffffffffffffff', '\tio.print(n)', '\tio.print(bits)'),
             '9223372036854775807\n-1\n')
 
     def test_expression_and_function_result_inference(self):
         self.check_program(program('int twice(int n) = n * 2', 'int main();',
             '\tauto n = twice(3) + 1', '\tauto d = n + 0.5',
             '\tauto text = str(n, base=16, prefix=true)', '\tauto flag = n > 0',
-            '\tprint("{n} {d} {text} {flag}")'), '7 7.5 0x7 true\n')
+            '\tio.print("{n} {d} {text} {flag}")'), '7 7.5 0x7 true\n')
 
     def test_inferred_type_is_fixed_for_later_assignments(self):
         for initial, replacement in [('3', '3.5'), ('3', '"three"'), ('true', '1'),
@@ -38,7 +38,7 @@ class AutoTests(QynoTestCase):
     def test_local_const_inference_and_array_bounds(self):
         self.check_program(program('int main();', '\tconst auto count = 2 + 1',
             '\tconst auto label = "size"', '\tconst auto items = [1, 2, 3]',
-            '\tint values[count]', '\tprint("{label} {values.length} {items}")'),
+            '\tint values[count]', '\tio.print("{label} {values.length} {items}")'),
             'size 3 [1, 2, 3]\n')
         self.compile_source(program('int main();', '\tconst auto n = 3', '\tn = 4'), error='定数')
         self.compile_source(program('int main();', '\tint n = 3', '\tconst auto c = n'), error='const')
@@ -46,50 +46,50 @@ class AutoTests(QynoTestCase):
     def test_nested_array_inference_deep_copy_and_growth(self):
         self.check_program(program('int main();', '\tauto original = [[1, 2], [3, 4]]',
             '\tauto copied = original', '\tcopied[0][0] = 9', '\tcopied[0].add(5)',
-            '\tcopied.add([6])', '\tprint(original)', '\tprint(copied)'),
+            '\tcopied.add([6])', '\tio.print(original)', '\tio.print(copied)'),
             '[[1, 2], [3, 4]]\n[[9, 2, 5], [3, 4], [6]]\n')
 
     def test_array_inference_for_all_existing_scalar_types(self):
         self.check_program(program('int main();', '\tauto a = [float(1), float(2)]',
             '\tauto b = [1, 2.5]', '\tauto c = ["a", "b"]',
             '\tauto d = [char("A"), char("B")]', '\tauto e = [true, false]',
-            '\tprint(a)', '\tprint(b)', '\tprint(c)', '\tprint(d)', '\tprint(e)'),
+            '\tio.print(a)', '\tio.print(b)', '\tio.print(c)', '\tio.print(d)', '\tio.print(e)'),
             '[1.0, 2.0]\n[1.0, 2.5]\n["a", "b"]\n["A", "B"]\n[true, false]\n')
 
     def test_arrays_from_calls_remain_independent(self):
         self.check_program(program('int make()[] = [1, 2]', 'int main();',
             '\tauto a = make()', '\tauto b = a', '\tb[0] = 9',
-            '\tprint(a)', '\tprint(b)'), '[1, 2]\n[9, 2]\n')
+            '\tio.print(a)', '\tio.print(b)'), '[1, 2]\n[9, 2]\n')
 
     def test_model_inference_preserves_value_copy_and_methods(self):
         self.check_program(program('model Point;', '\tint x',
             '\tvoid move(int dx);', '\t\tthis.x += dx',
             'Point make() = {x=3}', 'int main();', '\tauto a = make()',
-            '\tauto b = a', '\tb.move(4)', '\tprint("{a.x} {b.x}")'), '3 7\n')
+            '\tauto b = a', '\tb.move(4)', '\tio.print("{a.x} {b.x}")'), '3 7\n')
 
     def test_model_arrays_are_copied_deeply(self):
         self.check_program(program('model Item;', '\tint n', 'int main();',
             '\tItem item = {n=1}', '\tauto a = [item]', '\tauto b = a',
-            '\tb[0].n = 9', '\tprint("{item.n} {a[0].n} {b[0].n}")'), '1 1 9\n')
+            '\tb[0].n = 9', '\tio.print("{item.n} {a[0].n} {b[0].n}")'), '1 1 9\n')
 
     def test_initializer_is_evaluated_once(self):
         self.check_program(program('int next(ref int count);', '\tcount++', '\treturn count',
             'int main();', '\tint count = 0', '\tauto n = next(ref count)',
-            '\tprint("{n} {count}")'), '1 1\n')
+            '\tio.print("{n} {count}")'), '1 1\n')
 
     def test_value_input_defaults_to_string_and_target_input_to_bool(self):
-        self.check_program(program('int main();', '\tauto text = input()', '\tint n = 0',
-            '\tauto ok = input(n)', '\tprint(text + "!")', '\tprint("{ok} {n}")'),
+        self.check_program(program('int main();', '\tauto text = io.input()', '\tint n = 0',
+            '\tauto ok = io.input(n)', '\tio.print(text + "!")', '\tio.print("{ok} {n}")'),
             '123!\ntrue 7\n', stdin='123\n7\n')
 
     def test_inferred_input_destination_keeps_type(self):
-        self.check_program(program('int main();', '\tauto n = 0', '\tinput(n)',
-            '\tprint(n + 1)'), '16\n', stdin='0xf\n')
+        self.check_program(program('int main();', '\tauto n = 0', '\tio.input(n)',
+            '\tio.print(n + 1)'), '16\n', stdin='0xf\n')
 
     def test_scope_is_local_and_sibling_blocks_are_independent(self):
-        self.check_program(program('int main();', '\tif(true);', '\t\tauto n = 1', '\t\tprint(n)',
-            '\tif(true);', '\t\tauto n = "two"', '\t\tprint(n)'), '1\ntwo\n')
-        self.compile_source(program('int main();', '\tif(true);', '\t\tauto n = 1', '\tprint(n)'), error='宣言されていません')
+        self.check_program(program('int main();', '\tif(true);', '\t\tauto n = 1', '\t\tio.print(n)',
+            '\tif(true);', '\t\tauto n = "two"', '\t\tio.print(n)'), '1\ntwo\n')
+        self.compile_source(program('int main();', '\tif(true);', '\t\tauto n = 1', '\tio.print(n)'), error='宣言されていません')
 
     def test_self_reference_and_redeclaration_are_rejected(self):
         self.compile_source(program('int main();', '\tauto n = n'), error='宣言されていません')
@@ -115,18 +115,18 @@ class AutoTests(QynoTestCase):
     def test_field_main_and_loop_auto_restrictions(self):
         for source in [program('auto main() = 0'),
                        program('model Point;', '\tauto x = 0', 'int main();', '\treturn 0'),
-                       program('int main();', '\tfor(0 <= auto i < 2, i++);', '\t\tprint(i)')]:
+                       program('int main();', '\tfor(0 <= auto i < 2, i++);', '\t\tio.print(i)')]:
             with self.subTest(source=source): self.compile_source(source, error='エラー')
 
     def test_implicit_declaration_and_explicit_nested_shadowing(self):
-        self.check_program(program('int main();', '\tn = 3', '\tprint(n)'), '3\n')
+        self.check_program(program('int main();', '\tn = 3', '\tio.print(n)'), '3\n')
         self.check_program(program('int main();', '\tint n = 1', '\tif(true);',
-            '\t\tauto n = 2', '\t\tprint(n)', '\tprint(n)'), '2\n1\n')
+            '\t\tauto n = 2', '\t\tio.print(n)', '\tio.print(n)'), '2\n1\n')
 
     def test_readonly_owned_values_can_be_copied(self):
         self.check_program(program('void inspect(ref readonly int values[]);', '\tauto copy = values',
-            '\tcopy[0] = 9', '\tprint(copy)', 'int main();', '\tint values[] = [1]',
-            '\tinspect(ref values)', '\tprint(values)'), '[9]\n[1]\n')
+            '\tcopy[0] = 9', '\tio.print(copy)', 'int main();', '\tint values[] = [1]',
+            '\tinspect(ref values)', '\tio.print(values)'), '[9]\n[1]\n')
 
     def test_interface_cannot_escape_through_auto(self):
         self.compile_source(program('interface Shape;', '\treadonly int size();',
@@ -151,7 +151,7 @@ class AutoTests(QynoTestCase):
             '\treadonly int get() = this.n', 'int inspect(ref readonly Value value);',
             '\tauto result = value.get()', '\tauto values = [result]', '\treturn values[0]',
             'int main();', '\tCounter c = {initial=7}', '\tauto copy = c',
-            '\tprint(inspect(ref copy))'), '7\n')
+            '\tio.print(inspect(ref copy))'), '7\n')
 
     def test_file_array_inference_keeps_shared_handles_and_close_tracking(self):
         path = (self.directory / 'array.txt').as_posix()

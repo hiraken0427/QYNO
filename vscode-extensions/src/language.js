@@ -11,7 +11,7 @@ function environment(project, line, character) {
     const names = new Map();
     const namespace = path => ({ name: path.split('.').at(-1), path, kind: 'namespace', documentation: `${path} 名前空間` });
     const exported = (path) => {
-        if (['io', 'io.file', 'math'].includes(path)) return namespace(path);
+        if (['io', 'io.file', 'io.path', 'math', 'lib'].includes(path)) return namespace(path);
         const builtin = STANDARD.find(s => s.path === path);
         if (builtin) return builtin;
         const modulePath = imports.filter(p => path === p || path.startsWith(p + '.')).sort((a, b) => b.length - a.length)[0];
@@ -37,7 +37,7 @@ function environment(project, line, character) {
         if (resolved?.kind !== 'namespace') return [];
         const full = resolved.path, result = new Map();
         for (const item of STANDARD) if (item.path.startsWith(full + '.') && !item.path.slice(full.length + 1).includes('.')) result.set(item.name, item);
-        if (full === 'io') result.set('file', namespace('io.file'));
+        if (full === 'io') for(const child of ['file','path']) result.set(child, namespace('io.'+child));
         for (const imported of imports) if (imported.startsWith(full + '.')) {
             const child = imported.slice(full.length + 1).split('.')[0];
             result.set(child, namespace(full + '.' + child));
@@ -45,8 +45,8 @@ function environment(project, line, character) {
         for (const symbol of project.modules.get(full)?.symbols || []) if (symbol.scopeId === 0 && (symbol.visibility!=='private'||symbol.uri===model.uri)) result.set(symbol.name, symbol);
         return [...result.values()];
     };
-    for (const symbol of STANDARD) if (!symbol.path.includes('.') || ['io.print', 'io.input'].includes(symbol.path)) names.set(symbol.name, symbol);
-    for (const root of ['io', 'math', ...imports.map(p => p.split('.')[0])]) names.set(root, namespace(root));
+    for (const symbol of STANDARD) if (!symbol.path.includes('.')) names.set(symbol.name, symbol);
+    for (const root of ['io', 'math', 'lib', ...imports.map(p => p.split('.')[0])]) names.set(root, namespace(root));
     // Resolve module aliases first; fixed-point iteration handles global forward references.
     for (let pass = 0; pass <= usings.length; pass++) for (const u of usings) if (u.alias) {
         const target = resolve(u.path);
@@ -167,7 +167,8 @@ function complete(project, line, character) {
         if (!items.length) items = receiverMembers(project, env, before).map(s => completion(s));
     } else {
         items = [...env.names].map(([label, s]) => completion(s, label));
-        for (const keyword of KEYWORD_COMPLETIONS) if (!env.names.has(keyword)) items.push({ label: keyword, kind: TYPES.has(keyword) ? 'type' : 'keyword', insertText: keyword, detail: 'QYNO 0.26.16' });
+        for(const symbol of STANDARD) if(symbol.path.includes('.') && env.names.get(symbol.name)?.path!==symbol.path) items.push(completion(symbol,symbol.path));
+        for (const keyword of KEYWORD_COMPLETIONS) if (!env.names.has(keyword)) items.push({ label: keyword, kind: TYPES.has(keyword) ? 'type' : 'keyword', insertText: keyword, detail: 'QYNO 0.27.0' });
     }
     // A completion immediately before '(' must not insert a second argument list.
     const next = project.model.lines[line].slice(character).match(/^\s*\(/);

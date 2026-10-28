@@ -52,7 +52,7 @@ int main();
 	auto enabled = true
 	auto values = [[1, 2], [3, 4]]
 	const auto LIMIT = 10
-	print("{count} {ratio} {title} {enabled} {values} {LIMIT}")
+	io.print("{count} {ratio} {title} {enabled} {values} {LIMIT}")
 	return 0
 ```
 
@@ -83,8 +83,8 @@ int main();
 	if(true);
 		count = count + 1       // 外側の変数へ代入
 		auto count = str(count) // 初期値では外側を参照し、別の変数を宣言
-		print(count + "!")
-	print(count)               // 外側の int、値は4
+		io.print(count + "!")
+	io.print(count)               // 外側の int、値は4
 	return 0
 ```
 
@@ -123,7 +123,7 @@ const LABEL = "QYNO"
 
 int main();
 	int values[LIMIT]
-	print("{LABEL}: {values.length}")
+	io.print("{LABEL}: {values.length}")
 	return 0
 ```
 
@@ -157,7 +157,7 @@ choose(bool first);
 	return 2.5
 
 int main();
-	print("{square(3)} {twice(4)} {choose(true)}")
+	io.print("{square(3)} {twice(4)} {choose(true)}")
 	return 0
 ```
 
@@ -220,12 +220,12 @@ increase(ref x);
 	x++
 
 int main();
-	print(square(3))       // int
-	print(square(1.5))     // double
-	print(twice(2.5))      // double
+	io.print(square(3))       // int
+	io.print(square(1.5))     // double
+	io.print(twice(2.5))      // double
 	n = 3
 	increase(ref n)
-	print(integer_square(n))
+	io.print(integer_square(n))
 	return 0
 ```
 
@@ -283,10 +283,10 @@ int main();
 	int_8 small = 127
 	unsigned int_64 maximum = 18446744073709551615
 	increase(ref small)
-	print("{small} {small:0x}") // -128 0x80
-	print(maximum)            // 18446744073709551615
+	io.print("{small} {small:0x}") // -128 0x80
+	io.print(maximum)            // 18446744073709551615
 	int_16 wider = small
-	print(wider)
+	io.print(wider)
 ```
 
 例: [examples/types/integers.qy](../examples/types/integers.qy)。

@@ -16,8 +16,8 @@ int main();
 	auto point = origin()
 	auto copied = matrix
 	copied[0][0] = 9
-	print("{title}: {count} {ratio} {enabled} {LIMIT}")
-	print(matrix)
-	print(copied)
-	print("{point.x}, {point.y}")
+	io.print("{title}: {count} {ratio} {enabled} {LIMIT}")
+	io.print(matrix)
+	io.print(copied)
+	io.print("{point.x}, {point.y}")
 	return 0

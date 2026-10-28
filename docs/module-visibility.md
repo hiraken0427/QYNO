@@ -22,7 +22,7 @@ import geometry
 using geometry as g
 
 int main();
-	print(g.squared_length(3.0, 4.0)) // 50.0
+	io.print(g.squared_length(3.0, 4.0)) // 50.0
 	return 0
 ```
 

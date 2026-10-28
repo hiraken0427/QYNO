@@ -4834,6 +4834,7 @@ static void gen_real_to_float(int range)
 
 #include "models_codegen.inc"
 #include "places_codegen.inc"
+#include "library_codegen.inc"
 
 /*
  * 値の形：input() ・ input(プロンプト)
@@ -5436,7 +5437,8 @@ static void gen_expr_inner(Node *node)
         return;
     case ND_BUILTIN:
         if (node->val == BI_COMPLEX) { gen_complex_constructor(node); return; }
-        if (node->val >= BI_FILE_OPEN) gen_file_builtin(node);
+        if(node->val>=BI_LIB_SIZE && node->val<BI_FILE_OPEN) gen_library_builtin(node);
+        else if (node->val >= BI_FILE_OPEN) gen_file_builtin(node);
         else gen_builtin(node);
         return;
     case ND_ABS:
@@ -6013,12 +6015,14 @@ void codegen(Ast *ast, Program *out_prog, FILE *out_text, Target out_target)
     prog = out_prog;
     text = out_text;
     target = out_target;
+    size_codes=size_codes_tail=NULL;
     depth = 0;
     label_seq = 0;
     loop_depth = 0;
 
     emitting_models = ast->models;
     x64_begin(prog, text);
+    path_call_label=new_label("path.call");
     { Model *m;
       for (m = ast->models; m; m = m->next) {
           snprintf(label_name, sizeof(label_name), ".L.model.%d.copy", m->ty);
@@ -6187,6 +6191,8 @@ void codegen(Ast *ast, Program *out_prog, FILE *out_text, Target out_target)
         if (!fn->is_template) gen_function(fn);
     }
 
+    gen_library_size_runtime();
+    gen_library_path_runtime();
     dump_data();
     x64_end();
 }

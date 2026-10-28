@@ -40,9 +40,9 @@ test('snapshot failure and cancellation clean up temporary files', async () => {
 for (const [name, text, message] of [
     ['syntax error', 'int main();\n\tint x = (3 + )\n\treturn 0\n', /式|必要|構文/],
     ['type mismatch', 'int main();\n\tint x = "hello"\n\treturn 0\n', /int|str|型/],
-    ['undeclared variable', 'int main();\n\tprint(missing)\n\treturn 0\n', /missing/],
+    ['undeclared variable', 'int main();\n\tio.print(missing)\n\treturn 0\n', /missing/],
     ['undeclared function', 'int main();\n\tmissing_call()\n\treturn 0\n', /missing_call/],
-    ['interpolation destination', 'int main();\n\tinput("入力> {unknown}")\n\treturn 0\n', /unknown/],
+    ['interpolation destination', 'int main();\n\tio.input("入力> {unknown}")\n\treturn 0\n', /unknown/],
     ['invalid complex operation', 'int main();\n\tcomplex a = i4\n\tbool x = a < i5\n\treturn 0\n', /複素|complex|比較|演算/]
 ]) test(`compiler diagnostics: ${name}`, native, async () => {
     const model = source(text);
@@ -57,7 +57,7 @@ test('valid inference and complex input do not generate false errors or project 
         const entry = path.join(directory, 'main.qy');
         const original = 'int main();\n\treturn 0\n';
         await fs.writeFile(entry, original);
-        const model = source('using io\nint main();\n\tn = 3\n\tcomplex z = 3 + i4\n\tprint("{n}: {z}")\n\treturn 0\n', entry);
+        const model = source('using io\nint main();\n\tn = 3\n\tcomplex z = 3 + i4\n\tio.print("{n}: {z}")\n\treturn 0\n', entry);
         const result = await checkProject(compiler, { model, modules: new Map() });
         assert.equal(result.issue, undefined); assert.ok(!result.diagnostics.some(d => d.severity === 'error'));
         assert.equal(await fs.readFile(entry, 'utf8'), original);
@@ -67,7 +67,7 @@ test('valid inference and complex input do not generate false errors or project 
 
 test('unsaved imported files and module roots keep diagnostics on the original URI', native, async () => {
     const root = path.resolve('/project'), modules = path.resolve('/shared/modules');
-    const entry = source('import geometry.circle\nint main();\n\tprint(geometry.circle.area())\n\treturn 0\n', path.join(root, 'main.qy'));
+    const entry = source('import geometry.circle\nint main();\n\tio.print(geometry.circle.area())\n\treturn 0\n', path.join(root, 'main.qy'));
     const imported = source('int area() = "bad"\n', path.join(modules, 'geometry/circle.qy'));
     const project = { model: entry, modules: new Map([['geometry.circle', imported]]), roots: [root, modules] };
     const result = await checkProject(compiler, project);
@@ -83,7 +83,7 @@ test('entry imports retain identity and detect a circular import', native, async
 });
 
 test('new untitled documents receive diagnostics on their untitled URI', native, async () => {
-    const model = analyze('int main();\n\tprint(missing)\n\treturn 0\n', 'untitled:Untitled-1');
+    const model = analyze('int main();\n\tio.print(missing)\n\treturn 0\n', 'untitled:Untitled-1');
     const result = await checkProject(compiler, { model, modules: new Map(), roots: [path.resolve('/project'), path.resolve('/unused-module-root')] });
     assert.equal(result.issue, undefined);
     assert.ok(result.diagnostics.some(d => d.uri === model.uri && /missing/.test(d.message)));

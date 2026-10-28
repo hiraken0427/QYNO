@@ -17,19 +17,19 @@ int main();
 	unsigned int_16 word = 65535
 	unsigned int_32 double_word = 4294967295
 	unsigned int_64 maximum = 18446744073709551615
-	print("{tiny} {small} {count} {large}")
-	print("{byte} {word} {double_word} {maximum}")
+	io.print("{tiny} {small} {count} {large}")
+	io.print("{byte} {word} {double_word} {maximum}")
 	increase(ref tiny)
-	print("{tiny} {tiny:0x}")
-	print("{maximum / 3} {maximum % 3}")
-	print("{byte >> 1} {int_8(-128) >> 1}")
-	print(rounddown(maximum, -1))
+	io.print("{tiny} {tiny:0x}")
+	io.print("{maximum / 3} {maximum % 3}")
+	io.print("{byte >> 1} {int_8(-128) >> 1}")
+	io.print(rounddown(maximum, -1))
 	unsigned int_8 values[] = [0, 127, 255]
 	increase(ref values[2])
 	values.add()
-	print(values)
+	io.print(values)
 	Packet packet
-	print(packet)
+	io.print(packet)
 	for(254 <= unsigned int_8 i <= 255, i++);
-		print(i)
+		io.print(i)
 	return 0

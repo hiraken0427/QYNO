@@ -4,7 +4,6 @@ from support import QynoTestCase, program, run_suite
 
 
 FORMS = (
-    ("legacy", "", "print", "input"),
     ("qualified", "", "io.print", "io.input"),
     ("using", "using io\n", "print", "input"),
     ("selective", "using io.print, io.input\n", "print", "input"),
@@ -116,7 +115,7 @@ class IOTests(QynoTestCase):
 
     def test_print_input_can_be_mixed(self):
         self.check_program(program(
-            "using io", "int main();", '\tprint("first", end=" ")',
+            "using io", "int main();", '\tio.print("first", end=" ")',
             '\tstr name = io.input("name> ")', '\tio.print("Hello, {name}!")',
         ), "first name> Hello, Alice!\n", stdin="Alice\n")
 
@@ -188,7 +187,7 @@ class IOTests(QynoTestCase):
         self.check_forms(("\tchar c = $in()", "\t$out(c)"), "", stdin="ab\n", status=65, error="char")
 
     def test_using_io_does_not_expose_math_functions(self):
-        self.compile_source(program("using io", "int main();", "\tprint(sqrt(9))"), error="using math.sqrt")
+        self.compile_source(program("using io", "int main();", "\tio.print(sqrt(9))"), error="using math.sqrt")
 
     def test_selective_using_stays_in_its_standard_module(self):
         for directive in ("using io.sqrt", "using math.print", "using math.input"):

@@ -24,46 +24,46 @@ class ModelTests(QynoTestCase):
             "p after field assignment: (8.0, 7.0)\n")
 
     def test_defaults_named_order_and_replacement(self):
-        self.check_program(POINT + program("int main();", "\tPoint p", "\tprint(p)",
-            "\tp = {y=4.0, x=3.0}", "\tprint(p.distance())", "\tp = {x=2.0}", "\tprint(p)"),
+        self.check_program(POINT + program("int main();", "\tPoint p", "\tio.print(p)",
+            "\tp = {y=4.0, x=3.0}", "\tio.print(p.distance())", "\tp = {x=2.0}", "\tio.print(p)"),
             "Point{x=0.0, y=0.0}\n5.0\nPoint{x=2.0, y=0.0}\n")
 
     def test_copy_value_argument_ref_argument_and_return(self):
         self.check_program(CELL + program("void local(Cell c);", "\tc.increase()",
             "void shared(ref Cell c);", "\tc.increase()", "Cell create(int n);", "\treturn {value_number=n}",
             "int main();", "\tCell a = create(2)", "\tCell b = a", "\tlocal(a)", "\tshared(ref b)",
-            "\tprint(a)", "\tprint(b)", "\tprint(create(5).value_number)"),
+            "\tio.print(a)", "\tio.print(b)", "\tio.print(create(5).value_number)"),
             "Cell{value_number=2}\nCell{value_number=3}\n5\n")
 
     def test_model_return_is_independent_of_ref_argument(self):
         self.check_program(CELL + program("Cell snapshot(ref Cell c);", "\treturn c", "int main();",
-            "\tCell a = {value_number=2}", "\tCell b = snapshot(ref a)", "\tb.increase()", "\tprint(a)", "\tprint(b)"),
+            "\tCell a = {value_number=2}", "\tCell b = snapshot(ref a)", "\tb.increase()", "\tio.print(a)", "\tio.print(b)"),
             "Cell{value_number=2}\nCell{value_number=3}\n")
 
     def test_local_reference_tracks_replacement_and_rebinding(self):
         self.check_program(CELL + program("int main();", "\tCell a", "\tCell b = {value_number=10}",
-            "\tref Cell alias = a.addr", "\talias.increase()", "\ta = {value_number=4}", "\tprint(alias)",
-            "\talias.addr = b.addr", "\talias.increase()", "\tprint(a)", "\tprint(b)"),
+            "\tref Cell alias = a.addr", "\talias.increase()", "\ta = {value_number=4}", "\tio.print(alias)",
+            "\talias.addr = b.addr", "\talias.increase()", "\tio.print(a)", "\tio.print(b)"),
             "Cell{value_number=4}\nCell{value_number=4}\nCell{value_number=11}\n")
 
     def test_array_defaults_add_copy_remove_and_clear(self):
         self.check_program(CELL + program("int main();", "\tCell cells[2]", "\tcells[0].increase()",
             "\tCell copy[] = cells", "\tcopy[1].increase()", "\tcopy.add()", "\tcopy.add({value_number=9})",
-            "\tcopy.remove_at(0)", "\tprint(cells)", "\tprint(copy)", "\tcopy.clear()", "\tprint(copy)"),
+            "\tcopy.remove_at(0)", "\tio.print(cells)", "\tio.print(copy)", "\tcopy.clear()", "\tio.print(copy)"),
             "[Cell{value_number=1}, Cell{value_number=0}]\n"
             "[Cell{value_number=1}, Cell{value_number=0}, Cell{value_number=9}]\n[]\n")
 
     def test_multidimensional_model_arrays(self):
         self.check_program(CELL + program("int main();", "\tCell grid[2][2]",
             "\tgrid[0][0].increase()", "\tCell other[][] = grid", "\tother[0][0].increase()",
-            "\tprint(grid[0])", "\tprint(other[0])"),
+            "\tio.print(grid[0])", "\tio.print(other[0])"),
             "[Cell{value_number=1}, Cell{value_number=0}]\n[Cell{value_number=2}, Cell{value_number=0}]\n")
 
     def test_nested_models_and_array_fields_deep_copy(self):
         self.check_program(CELL + program("model Box;", "\tCell cell", "\tint numbers[] = [1, 2]",
             "\tCell cells[] = [{value_number=7}]", "int main();", "\tBox a", "\tBox b = a",
             "\tb.cell.increase()", "\tb.numbers.add(3)", "\tb.cells[0].increase()",
-            "\tprint(a)", "\tprint(b)"),
+            "\tio.print(a)", "\tio.print(b)"),
             "Box{cell=Cell{value_number=0}, numbers=[1, 2], cells=[Cell{value_number=7}]}\n"
             "Box{cell=Cell{value_number=1}, numbers=[1, 2, 3], cells=[Cell{value_number=8}]}\n")
 
@@ -73,56 +73,56 @@ class ModelTests(QynoTestCase):
         self.check_program(program("model Data;", "\tint count", "\tstr text",
             "void increase(ref int n);", "\tn++", "int main();", "\tData d",
             "\tincrease(ref d.count)", f'\tfile source = io.file.open("{path}")',
-            "\tio.file.readline(source, ref d.text)", "\tio.file.close(source)", "\tprint(d)"),
+            "\tio.file.readline(source, ref d.text)", "\tio.file.close(source)", "\tio.print(d)"),
             'Data{count=1, text="日本"}\n')
 
     def test_direct_and_formatted_input_to_fields(self):
         self.check_program(program("model Data;", "\tint count", "\tstr text", "int main();", "\tData d",
-            "\tio.input(d.count)", '\tio.input("name> {d.text}")', "\tprint(d)"),
+            "\tio.input(d.count)", '\tio.input("name> {d.text}")', "\tio.print(d)"),
             'name> Data{count=7, text="Alice"}\n', stdin="7\nAlice\n")
 
     def test_method_with_user_ref_parameter_and_chaining(self):
         self.check_program(program("model Counter;", "\tint n", "\tvoid update(ref int total);",
             "\t\tthis.n++", "\t\ttotal += this.n", "\tCounter copy();", "\t\treturn this",
             "int main();", "\tCounter c", "\tint total = 10", "\tc.update(ref total)",
-            "\tprint(total)", "\tprint(c.copy().n)"), "11\n1\n")
+            "\tio.print(total)", "\tio.print(c.copy().n)"), "11\n1\n")
 
     def test_methods_on_temporary_values(self):
         self.check_program(POINT + program("Point create();", "\treturn {x=3.0, y=4.0}",
-            "int main();", "\tprint(create().distance())", "\tprint(Point().distance())", "\tcreate().move(1.0, 1.0)"),
+            "int main();", "\tio.print(create().distance())", "\tio.print(Point().distance())", "\tcreate().move(1.0, 1.0)"),
             "5.0\n0.0\n")
 
     def test_method_names_are_scoped_by_model(self):
         self.check_program(program("model A;", "\tint n", "\tint get() = 1", "model B;", "\tint n",
             "\tint get() = 2", "int get() = 3", "int main();", "\tA a", "\tB b",
-            '\tprint("{a.get()} {b.get()} {get()}")'), "1 2 3\n")
+            '\tio.print("{a.get()} {b.get()} {get()}")'), "1 2 3\n")
 
     def test_forward_type_definitions(self):
         self.check_program(program("Container create();", "\treturn {item={value_number=6}}", "model Container;",
-            "\tCell item", "int main();", "\tContainer c = create()", "\tprint(c.item.value_number)") + CELL, "6\n")
+            "\tCell item", "int main();", "\tContainer c = create()", "\tio.print(c.item.value_number)") + CELL, "6\n")
 
     def test_module_type_names_using_alias_and_selected_using(self):
         (self.directory / "geometry.qy").write_text(POINT)
         for directive, typename in [("", "geometry.Point"), ("using geometry as geo", "geo.Point"),
                                      ("using geometry", "Point"), ("using geometry.Point", "Point")]:
             with self.subTest(directive=directive):
-                self.check_program(program("import geometry", directive, "int main();", f"\t{typename} p = {{x=3.0, y=4.0}}", "\tprint(p.distance())"), "5.0\n")
+                self.check_program(program("import geometry", directive, "int main();", f"\t{typename} p = {{x=3.0, y=4.0}}", "\tio.print(p.distance())"), "5.0\n")
 
     def test_model_equality_including_arrays_and_text(self):
         self.check_program(program("model Data;", "\tfloat f = 1.5", "\tbool flag = true", '\tchar letter = "日"',
             '\tstr text = "abc"', "\tint items[] = [1, 2]", "int main();", "\tData a", "\tData b = a",
-            "\tprint(a == b)", "\tprint({} == a)", "\tData aa[] = [a]", "\tData bb[] = [b]", "\tprint(aa == bb)",
-            "\tb.items.add(3)", "\tprint(a != b)"), "true\ntrue\ntrue\ntrue\n")
+            "\tio.print(a == b)", "\tio.print({} == a)", "\tData aa[] = [a]", "\tData bb[] = [b]", "\tio.print(aa == bb)",
+            "\tb.items.add(3)", "\tio.print(a != b)"), "true\ntrue\ntrue\ntrue\n")
 
     def test_side_effects_in_initializers_follow_written_order(self):
         self.check_program(program("model Pair;", "\tint a", "\tint b", "int next(ref int n);", "\tn++", "\treturn n",
-            "int main();", "\tint n = 0", "\tPair p = {b=next(ref n), a=next(ref n)}", "\tprint(p)"),
+            "int main();", "\tint n = 0", "\tPair p = {b=next(ref n), a=next(ref n)}", "\tio.print(p)"),
             "Pair{a=2, b=1}\n")
 
     def test_field_update_indices_evaluated_once(self):
         self.check_program(CELL + program("int index(ref int n);", "\tn++", "\treturn 0",
             "int main();", "\tCell cells[1]", "\tint n = 0", "\tcells[index(ref n)].value_number += 7",
-            "\tcells[index(ref n)].increase()", '\tprint("{n} {cells[0].value_number}")'), "2 8\n")
+            "\tcells[index(ref n)].increase()", '\tio.print("{n} {cells[0].value_number}")'), "2 8\n")
 
     def test_active_field_ref_prevents_model_replacement(self):
         self.check_program(CELL + program("void replace(ref Cell c, ref int n);", "\tc = {}", "\tn++", "int main();",
@@ -141,7 +141,7 @@ class ModelTests(QynoTestCase):
         path = self.directory / "file.txt"
         source = program("model Resource;", "\tfile handle", "\tvoid close();", "\t\tio.file.close(this.handle)",
             "int main();", f'\tResource r = {{handle=io.file.open("{path}", "w")}}', "\tResource copy = r",
-            '\tio.file.write(copy.handle, "hello")', "\tcopy.close()", "\tprint(io.file.is_open(r.handle))")
+            '\tio.file.write(copy.handle, "hello")', "\tcopy.close()", "\tio.print(io.file.is_open(r.handle))")
         self.check_program(source, "false\n"); self.assertEqual(path.read_text(), "hello")
 
     def test_missing_close_in_model_is_compile_error(self):
@@ -163,7 +163,7 @@ class ModelTests(QynoTestCase):
 
     def test_default_expressions_and_array_limits(self):
         self.check_program(program("const int N = 2", "model Data;", "\tint n = N^3", "\tint values[N] = [1]",
-            "int main();", "\tData d", "\tprint(d)"), "Data{n=8, values=[1, 0]}\n")
+            "int main();", "\tData d", "\tio.print(d)"), "Data{n=8, values=[1, 0]}\n")
         self.compile_source(program("model Data;", "\tint values[1]", "int main();", "\tData d = {values=[1, 2]}"), error="上限")
 
     def test_invalid_definitions_and_initializers(self):
@@ -186,8 +186,8 @@ class ModelTests(QynoTestCase):
 
     def test_nominal_types_and_unknown_members(self):
         prefix = "model A;\n\tint n\nmodel B;\n\tint n\n"
-        for source, error in [("\tA a\n\tB b = a", "変換"), ("\tA a\n\tprint(a.missing)", "フィールド"),
-                              ("\tA a\n\ta.missing()", "メソッド"), ("\tA a\n\tB b\n\tprint(a == b)", "同じ型")]:
+        for source, error in [("\tA a\n\tB b = a", "変換"), ("\tA a\n\tio.print(a.missing)", "フィールド"),
+                              ("\tA a\n\ta.missing()", "メソッド"), ("\tA a\n\tB b\n\tio.print(a == b)", "同じ型")]:
             with self.subTest(source=source): self.compile_source(prefix + "int main();\n" + source + "\n", error=error)
 
     def test_wrong_method_arguments_and_receiver_type(self):
@@ -205,7 +205,7 @@ class ModelTests(QynoTestCase):
 
     def test_comparisons_capture_values_before_later_side_effects(self):
         self.check_program(CELL + program("Cell mutate(ref Cell c);", "\tc.increase()", "\treturn c",
-            "int main();", "\tCell c", "\tprint(c == mutate(ref c))", "\tprint(c.value_number)"), "false\n1\n")
+            "int main();", "\tCell c", "\tio.print(c == mutate(ref c))", "\tio.print(c.value_number)"), "false\n1\n")
 
     def test_temporary_file_model_method_closes_returned_handle(self):
         path = self.directory / "temporary.txt"
@@ -215,7 +215,7 @@ class ModelTests(QynoTestCase):
 
     def test_default_initializations_are_independent(self):
         self.check_program(CELL + program("model Box;", "\tCell child = {value_number=4}", "\tint items[] = [1]",
-            "int main();", "\tBox a", "\tBox b", "\ta.child.increase()", "\ta.items[0] = 8", "\tprint(b)"),
+            "int main();", "\tBox a", "\tBox b", "\ta.child.increase()", "\ta.items[0] = 8", "\tio.print(b)"),
             "Box{child=Cell{value_number=4}, items=[1]}\n")
 
     def test_model_fields_cannot_share_method_names(self):
@@ -226,10 +226,10 @@ class ModelTests(QynoTestCase):
         for depth in range(1, 20):
             definitions.append(f"model Level{depth};\n\tLevel{depth-1} left\n\tLevel{depth-1} right\n")
         source = "".join(definitions)
-        self.check_program(source + program("int main();", "\tLevel4 value", "\tprint(value.left.right.left.right.n)"), "7\n")
+        self.check_program(source + program("int main();", "\tLevel4 value", "\tio.print(value.left.right.left.right.n)"), "7\n")
 
     def test_windows_and_assembly_generation(self):
-        source = self.directory / "windows.qy"; source.write_text(POINT + program("model Box;", "\tPoint point", "\tvoid move();", "\t\tthis.point.move(1.0, 0.0)", "int main();", "\tPoint p = {x=3.0}", "\tp.move(1.0, 2.0)", "\tprint(p)"))
+        source = self.directory / "windows.qy"; source.write_text(POINT + program("model Box;", "\tPoint point", "\tvoid move();", "\t\tthis.point.move(1.0, 0.0)", "int main();", "\tPoint p = {x=3.0}", "\tp.move(1.0, 2.0)", "\tio.print(p)"))
         output = source.with_suffix(".exe")
         result = subprocess.run([str(self.compiler), str(source), "--target", "windows", "-o", str(output)], capture_output=True, timeout=10)
         self.assertEqual(result.returncode, 0, result.stderr.decode()); self.assertEqual(output.read_bytes()[:2], b"MZ")

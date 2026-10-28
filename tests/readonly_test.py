@@ -20,14 +20,14 @@ class ReadonlyTests(QynoTestCase):
             "const Point COPY = OFFSET", "const Point PAIR[2] = [ORIGIN, OFFSET]",
             "const Point OFFSET = {y=4.0, x=3.0}", "model Configuration;", "\tPoint anchor = {x=7.0}",
             "\tint size = 2", "\tint numbers[3] = [8]", "const Configuration CONFIG = {}",
-            "int main();", '\tprint("{X} {COPY.distance()} {PAIR[1].x}")',
-            "\tint numbers[CONFIG.size]", "\tprint(numbers)", "\tprint(CONFIG.numbers)")
+            "int main();", '\tio.print("{X} {COPY.distance()} {PAIR[1].x}")',
+            "\tint numbers[CONFIG.size]", "\tio.print(numbers)", "\tio.print(CONFIG.numbers)")
         self.check_program(source, "7.0 5.0 3.0\n[0, 0]\n[8, 0, 0]\n")
 
     def test_defaults_model_arrays_and_multidimensional_padding(self):
         self.check_program(POINT + program("model Box;", "\tPoint points[2]", "\tint matrix[2][2]",
-            "\tPoint point = {x=9.0}", "int main();", "\tconst Box box = {}", "\tprint(box)",
-            "\tconst Point points[2][2] = [[{x=1.0}]]", "\tprint(points)"),
+            "\tPoint point = {x=9.0}", "int main();", "\tconst Box box = {}", "\tio.print(box)",
+            "\tconst Point points[2][2] = [[{x=1.0}]]", "\tio.print(points)"),
             "Box{points=[Point{x=0.0, y=0.0}, Point{x=0.0, y=0.0}], matrix=[[0, 0], [0, 0]], point=Point{x=9.0, y=0.0}}\n"
             "[[Point{x=1.0, y=0.0}, Point{x=0.0, y=0.0}], [Point{x=0.0, y=0.0}, Point{x=0.0, y=0.0}]]\n")
 
@@ -37,15 +37,15 @@ class ReadonlyTests(QynoTestCase):
             "const Item A = {}", 'const Item B = {letter="B"}', "const Item C = {enabled=false}",
             "const bool SAME = A == Item()", "const bool DIFFERENT = A != B", "const Item ITEMS[] = [A, B]",
             "const bool ARRAY_SAME = ITEMS == [A, B]", "int main();",
-            '\tprint("{SAME} {DIFFERENT} {A == C} {ARRAY_SAME}")', "\tprint(A)"),
+            '\tio.print("{SAME} {DIFFERENT} {A == C} {ARRAY_SAME}")', "\tio.print(A)"),
             'true true false true\nItem{letter="A", enabled=true, text="日本", items=[1, 2]}\n')
 
     def test_constant_model_copy_value_argument_and_return_are_independent(self):
         self.check_program(POINT + program("Point change(Point p);", "\tp.move(10.0, 0.0)", "\treturn p",
             "int main();", "\tconst Point p = {x=3.0}", "\tPoint copy = p", "\tcopy.move(1.0, 0.0)",
-            "\tPoint result = change(p)", '\tprint("{p.x} {copy.x} {result.x}")',
+            "\tPoint result = change(p)", '\tio.print("{p.x} {copy.x} {result.x}")',
             "\tconst Point items[] = [p]", "\tPoint other[] = items", "\tother[0].move(5.0, 0.0)",
-            '\tprint("{items[0].x} {other[0].x}")'), "3.0 4.0 13.0\n3.0 8.0\n")
+            '\tio.print("{items[0].x} {other[0].x}")'), "3.0 4.0 13.0\n3.0 8.0\n")
 
     def test_const_initialization_rejects_runtime_and_readonly_calls(self):
         for declaration in ["const Point c = make()", "const double d = Point().distance()",
@@ -60,7 +60,7 @@ class ReadonlyTests(QynoTestCase):
         self.compile_source(POINT + program("const Point A = B", "const Point B = A", "int main();", "\treturn 0"), error="循環")
         self.compile_source(POINT + program("int main();", "\tconst Point a[1] = [{}, {}]"), error="上限")
         prefix=program("model Secret;", "\tprivate int n = 7", "\treadonly int get() = this.n")
-        self.check_program(prefix + program("const Secret S = {}", "int main();", "\tprint(S.get())", "\tprint(S)"), "7\nSecret{}\n")
+        self.check_program(prefix + program("const Secret S = {}", "int main();", "\tio.print(S.get())", "\tio.print(S)"), "7\nSecret{}\n")
         for code in ["const Secret S = {n=9}", "const Secret S = {}\nconst int N = S.n"]:
             self.compile_source(prefix + code + program("", "int main();", "\treturn 0"), error="private")
 
@@ -69,7 +69,7 @@ class ReadonlyTests(QynoTestCase):
         for depth in range(1, 21):
             definitions.append(f"model Level{depth};\n\tLevel{depth-1} left\n\tLevel{depth-1} right\n")
         prefix="".join(definitions)
-        self.check_program(prefix + program("int main();", "\tconst Level4 value = {}", "\tprint(value.left.right.left.right.n)"), "7\n")
+        self.check_program(prefix + program("int main();", "\tconst Level4 value = {}", "\tio.print(value.left.right.left.right.n)"), "7\n")
         self.compile_source(prefix + program("int main();", "\tconst Level20 value = {}"), error="100万")
 
     def test_all_readonly_mutations_and_permission_escalations_are_rejected(self):
@@ -102,18 +102,18 @@ class ReadonlyTests(QynoTestCase):
     def test_readonly_calls_private_readonly_void_and_local_mutations(self):
         self.check_program(program("model Counter;", "\tprivate int n = 7", "\tprivate readonly int hidden() = this.n",
             "\tpublic readonly void show(ref int output);", "\t\tint local = this.hidden()", "\t\tlocal++",
-            "\t\toutput = local", "\t\tprint(this)", "\tpublic readonly int get() = this.hidden()",
-            "int main();", "\tconst Counter c = {}", "\tint n", "\tc.show(ref n)", "\tprint(n)", "\tprint(c.get())"),
+            "\t\toutput = local", "\t\tio.print(this)", "\tpublic readonly int get() = this.hidden()",
+            "int main();", "\tconst Counter c = {}", "\tint n", "\tc.show(ref n)", "\tio.print(n)", "\tio.print(c.get())"),
             "Counter{}\n8\n7\n")
 
     def test_readonly_receiver_does_not_restrict_other_mutable_instance(self):
         self.check_program(program("model Counter;", "\tprivate int n = 7", "\treadonly void copy_into(ref Counter other);",
             "\t\tother.n = this.n", "\t\tother.n++", "\treadonly int get() = this.n", "int main();",
-            "\tconst Counter c = {}", "\tCounter other", "\tc.copy_into(ref other)", '\tprint("{c.get()} {other.get()}")'), "7 8\n")
+            "\tconst Counter c = {}", "\tCounter other", "\tc.copy_into(ref other)", '\tio.print("{c.get()} {other.get()}")'), "7 8\n")
 
     def test_readonly_does_not_imply_purity_or_constant_evaluation(self):
         self.check_program(POINT + program("model Console;", "\treadonly void read(ref int out);", '\t\tio.print("input")',
-            "\t\tio.input(out)", "int main();", "\tconst Console c = {}", "\tint n", "\tc.read(ref n)", "\tprint(n)"),
+            "\t\tio.input(out)", "int main();", "\tconst Console c = {}", "\tint n", "\tc.read(ref n)", "\tio.print(n)"),
             "input\n8\n", stdin="8\n")
 
     def test_const_scalars_arrays_models_and_nested_places_can_be_readonly_refs(self):
@@ -122,42 +122,42 @@ class ReadonlyTests(QynoTestCase):
             "double measure(ref readonly Point p) = p.distance()", "int total(ref readonly int items[]);",
             "\tint n", "\tfor(0 <= i < items.length, i++);", "\t\tn += items[i]", "\treturn n",
             "int main();", "\tconst double n = 7.0", "\tconst int items[] = [1, 2, 3]", "\tconst Box box = {}",
-            '\tprint("{scalar(ref n)} {total(ref items)} {forward(ref box.point)} {measure(ref box.points[0])}")'),
+            '\tio.print("{scalar(ref n)} {total(ref items)} {forward(ref box.point)} {measure(ref box.points[0])}")'),
             "7.0 6 5.0 0.0\n")
 
     def test_readonly_refs_cover_all_scalar_types_and_ranks(self):
         definitions=[]; calls=[]
         for ty, value in [("int","3"),("float","1.5"),("double","2.5"),("bool","true"),("str",'"日本"'),("char",'"界"')]:
-            definitions += [f"void show_{ty}(ref readonly {ty} x);", "\tprint(x)"]
+            definitions += [f"void show_{ty}(ref readonly {ty} x);", "\tio.print(x)"]
             calls += [f"\tconst {ty} {ty}_value = {value}", f"\tshow_{ty}(ref {ty}_value)"]
-        self.check_program(program(*definitions,"void show_matrix(ref readonly int a[][]);", "\tprint(a[1])", "int main();", *calls,
+        self.check_program(program(*definitions,"void show_matrix(ref readonly int a[][]);", "\tio.print(a[1])", "int main();", *calls,
             "\tconst int matrix[][] = [[1, 2], [3, 4]]", "\tshow_matrix(ref matrix)"), "3\n1.5\n2.5\ntrue\n日本\n界\n[3, 4]\n")
 
     def test_const_borrow_materializes_declared_array_capacity(self):
         self.check_program(program("model Box;", "\tint a[2] = [7]", "\treadonly int length() = size(ref this.a)",
             "int size(ref readonly int a[2]) = int(a.length)", "int matrix(ref readonly int a[2][2]) = int(a[1].length)",
             "int main();", "\tconst int a[2] = [1]", "\tconst int m[2][2] = []", "\tconst Box box = {}",
-            '\tprint("{size(ref a)} {matrix(ref m)} {box.length()} {size(ref box.a)}")'), "2 2 2 2\n")
+            '\tio.print("{size(ref a)} {matrix(ref m)} {box.length()} {size(ref box.a)}")'), "2 2 2 2\n")
 
     def test_model_matrix_literals_and_row_additions_clone_child_arrays(self):
         self.check_program(POINT + program("int main();", "\tPoint rows[][] = [[{x=1.0}], []]",
             "\tPoint row[] = [{x=2.0}]", "\trows.add(row)", "\trow[0].x = 9.0", "\trows[0].add({x=3.0})",
-            "\tprint(rows)", "\tPoint copy[][] = rows", "\tcopy[2][0].x = 8.0", "\tprint(rows[2][0].x)"),
+            "\tio.print(rows)", "\tPoint copy[][] = rows", "\tcopy[2][0].x = 8.0", "\tio.print(rows[2][0].x)"),
             "[[Point{x=1.0, y=0.0}, Point{x=3.0, y=0.0}], [], [Point{x=2.0, y=0.0}]]\n2.0\n")
 
     def test_readonly_borrow_sees_writes_through_existing_mutable_alias(self):
         self.check_program(POINT + program("void change(ref readonly Point view, ref Point writer);", "\twriter.x++",
-            "\tprint(view.x)", "int main();", "\tPoint p = {x=3.0}", "\tref Point alias = p.addr", "\tchange(ref alias, ref p)"), "4.0\n")
+            "\tio.print(view.x)", "int main();", "\tPoint p = {x=3.0}", "\tref Point alias = p.addr", "\tchange(ref alias, ref p)"), "4.0\n")
 
     def test_const_materialization_and_index_evaluation_are_once_and_ordered(self):
         self.check_program(POINT + program("int index(ref int n);", "\tn++", "\treturn 0", "int show(ref readonly int item, int later);",
-            '\tprint("{item} {later}")', "\treturn item", "int main();", "\tconst int a[] = [7]", "\tint n",
-            "\tshow(ref a[index(ref n)], n)", "\tprint(n)"), "7 1\n1\n")
+            '\tio.print("{item} {later}")', "\treturn item", "int main();", "\tconst int a[] = [7]", "\tint n",
+            "\tshow(ref a[index(ref n)], n)", "\tio.print(n)"), "7 1\n1\n")
 
     def test_const_materialization_can_be_repeated_in_loops_and_recursion(self):
         self.check_program(POINT + program("int count(ref readonly Point p, int n);", "\tif(n == 0);", "\t\treturn int(p.x)",
             "\treturn count(ref p, n - 1)", "int main();", "\tconst Point p = {x=3.0}", "\tint total",
-            "\tfor(0 <= i < 500, i++);", "\t\ttotal += count(ref p, 2)", "\tprint(total)"), "1500\n")
+            "\tfor(0 <= i < 500, i++);", "\t\ttotal += count(ref p, 2)", "\tio.print(total)"), "1500\n")
 
     def test_explicit_ref_type_rank_capacity_loop_and_lifetime_rules(self):
         prefix=POINT+program("double read(ref readonly Point p) = p.x", "int sized(ref readonly int a[1]) = int(a.length)")
@@ -165,7 +165,7 @@ class ReadonlyTests(QynoTestCase):
                 ("int n\n\tread(ref n)","型"), ("int a[][] = [[1]]\n\tsized(ref a)","型"),
                 ("int a[2]\n\tsized(ref a)","上限"), ("for(0 <= i < 2, i++);\n\t\tsized(ref i)","繰り返し")]:
             with self.subTest(body=body): self.compile_source(prefix+program("int main();", "\t"+body), error=error)
-        self.compile_source(program("void read(ref readonly str c);", "\tprint(c)", "int main();", '\tstr text = "ab"',
+        self.compile_source(program("void read(ref readonly str c);", "\tio.print(c)", "int main();", '\tstr text = "ab"',
             "\tread(ref text[0])"), error="文字列内")
 
     def test_readonly_field_borrow_retains_owner_and_array_relocation_guards(self):
@@ -176,7 +176,7 @@ class ReadonlyTests(QynoTestCase):
 
     def test_const_call_rejects_unannotated_method_even_if_body_only_reads(self):
         self.compile_source(program("model A;", "\tint n = 7", "\tint get() = this.n", "int main();",
-            "\tconst A a = {}", "\tprint(a.get())"), error="readonly ではありません")
+            "\tconst A a = {}", "\tio.print(a.get())"), error="readonly ではありません")
         self.compile_source(program("model A;", "\tint n", "\tint get() = this.n", "\treadonly int read() = this.get()",
             "int main();", "\treturn 0"), error="readonly")
 
@@ -190,7 +190,7 @@ class ReadonlyTests(QynoTestCase):
             "\t\tthis.handle = io.file.open(path)", "\treadonly bool is_open() = observe(ref this.handle)",
             "\treadonly bool same() = this.handle == this.handle", "\tvoid close();", "\t\tio.file.close(this.handle)",
             "bool observe(ref readonly file f) = io.file.is_open(f)")
-        body=program("int main();", "\tReader r", f'\tr.open("{path}")', '\tprint("{r.is_open()} {r.same()} {r}")')
+        body=program("int main();", "\tReader r", f'\tr.open("{path}")', '\tio.print("{r.is_open()} {r.same()} {r}")')
         self.check_program(prefix+body+"\tr.close()\n", "true true Reader{}\n")
         self.compile_source(prefix+body, error="close")
         self.compile_source(prefix+body+"\tif(true);\n\t\treturn 0\n\tr.close()\n", error="close")
@@ -218,14 +218,14 @@ class ReadonlyTests(QynoTestCase):
             "\treadonly int get() = this.n", "\treadonly void independent(str path);", "\t\tint copy = this.n", "\t\tcopy++",
             '\t\tfile local = io.file.open(path, "w")', "\t\tio.file.write(local, copy)", "\t\tio.file.close(local)",
             "bool observe(ref readonly Reader reader) = reader.get() == 7", "int main();", "\tReader r",
-            f'\tr.independent("{path}")', "\tprint(observe(ref r))"), "true\n")
+            f'\tr.independent("{path}")', "\tio.print(observe(ref r))"), "true\n")
         self.assertEqual(path.read_text(), "8")
 
     def test_readonly_file_containers_can_be_observed_and_readonly_forwarded(self):
         self.check_program(program("model Holder;", "\tfile handle", "\treadonly bool inspect() = io.file.is_open(this.handle)",
             "bool observe(ref readonly Holder h) = forward(ref h)", "bool forward(ref readonly Holder h) = h.inspect()",
             "bool array(ref readonly Holder h[]) = h[0] == h[0]", "int main();", "\tHolder h", "\tHolder list[1]",
-            '\tprint("{observe(ref h)} {array(ref list)}")', "\tprint(h)"), "false true\nHolder{handle=<file>}\n")
+            '\tio.print("{observe(ref h)} {array(ref list)}")', "\tio.print(h)"), "false true\nHolder{handle=<file>}\n")
 
     def test_const_models_containing_files_are_rejected_even_when_empty_or_private(self):
         for fields in [["private file handle"], ["file handles[]"], ["file handles[0]"]]:
@@ -235,7 +235,7 @@ class ReadonlyTests(QynoTestCase):
         self.compile_source(program("model Resource;", "\tfile handles[]", "model Box;", "\tResource children[]",
             "int main();", "\tconst Box box = {}"), error="file")
         self.check_program(program("const file handles[2] = []", "int main();", "\tio.file.close(handles[0])",
-            "\tprint(io.file.is_open(handles[1]))"), "false\n")
+            "\tio.print(io.file.is_open(handles[1]))"), "false\n")
 
     def test_invalid_modifiers_positions_and_reserved_names(self):
         sources=["readonly int top() = 1", "model A;\n\treadonly int n", "model A;\n\treadonly readonly int get() = 1",
@@ -252,9 +252,9 @@ class ReadonlyTests(QynoTestCase):
         for using,root in [("", "geometry"),("using geometry as geo", "geo")]:
             with self.subTest(using=using):
                 self.check_program(program("import geometry", using, f"const double X = {root}.ORIGIN.x", "int main();",
-                    f'\tprint("{{X}} {{{root}.ORIGIN.distance()}} {{{root}.measure(ref {root}.ORIGIN)}}")'), "3.0 5.0 5.0\n")
+                    f'\tio.print("{{X}} {{{root}.ORIGIN.distance()}} {{{root}.measure(ref {root}.ORIGIN)}}")'), "3.0 5.0 5.0\n")
                 self.compile_source(program("import geometry", using, "int main();", f"\t{root}.ORIGIN.move(1.0, 0.0)"), error="readonly")
-        self.check_program(program("import geometry", "using geometry.ORIGIN", "int main();", "\tprint(ORIGIN.distance())"), "5.0\n")
+        self.check_program(program("import geometry", "using geometry.ORIGIN", "int main();", "\tio.print(ORIGIN.distance())"), "5.0\n")
 
     def test_windows_and_assembly_generation(self):
         source=self.directory/"readonly.qy"; source.write_text((ROOT/"examples/models/readonly.qy").read_text())

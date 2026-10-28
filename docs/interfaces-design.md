@@ -59,7 +59,7 @@ model Rectangle implements Shape;
 double get_area(ref readonly Shape shape) = shape.area()
 
 void print_area(ref readonly Shape shape);
-	print(get_area(ref shape))
+	io.print(get_area(ref shape))
 
 int main();
 	Circle circle = {radius=2.0}

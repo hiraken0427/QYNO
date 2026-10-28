@@ -24,26 +24,26 @@ class VisibilityTests(QynoTestCase):
             "\tprivate void add(int n);", "\t\tthis.count += n",
             "\tpublic void update(Counter other);", "\t\tother.add(3)", "\t\tthis.count = other.count",
             "\tpublic int current() = this.count", "int main();", "\tCounter a", "\tCounter b",
-            "\ta.update(b)", "\tprint(a.current())", "\tprint(b.current())")
+            "\ta.update(b)", "\tio.print(a.current())", "\tio.print(b.current())")
         self.check_program(source, "7\n4\n")
 
     def test_public_and_default_visibility(self):
         self.check_program(program("model Data;", "\tpublic int first = 1", "\tint second = 2",
             "\tpublic int sum() = this.first + this.second", "\tint get() = this.second",
             "int main();", "\tData d = {first=3, second=4}", "\td.first++", "\td.second++",
-            '\tprint("{d} {d.sum()} {d.get()}")'), "Data{first=4, second=5} 9 5\n")
+            '\tio.print("{d} {d.sum()} {d.get()}")'), "Data{first=4, second=5} 9 5\n")
 
     def test_all_external_field_operations_are_rejected(self):
         prefix = program("model Data;", "\tprivate int number", "\tprivate int numbers[] = [1]",
             '\tprivate str text = "ab"', "\tprivate bool flag", "\tprivate double decimal",
             '\tprivate char letter = "A"', "\tprivate file handle",
             "void increase(ref int n);", "\tn++", "void grow(ref int a[]);", "\ta.add()")
-        operations = ["print(d.number)", "d.number = 1", "d.number += 1", "d.number -= 1",
+        operations = ["io.print(d.number)", "d.number = 1", "d.number += 1", "d.number -= 1",
             "d.number++", "d.number--", "increase(ref d.number)", "grow(ref d.numbers)",
-            "print(d.numbers[0])", "d.numbers[0] = 3", "d.numbers[0]++", "print(d.numbers.length)",
-            "d.numbers.add()", "d.numbers.remove_at(0)", "d.numbers.clear()", "print(d.text[0])",
-            'd.text[0] = "z"', "print(d.text.length)", "io.input(d.number)",
-            'io.input("value> {d.number}")', 'print("{d.number}")', "io.input(d.flag)",
+            "io.print(d.numbers[0])", "d.numbers[0] = 3", "d.numbers[0]++", "io.print(d.numbers.length)",
+            "d.numbers.add()", "d.numbers.remove_at(0)", "d.numbers.clear()", "io.print(d.text[0])",
+            'd.text[0] = "z"', "io.print(d.text.length)", "io.input(d.number)",
+            'io.input("value> {d.number}")', 'io.print("{d.number}")', "io.input(d.flag)",
             "io.input(d.decimal)", "io.input(d.letter)", "io.file.is_open(d.handle)",
             'file out = io.file.open("unused", "w")\n\tio.file.write(out, "{d.number}")\n\tio.file.close(out)']
         for operation in operations:
@@ -68,20 +68,20 @@ class VisibilityTests(QynoTestCase):
 
     def test_unreachable_code_and_unused_methods_are_checked(self):
         self.compile_source(COUNTER + program("int main();", "\tCounter c", "\tif(false);", "\t\tc.count++"), error="private")
-        self.compile_source(COUNTER + program("model Other;", "\tvoid unused();", "\t\tCounter c", "\t\tprint(c.count)",
+        self.compile_source(COUNTER + program("model Other;", "\tvoid unused();", "\t\tCounter c", "\t\tio.print(c.count)",
             "int main();", "\treturn 0"), error="private")
 
     def test_alias_value_array_temporary_and_return_cannot_bypass_access(self):
         prefix = COUNTER + program("Counter create();", "\treturn {}")
-        bodies = ["Counter c\n\tref Counter alias = c.addr\n\tprint(alias.count)",
-            "Counter c\n\tprint(c.value.count)", "Counter items[1]\n\tprint(items[0].count)",
-            "print(Counter().count)", "print(create().count)", "create().add_positive(1)"]
+        bodies = ["Counter c\n\tref Counter alias = c.addr\n\tio.print(alias.count)",
+            "Counter c\n\tio.print(c.value.count)", "Counter items[1]\n\tio.print(items[0].count)",
+            "io.print(Counter().count)", "io.print(create().count)", "create().add_positive(1)"]
         for body in bodies:
             with self.subTest(body=body):
                 self.compile_source(prefix + program("int main();", "\t" + body), error="private")
 
     def test_external_explicit_initializers_in_all_contexts_are_rejected(self):
-        prefix = COUNTER + program("void consume(Counter c);", "\tprint(c.current())")
+        prefix = COUNTER + program("void consume(Counter c);", "\tio.print(c.current())")
         bodies = ["Counter c = {count=5}", "Counter c\n\tc = {count=5}", "consume({count=5})",
             "Counter items[] = [{count=5}]", "Counter items[]\n\titems.add({count=5})",
             "Counter items[1]\n\titems[0] = {count=5}"]
@@ -92,14 +92,14 @@ class VisibilityTests(QynoTestCase):
 
     def test_omitted_defaults_and_internal_named_initializers(self):
         self.check_program(COUNTER + program("int main();", "\tCounter a", "\tCounter b = {}", "\tCounter c = Counter()",
-            '\tprint("{a.current()} {b.current()} {c.current()}")', "\ta.increment()",
-            "\tCounter doubled = a.doubled()", "\tprint(doubled.current())", "\ta = {}", "\tprint(a.current())"),
+            '\tio.print("{a.current()} {b.current()} {c.current()}")', "\ta.increment()",
+            "\tCounter doubled = a.doubled()", "\tio.print(doubled.current())", "\ta = {}", "\tio.print(a.current())"),
             "0 0 0\n2\n0\n")
 
     def test_inferred_array_rechecks_do_not_treat_defaults_as_explicit_fields(self):
-        self.check_program(COUNTER + program("int main();", "\tprint([Counter(), Counter()])",
-            '\tprint("{[Counter(), Counter()]}")', "\tCounter counters[] = [Counter(), Counter()]",
-            "\tprint(counters)"), "[Counter{}, Counter{}]\n" * 3)
+        self.check_program(COUNTER + program("int main();", "\tio.print([Counter(), Counter()])",
+            '\tio.print("{[Counter(), Counter()]}")', "\tCounter counters[] = [Counter(), Counter()]",
+            "\tio.print(counters)"), "[Counter{}, Counter{}]\n" * 3)
 
     def test_internal_initializers_in_arrays_calls_assignments_and_returns(self):
         self.check_program(program("model Secret;", "\tprivate int n = 2", "\tint get() = this.n",
@@ -107,12 +107,12 @@ class VisibilityTests(QynoTestCase):
             "\tSecret make();", "\t\tSecret local = {n=3}", "\t\tlocal = {n=4}",
             "\t\tSecret items[]", "\t\titems.add({n=5})", "\t\tSecret list[] = [{n=6}]",
             "\t\treturn this.take({n=local.n + items[0].n + list[0].n})",
-            "int main();", "\tSecret s", "\tSecret result = s.make()", "\tprint(result.get())"), "15\n")
+            "int main();", "\tSecret s", "\tSecret result = s.make()", "\tio.print(result.get())"), "15\n")
 
     def test_each_nested_member_uses_its_own_owner(self):
         prefix = program("model Inner;", "\tprivate int secret = 7", "\tint get() = this.secret")
         self.check_program(prefix + program("model Outer;", "\tprivate Inner inner", "\tint get() = this.inner.get()",
-            "int main();", "\tOuter o", "\tprint(o.get())"), "7\n")
+            "int main();", "\tOuter o", "\tio.print(o.get())"), "7\n")
         for body in ["return this.inner.secret", "Inner x = {secret=9}", "this.inner = {secret=9}"]:
             with self.subTest(body=body):
                 self.compile_source(prefix + program("model Outer;", "\tprivate Inner inner", "\tint bad();", "\t\t"+body,
@@ -126,7 +126,7 @@ class VisibilityTests(QynoTestCase):
         source = program("model Secret;", "\tprivate int n = 7", "\tint get() = this.n",
             "model Holder;", "\tprivate Secret hidden = {}", "\tpublic Secret visible = {}",
             "\tint get() = this.hidden.get()", "int main();", "\tHolder a", "\tHolder b = {}",
-            "\tHolder c = Holder()", '\tprint("{a.get()} {b.get()} {c.get()}")', "\tprint(a)")
+            "\tHolder c = Holder()", '\tio.print("{a.get()} {b.get()} {c.get()}")', "\tio.print(a)")
         self.check_program(source, "7 7 7\nHolder{visible=Secret{}}\n")
         # The nested initializer is written in Holder, so it cannot name Secret.n.
         self.compile_source(program("model Secret;", "\tprivate int n = 7", "model Holder;",
@@ -136,26 +136,26 @@ class VisibilityTests(QynoTestCase):
         self.check_program(COUNTER + program("Counter identity(Counter c) = c", "Counter snapshot(ref Counter c) = c",
             "int main();", "\tCounter a", "\ta.increment()", "\tCounter b = identity(a)",
             "\tCounter c = snapshot(ref a)", "\tCounter items[] = [a]", "\tCounter copies[] = items",
-            "\ta.increment()", '\tprint("{b.current()} {c.current()} {copies[0].current()}")',
-            '\tprint("{a == b} {b == c} {items == copies}")', "\tb = a", "\tprint(a == b)",
-            "\tb = {}", "\tprint(b.current())"), "1 1 1\nfalse true true\ntrue\n0\n")
+            "\ta.increment()", '\tio.print("{b.current()} {c.current()} {copies[0].current()}")',
+            '\tio.print("{a == b} {b == c} {items == copies}")', "\tb = a", "\tio.print(a == b)",
+            "\tb = {}", "\tio.print(b.current())"), "1 1 1\nfalse true true\ntrue\n0\n")
 
     def test_private_arrays_models_and_text_are_deep_copied(self):
         self.check_program(program("model Cell;", "\tprivate int n = 3", "\tint get() = this.n",
             "\tvoid change();", "\t\tthis.n++", "model Box;", "\tprivate Cell child", "\tprivate int items[] = [2]",
             '\tprivate str text = "abc"', "\tvoid change();", "\t\tthis.child.change()", "\t\tthis.items[0]++",
             "\t\tthis.items.add(9)", "\t\tthis.items.remove_at(1)",
-            '\t\tthis.text[0] = "z"', "\tvoid show();", '\t\tprint("{this.child.get()} {this.items} {this.text}")',
-            "int main();", "\tBox a", "\tBox b = a", "\tb.change()", "\ta.show()", "\tb.show()", "\tprint(a == b)"),
+            '\t\tthis.text[0] = "z"', "\tvoid show();", '\t\tio.print("{this.child.get()} {this.items} {this.text}")',
+            "int main();", "\tBox a", "\tBox b = a", "\tb.change()", "\ta.show()", "\tb.show()", "\tio.print(a == b)"),
             "3 [2] abc\n4 [3] zbc\nfalse\n")
 
     def test_automatic_display_omits_private_recursively_and_uses_public_commas(self):
-        self.check_program(program("model Empty;", "\tprivate int secret = 123", "\tvoid show();", "\t\tprint(this)",
+        self.check_program(program("model Empty;", "\tprivate int secret = 123", "\tvoid show();", "\t\tio.print(this)",
             "model Mixed;", "\tprivate int first = 99", "\tpublic int shown = 1", "\tprivate int middle = 88",
-            '\tpublic str text = "ok"', "\tprivate int last = 77", "\tvoid show();", "\t\tprint(this)",
+            '\tpublic str text = "ok"', "\tprivate int last = 77", "\tvoid show();", "\t\tio.print(this)",
             "model Outer;", "\tprivate int key = 42", "\tEmpty hidden", "\tMixed visible",
-            "int main();", "\tEmpty e", "\tMixed m", "\tprint(e)", "\te.show()", "\tprint(m)", "\tm.show()",
-            "\tOuter o", "\tprint(o)", "\tMixed array[] = [m]", '\tprint("{array}")'),
+            "int main();", "\tEmpty e", "\tMixed m", "\tio.print(e)", "\te.show()", "\tio.print(m)", "\tm.show()",
+            "\tOuter o", "\tio.print(o)", "\tMixed array[] = [m]", '\tio.print("{array}")'),
             'Empty{}\nEmpty{}\nMixed{shown=1, text="ok"}\nMixed{shown=1, text="ok"}\n'
             'Outer{hidden=Empty{}, visible=Mixed{shown=1, text="ok"}}\n[Mixed{shown=1, text="ok"}]\n')
 
@@ -163,7 +163,7 @@ class VisibilityTests(QynoTestCase):
         self.check_program(program("void increase(ref int n);", "\tn++", "void grow(ref int a[]);", "\ta.add(4)",
             "model Data;", "\tprivate int n", "\tprivate int items[] = [1]", "\tvoid read();", "\t\tio.input(this.n)",
             '\t\tio.input("next> {this.items[0]}")', "\t\tincrease(ref this.n)", "\t\tgrow(ref this.items)",
-            '\t\tprint("{this.n} {this.items}")', "int main();", "\tData d", "\td.read()"), "next> 8 [3, 4]\n", stdin="7\n3\n")
+            '\t\tio.print("{this.n} {this.items}")', "int main();", "\tData d", "\td.read()"), "next> 8 [3, 4]\n", stdin="7\n3\n")
 
     def test_private_file_methods_preserve_close_analysis(self):
         path = self.directory / "private.txt"
@@ -172,7 +172,7 @@ class VisibilityTests(QynoTestCase):
             "\t\tio.file.close(this.handle)", "\t\tthis.handle = io.file.open(path)",
             "\tbool readline(ref str line) = io.file.readline(this.handle, ref line)",
             "\tvoid close();", "\t\tio.file.close(this.handle)")
-        body = program("int main();", "\tReader r", f'\tr.open("{path}")', "\tstr line", "\tr.readline(ref line)", "\tprint(line)")
+        body = program("int main();", "\tReader r", f'\tr.open("{path}")', "\tstr line", "\tr.readline(ref line)", "\tio.print(line)")
         self.check_program(prefix + body + "\tr.close()\n", "日本\n")
         self.compile_source(prefix + body, error="close")
         self.compile_source(prefix + body + "\tif(true);\n\t\treturn 0\n\tr.close()\n", error="close")
@@ -181,7 +181,7 @@ class VisibilityTests(QynoTestCase):
     def test_display_does_not_waive_private_file_close(self):
         prefix = program("model Resource;", "\tprivate file handle", "\tvoid open(str path);",
             '\t\tthis.handle = io.file.open(path, "w")', "\tvoid close();", "\t\tio.file.close(this.handle)")
-        body = program("int main();", "\tResource r", f'\tr.open("{self.directory / "out.txt"}")', "\tprint(r)")
+        body = program("int main();", "\tResource r", f'\tr.open("{self.directory / "out.txt"}")', "\tio.print(r)")
         self.compile_source(prefix + body, error="close")
         self.check_program(prefix + body + "\tr.close()\n", "Resource{}\n")
 
@@ -208,30 +208,30 @@ class VisibilityTests(QynoTestCase):
         return self.compile_source(main, error=error)
 
     def test_modules_aliases_and_using_do_not_grant_private_access(self):
-        for using, typename in [("", "lib.Counter"), ("using lib as alias\n", "alias.Counter"),
-                ("using lib\n", "Counter"), ("using lib.Counter\n", "Counter")]:
+        for using, typename in [("", "library.Counter"), ("using library as alias\n", "alias.Counter"),
+                ("using library\n", "Counter"), ("using library.Counter\n", "Counter")]:
             with self.subTest(using=using):
-                main = "import lib\n" + using + program("int main();", f"\t{typename} c", "\tprint(c.count)")
-                result = self.compile_modules(main, {"lib.qy": COUNTER}, error="Counter.count は private")
-                self.assertIn(str(self.directory / "lib.qy") + ":2:", result.stderr.decode())
-        main = program("import lib", "using lib as alias", "int main();", "\talias.Counter c", "\tc.increment()", "\tprint(c.current())",
-            "\talias.Counter doubled = c.doubled()", "\tprint(doubled.current())")
-        binary = self.compile_modules(main, {"lib.qy": COUNTER})
+                main = "import library\n" + using + program("int main();", f"\t{typename} c", "\tio.print(c.count)")
+                result = self.compile_modules(main, {"library.qy": COUNTER}, error="Counter.count は private")
+                self.assertIn(str(self.directory / "library.qy") + ":2:", result.stderr.decode())
+        main = program("import library", "using library as alias", "int main();", "\talias.Counter c", "\tc.increment()", "\tio.print(c.current())",
+            "\talias.Counter doubled = c.doubled()", "\tio.print(doubled.current())")
+        binary = self.compile_modules(main, {"library.qy": COUNTER})
         result = subprocess.run([str(binary)], capture_output=True, timeout=5)
         self.assertEqual((result.returncode, result.stdout, result.stderr), (0, b"1\n2\n", b""))
 
     def test_same_spelling_in_different_modules_is_not_same_owner(self):
-        main = program("import lib", "model Counter;", "\tprivate int count", "\tint bad(lib.Counter other) = other.count",
+        main = program("import library", "model Counter;", "\tprivate int count", "\tint bad(library.Counter other) = other.count",
             "int main();", "\treturn 0")
-        self.compile_modules(main, {"lib.qy": COUNTER}, error="private")
+        self.compile_modules(main, {"library.qy": COUNTER}, error="private")
 
     def test_imported_defaults_do_not_leak_private_initializer_privileges(self):
         library = program("model Secret;", "\tprivate int n = 3", "\tint get() = this.n",
             "model Holder;", "\tprivate Secret hidden", "\tint get() = this.hidden.get()")
-        main = program("import lib", "using lib", "int main();", "\tHolder h = {}", "\tprint(h.get())")
-        binary = self.compile_modules(main, {"lib.qy": library})
+        main = program("import library", "using library", "int main();", "\tHolder h = {}", "\tio.print(h.get())")
+        binary = self.compile_modules(main, {"library.qy": library})
         self.assertEqual(subprocess.check_output([str(binary)], timeout=5), b"3\n")
-        self.compile_modules(program("import lib", "using lib", "int main();", "\tHolder h = {hidden={}}"), {"lib.qy": library}, error="private")
+        self.compile_modules(program("import library", "using library", "int main();", "\tHolder h = {hidden={}}"), {"library.qy": library}, error="private")
 
     def test_windows_and_assembly_visibility_output(self):
         source = self.directory / "visibility.qy"

@@ -15,19 +15,19 @@ int main();
 	complex first = complex(real=3.0, imag=4.0)
 	complex second = 3.0 + i4.0
 	complex third = 3.0 + 4.0i
-	print(first == second and second == third)
-	print("real={first.real}, imag={first.imag}, magnitude={|first|}")
-	print(first * second)
-	print(first / second)
-	print(square(first))
-	print(first^-1)
-	print(sqrt(first))
-	print(conjugate(first))
+	io.print(first == second and second == third)
+	io.print("real={first.real}, imag={first.imag}, magnitude={|first|}")
+	io.print(first * second)
+	io.print(first / second)
+	io.print(square(first))
+	io.print(first^-1)
+	io.print(sqrt(first))
+	io.print(conjugate(first))
 	complex values[] = [first, second]
 	increase(ref values[0])
 	values.add()
-	print(values)
-	print(first)
+	io.print(values)
+	io.print(first)
 	Signal signal
-	print(signal.magnitude())
+	io.print(signal.magnitude())
 	return 0

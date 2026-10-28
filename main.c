@@ -282,7 +282,7 @@ int main(int argc, char **argv)
     free(roots);
 
     /* 4. 型検査 */
-    typecheck(ast);
+    typecheck(ast, target);
 
     /* -S：アセンブリだけを出力して終わる */
     if (asm_only) {

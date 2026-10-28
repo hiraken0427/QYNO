@@ -1,4 +1,4 @@
-# QYNO 0.26.16
+# QYNO 0.27.0
 
 C99とGCCの128bit数値拡張で実装した、Linux x64 / Windows x64 向けのコンパイラ。
 UTF-8 の `.qy` ソースから実行ファイルを直接生成する。
@@ -19,7 +19,7 @@ make test
 using io
 
 int main();
-	print("Hello, QYNO!")
+	io.print("Hello, QYNO!")
 	return 0
 ```
 
@@ -35,9 +35,9 @@ int main();
 
 ## VS Code 拡張
 
-[QYNO 0.26.16](vscode-extensions/README.md) はハイライト、ユーザー定義の関数名・変数名の補完、
+[QYNO 0.27.0](vscode-extensions/README.md) はハイライト、ユーザー定義の関数名・変数名の補完、
 定義への移動、引数ヒント、セミコロン後の自動インデント、qyc連携の構文・型エラーの赤線表示に対応する。
-[vscode-extensions/0.26.16_VSCode_option.vsix](vscode-extensions/0.26.16_VSCode_option.vsix) を
+[vscode-extensions/0.27.0_VSCode_option.vsix](vscode-extensions/0.27.0_VSCode_option.vsix) を
 VS Code の「VSIX からのインストール…」で指定する。
 診断には別途qycが必要。PATHにない場合は拡張設定の `qyno.compilerPath` に実行ファイルを指定する。
 
@@ -203,7 +203,8 @@ interface は参照引数の契約に限定し、interface 型の変数・異種
 ## 標準モジュール
 
 よく使う機能は標準モジュールとして用意し、import なしで利用できる。
-現在は `io`（コンソール入出力）、`io.file`（UTF-8ファイル操作）と `math`（数学関数）が該当する。
+現在は `io`（コンソール入出力）、`io.file`（UTF-8ファイル操作）、`io.path`（パス文字列操作）、
+`math`（数学関数）、`lib`（サイズ・長さの取得）が該当する。
 
 ```text
 int main();
@@ -214,7 +215,7 @@ int main();
 ```
 
 `using io` を書けば `print` / `input` に省略できる。
-従来の裸の呼び出しも互換性のため維持する。
+0.27.0から裸の呼び出しにはusingが必要。importだけでは関数名を省略できない。
 使用例は [examples/io/greeting.qy](examples/io/greeting.qy)、詳細は [io の仕様](docs/io.md) を参照。
 
 ## ファイル操作
@@ -281,11 +282,11 @@ using io
 
 int main();
 	int flags = 0b0011 or 0o4
-	print((flags and 4) != 0)
-	print("{flags:0b}, {flags:0o}, {flags:0d}, {flags:0x}")
+	io.print((flags and 4) != 0)
+	io.print("{flags:0b}, {flags:0o}, {flags:0d}, {flags:0x}")
 	str text = str(flags, base=16, prefix=true)
 	int restored = int(text)
-	input("hex> {flags:0x}")
+	io.input("hex> {flags:0x}")
 	return 0
 ```
 
@@ -299,3 +300,28 @@ int main();
 
 通常の開発は `dev` で行い、検証した変更を `main` へ反映する。
 Git の運用方針は [AGENTS.md](AGENTS.md) を参照。
+
+## 標準ライブラリ（0.27.0）
+
+裸のprint/inputにも `using io` または選択usingが必要。修飾名の `io.print(...)` / `io.input(...)` はimport・using不要。
+`math`・`lib`・`io.path`でも同じ規則を使う。importだけでは関数名を省略できない。
+
+`lib.size(value)` は型のビット幅・UTF-8本体・現在の全配列要素などの合計を返す。
+メモリ管理情報・予約容量・ABIスロットのサイズは含まない。
+`lib.length(value)` は文字列の書記素数、配列の外側の要素数、数値の整数部分の10進桁数をint_64で返す。
+
+```text
+using io
+
+int main();
+	int matrix[2][3]
+	print(lib.size(matrix))       // 192
+	print(lib.size(matrix[0][0])) // 32
+	print(lib.length(42))         // 2
+	print(lib.length(3.1415))     // 1
+	print(io.path.join("data", "settings.json"))
+	return 0
+```
+
+io.pathは結合・ファイル名・親・拡張子・stem・絶対/相対判定・normalize・拡張子置換の基本9関数を提供する。
+詳細: [0.27.0仕様と拡張候補](docs/standard-library-0270-design.md)、[実行例](examples/stdlib/main.qy)。

@@ -10,10 +10,10 @@ identity(value) = value
 int main();
 	str text = "A🇯🇵é👩🏽‍💻"
 	char letter = text[2]
-	print("{text.length} {letter.length}")
+	io.print("{text.length} {letter.length}")
 	text[1] = "👍🏽"
-	print(text)
+	io.print(text)
 	void values[3] = [EMPTY]
 	reset(ref values[0])
-	print(identity(values))
+	io.print(identity(values))
 	return 0

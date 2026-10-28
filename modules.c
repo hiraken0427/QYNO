@@ -656,7 +656,7 @@ void resolve_module_name(Node *node)
     if (node->kind == ND_PRINT || node->kind == ND_INPUT) {
         int expected = node->kind == ND_PRINT ? BI_IO_PRINT : BI_IO_INPUT;
         if (symbol.kind == SYM_BUILTIN && symbol.builtin == expected) return;
-        error_tok(node->tok, "%s は io.%s を参照していません。using と名前空間を確認してください",
+        error_tok(node->tok, "%s は io.%s を参照していません。using io または選択 using を宣言し、名前空間を確認してください",
                   name, builtin_name((Builtin)expected));
     }
     /* Qualified constant aggregates (including forward declarations and using

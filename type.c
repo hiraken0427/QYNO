@@ -85,6 +85,7 @@ static int is_numeric(Type ty)
 static int is_number(Type ty) { return is_numeric(ty) || type_is_complex(ty); }
 
 static Ast *cur_ast;
+static Target checking_target;
 static Function *cur_func;
 static int allow_void;          /* 次に調べる呼び出しが文として使われるなら 1 */
 static int const_check_depth;
@@ -496,6 +497,8 @@ static void check_file_builtin(Node *node)
  *   math.round・roundup・rounddown(x, 桁数?)  x は数値、桁数は int。戻り値は x の型
  *   int(x)・float(x)・double(x)  x は数値
  */
+#include "library_type.inc"
+
 static void check_builtin(Node *node)
 {
     Builtin b;
@@ -506,6 +509,7 @@ static void check_builtin(Node *node)
     Value v;
 
     b = (Builtin)node->val;
+    if (b>=BI_LIB_SIZE && b<BI_FILE_OPEN) { check_library_builtin(node); return; }
     if (b >= BI_FILE_OPEN) { check_file_builtin(node); return; }
     if (b == BI_COMPLEX) { check_complex_constructor(node); return; }
     if ((b==BI_HALF || b==BI_QUAD) && node->lhs) check_expected(node->lhs,b==BI_HALF?TY_HALF:TY_QUAD);
@@ -1437,6 +1441,8 @@ static long long round_integer(Node *node, long long x, long long digits, Builti
     return result == (unsigned long long)LLONG_MAX + 1 ? LLONG_MIN : -(long long)result;
 }
 
+#include "library_const.inc"
+
 /* 組み込み関数の値をコンパイル時に計算する */
 static Value eval_builtin(Node *node)
 {
@@ -1446,6 +1452,7 @@ static Value eval_builtin(Node *node)
     Builtin b;
 
     b = (Builtin)node->val;
+    if(b>=BI_LIB_SIZE&&b<BI_FILE_OPEN)return eval_library_builtin(node);
     if (b >= BI_FILE_OPEN) const_error(node, "ファイル操作は const の初期値に使えません");
     if (b == BI_COMPLEX) {
         Node *arg; Value result = {0}; result.ty = node->ty;
@@ -2179,8 +2186,9 @@ static void check_names(Ast *ast)
 #include "interfaces_specialize.inc"
 #include "inference_warnings.inc"
 
-void typecheck(Ast *ast)
+void typecheck(Ast *ast, Target out_target)
 {
+    checking_target=out_target;
     Function *fn;
 
     cur_ast = ast;

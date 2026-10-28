@@ -2,7 +2,7 @@ using io
 
 int main();
 	str name
-	print("Hello, World!")
-	input("What your name? > {name}")
-	print("Hello, {name}!")
+	io.print("Hello, World!")
+	io.input("What your name? > {name}")
+	io.print("Hello, {name}!")
 	return 0

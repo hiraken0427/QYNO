@@ -3,9 +3,9 @@
 ## 標準モジュールの方針
 
 よく使う機能は標準モジュールとして用意し、import なしで利用可能にする。
-現在の標準モジュールは `io` と `math`。
+現在の標準モジュールは `io`・`math`・`lib`。
 標準モジュールの登録は組み込み関数の一覧から行い、ユーザーの `.qy` ファイルを探索しない。
-明示的な `import io` / `import math` も許可するが、必須ではない。
+明示的な `import io` / `import math` / `import lib` も許可するが、必須ではない。
 
 標準モジュールの修飾名と using は依存ファイル内でも利用できる。
 using の省略名・別名は、通常のモジュールと同じファイル・ブロックスコープに従う。
@@ -41,8 +41,8 @@ int main();
 | `using io.print, io.input` | 選択して省略可能にする |
 | `using io as console` | `console.print(...)` / `console.input(...)` と呼べる |
 
-従来の裸の `print(...)` / `input(...)` は互換性のため引き続き利用可能。
-新しいコードでは using または修飾名で io の使用を明示する書き方を推奨する。
+0.27.0から裸の `print(...)` / `input(...)` にもusingが必要。
+`using io`・選択usingを宣言するか、修飾名で記述する。importだけでは省略名は導入しない。
 いずれの表記でも入出力の動作・出力書式・エラー時の動作は変わらない。
 関数そのものの別名・第一級関数は導入しない。`using io.print as out` は未対応。
 
@@ -96,7 +96,7 @@ int main();
 入力先を指定する形式の `{}` 内では、変数名に加えて多次元配列の要素も使える。
 添字式は入力前に左から順に1回だけ評価し、読み取り後も保存した添字へ代入する。
 たとえば `io.input("{i}, {items[i]}")` は、入力前の i で選んだ要素へ書き込む。
-文字列の添字を入力先にする場合は、Unicodeスカラー値1個だけを受け取る。
+文字列の添字を入力先にする場合は、Unicode拡張書記素クラスタ1個だけを受け取る。
 定数や配列全体への直接入力は許可しない。
 
 **変数をプロンプトに使う場合は `prompt=` を明示する。**
@@ -182,3 +182,13 @@ input でも `{n:0x}` のように入力先の基数を指定できる。指定�
 
 `str(n, base=16, prefix=true)` と `int("0xff")` でも相互変換できる。
 詳細は [整数の基数表記・変換・入出力](integer-bases-design.md) を参照。
+
+## io.pathとlib（0.27.0）
+
+`io.path` はimport不要で、join / basename / dirname / extension / stem / is_absolute /
+is_relative / normalize / with_extensionを提供する。ファイルへアクセスせず、ターゲットOSのパス規則で処理する。
+`using io` は `path`・`file` の名前空間も導入するが、それらの関数は再帰展開しない。
+`join(...)` と省略するには `using io.path` または `using io.path.join` が必要。
+
+`lib.size(value)` は値のビット数、`lib.length(value)` は文字列の書記素数・配列長・数値の整数部分の桁数。
+詳細と後続の入出力拡張候補は [0.27.0仕様](standard-library-0270-design.md) を参照。

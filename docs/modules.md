@@ -11,8 +11,8 @@ import geometry.circle
 using geometry.circle as circle
 
 int main();
-	print(circle.area(2.0))
-	print(geometry.circle.PI)
+	io.print(circle.area(2.0))
+	io.print(geometry.circle.PI)
 	return 0
 ```
 
@@ -94,8 +94,8 @@ import geometry.circle
 int main();
 	if(true);
 		using geometry.circle as circle
-		print(circle.area(2.0))
-	print(geometry.circle.area(3.0))
+		io.print(circle.area(2.0))
+	io.print(geometry.circle.area(3.0))
 	return 0
 ```
 
@@ -113,19 +113,22 @@ int main();
 ## import 不要の標準モジュール
 
 よく使う機能は標準モジュールとしてあらかじめ用意し、import なしで利用可能にする。
-現在は `io` と `math` が該当する。明示的な import も許可するが必須ではない。
+現在は `io`・`math`・`lib` と、`io.file`・`io.path` が該当する。明示的な import も許可するが必須ではない。
 標準モジュールでも、using・選択 using・モジュールの別名を利用できる。
 
 ```text
 using io
 
 int main();
-	print(math.sqrt(9))
+	io.print(math.sqrt(9))
 	io.print("Hello, World!")
 	return 0
 ```
 
-`io.print` / `io.input` と従来の `print` / `input` は同じ処理を使用する。
+0.27.0から全標準関数の省略名はusingで明示的に導入する。importだけでは省略名は使えない。
+`io.print` / `io.input` とusingで導入した `print` / `input` は同じ処理を使用する。
+型変換のint・str等は言語機能としてusing不要。
+`lib.size`・`lib.length`とio.pathの詳細は[0.27.0仕様](standard-library-0270-design.md)を参照。
 詳しい入出力仕様と今後の io.file の方針は [io の仕様](io.md) を参照。
 
 ### math
@@ -138,7 +141,7 @@ import math
 using math as m
 
 int main();
-	print(m.sqrt(9))
+	io.print(m.sqrt(9))
 	return 0
 ```
 

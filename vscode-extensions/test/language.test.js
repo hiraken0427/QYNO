@@ -307,7 +307,8 @@ test('signature help handles qualified aliases, ref arguments, nested calls and 
     assert.equal(hint('void f(int a[], int b);\n\treturn\nint main();\n\tf([1, 2], ¦').activeParameter,1);
 });
 test('stdlib catalog includes fixed-width conversions and close requirements', () => {
-    assert.equal(STANDARD.length,35);
+    assert.ok(STANDARD.some(s=>s.path==='lib.size'));
+    assert.ok(STANDARD.some(s=>s.path==='io.path.normalize'));
     assert.ok(!STANDARD.some(s=>s.path==='bool'));
     assert.match(STANDARD.find(s=>s.path==='io.file.open').documentation,/close/);
     assert.equal(STANDARD.find(s=>s.path==='io.file.readline').params[1].ref,true);
@@ -664,4 +665,33 @@ test('complex constructor names and named signatures match the compiler',()=> {
     assert.equal(item.insertText,'complex(real=${1:0.0}, imag=${2:0.0})');
     assert.equal(hint('int main();\n\tcomplex(imag=¦').activeParameter,1);
     assert.ok(hint('int main();\n\tcomplex_128(¦').label.startsWith('complex_128 complex_128('));
+});
+
+test('standard short names require using and qualified completions remain available',()=>{
+    const bare='int main();\n\t¦';
+    assert.ok(!labels(bare).includes('print'));
+    assert.ok(!labels(bare).includes('input'));
+    assert.ok(!labels(bare).includes('size'));
+    assert.ok(labels(bare).includes('io.print'));
+    assert.ok(labels(bare).includes('lib.size'));
+    assert.ok(labels('using io, lib\nint main();\n\t¦').includes('print'));
+    assert.ok(labels('using io, lib\nint main();\n\t¦').includes('size'));
+    assert.equal(hint('int main();\n\tprint(¦'),undefined);
+    assert.match(hint('using io\nint main();\n\tprint(¦').label,/print/);
+});
+test('lib and path namespaces support aliases selective using and nested completion',()=>{
+    assert.ok(labels('int main();\n\tlib.¦').includes('size'));
+    assert.ok(labels('int main();\n\tio.¦').includes('path'));
+    assert.ok(labels('using io.path as p\nint main();\n\tp.¦').includes('with_extension'));
+    assert.ok(labels('using io\nint main();\n\tpath.¦').includes('join'));
+    assert.ok(!labels('using io\nint main();\n\t¦').includes('join'));
+    assert.ok(labels('using io.path.join, lib.length\nint main();\n\t¦').includes('join'));
+    assert.match(hint('using lib as info\nint main();\n\tinfo.length(¦').label,/int_64/);
+    assert.equal(hint('io.path.join("dir", ¦').activeParameter,1);
+});
+test('block using does not leak library short names',()=>{
+    assert.ok(labels('int main();\n\tif(true);\n\t\tusing lib\n\t\t¦').includes('size'));
+    assert.ok(!labels('int main();\n\tif(true);\n\t\tusing lib\n\t\tlib.size(1)\n\t¦').includes('size'));
+    assert.ok(labels('using ¦').includes('lib'));
+    assert.ok(labels('using io.¦').includes('path'));
 });

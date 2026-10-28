@@ -63,17 +63,17 @@ const int EXECUTE = 1 << 2
 int main();
 	int flags = READ or WRITE
 	bool can_read = (flags and READ) != 0
-	print(can_read)                    // true
+	io.print(can_read)                    // true
 
 	flags = flags and bnot WRITE       // WRITE を解除
 	flags = flags xor EXECUTE          // EXECUTE を反転
-	print(flags)                      // 5
-	print(flags << 1)                 // 10
-	print(flags >> 1)                 // 2
+	io.print(flags)                      // 5
+	io.print(flags << 1)                 // 10
+	io.print(flags >> 1)                 // 2
 
-	print(0b1100 and 0b1010)           // 8
-	print(0xFF and bnot 0x0F)          // 240
-	print("flags={flags:0b}")         // flags=0b101
+	io.print(0b1100 and 0b1010)           // 8
+	io.print(0xFF and bnot 0x0F)          // 240
+	io.print("flags={flags:0b}")         // flags=0b101
 	return 0
 ```
 

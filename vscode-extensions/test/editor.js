@@ -291,7 +291,7 @@ async function run() {
     assert.equal(wideHint.signatures[0].label,'unsigned int_128 echo(ref int_128 n)');checks++;
     const quadHint=await vscode.commands.executeCommand('vscode.executeSignatureHelpProvider',wideDoc.uri,new vscode.Position(6,11));
     assert.ok(quadHint.signatures[0].label.startsWith('quadruple quadruple('));checks++;
-    assert.equal(extension.packageJSON.displayName, 'QYNO 0.26.16'); checks++;
+    assert.equal(extension.packageJSON.displayName, 'QYNO 0.27.0'); checks++;
     const unitDoc=await vscode.workspace.openTextDocument({language:'qyno',content:'Void echo(ref void value)=value\nint main();\n\tVoid units[3]\n\tuni\n\techo(ref \n'});
     await vscode.window.showTextDocument(unitDoc);
     const unitItems=await vscode.commands.executeCommand('vscode.executeCompletionItemProvider',unitDoc.uri,new vscode.Position(3,4));
@@ -339,16 +339,16 @@ async function run() {
         for (const text of [
             'int main();\n\tint n = (1 + )\n\treturn 0\n',
             'int main();\n\tint n = "wrong"\n\treturn 0\n',
-            'int main();\n\tprint(missing)\n\treturn 0\n',
+            'int main();\n\tio.print(missing)\n\treturn 0\n',
             'int main();\n\tmissing_call()\n\treturn 0\n',
-            'int main();\n\tprint("日本😀", missing)\n\treturn 0\n'
+            'int main();\n\tio.print("日本😀", missing)\n\treturn 0\n'
         ]) {
             await replace(diagDoc, text);
             await vscode.commands.executeCommand('qyno.checkDocument');
             assert.ok(errors(diagDoc).length, text); checks++;
         }
-        assert.equal(errors(diagDoc)[0].range.start.character, 15); checks++;
-        await replace(diagDoc, 'int main();\n\tn = 3\n\tcomplex z = 3+i4\n\tprint("{n}: {z}")\n\treturn 0\n');
+        assert.equal(errors(diagDoc)[0].range.start.character, 18); checks++;
+        await replace(diagDoc, 'int main();\n\tn = 3\n\tcomplex z = 3+i4\n\tio.print("{n}: {z}")\n\treturn 0\n');
         await vscode.commands.executeCommand('qyno.checkDocument');
         assert.equal(errors(diagDoc).length, 0); checks++;
         await replace(diagDoc, 'int main();\n\tauto_error()\n\treturn 0\n');
@@ -356,7 +356,7 @@ async function run() {
         while (!errors(diagDoc).length && Date.now() < autoDeadline) await new Promise(resolve => setTimeout(resolve, 50));
         assert.ok(errors(diagDoc).some(d => /auto_error/.test(d.message))); checks++;
         // Both the entry and an imported file are dirty; edits must never be saved by checking.
-        await replace(diagDoc, 'import helper\nint main();\n\tprint(helper.answer())\n\treturn 0\n');
+        await replace(diagDoc, 'import helper\nint main();\n\tio.print(helper.answer())\n\treturn 0\n');
         const moduleDoc = await vscode.workspace.openTextDocument(vscode.Uri.file(modulePath));
         await replace(moduleDoc, 'int answer() = "wrong"\n');
         await vscode.window.showTextDocument(diagDoc);
@@ -375,14 +375,27 @@ async function run() {
         await replace(diagDoc,'import helper\nint main();\n\thelper.\n\treturn 0\n');
         const moduleItems=await vscode.commands.executeCommand('vscode.executeCompletionItemProvider',diagDoc.uri,new vscode.Position(2,8));
         assert.ok(moduleItems.items.some(i=>i.label==='answer'));assert.ok(!moduleItems.items.some(i=>['secret','LIMIT'].includes(i.label)));checks++;
-        await replace(diagDoc,'import helper\nint main();\n\tprint(helper.secret())\n\treturn 0\n');
+        await replace(diagDoc,'import helper\nint main();\n\tio.print(helper.secret())\n\treturn 0\n');
         await vscode.commands.executeCommand('qyno.checkDocument');
         assert.ok(errors(diagDoc).some(d=>/private/.test(d.message)));checks++;
-        const hiddenDefinition=await vscode.commands.executeCommand('vscode.executeDefinitionProvider',diagDoc.uri,new vscode.Position(2,15));
+        const hiddenDefinition=await vscode.commands.executeCommand('vscode.executeDefinitionProvider',diagDoc.uri,new vscode.Position(2,18));
         assert.equal(hiddenDefinition.length,0);checks++;
-        await replace(diagDoc,'import helper\nint main();\n\tprint(helper.answer())\n\treturn 0\n');
+        await replace(diagDoc,'import helper\nint main();\n\tio.print(helper.answer())\n\treturn 0\n');
         await vscode.commands.executeCommand('qyno.checkDocument');
         assert.equal(errors(diagDoc).length,0);checks++;
+        await replace(diagDoc,'int main();\n\tprint(42)\n\treturn 0\n');
+        await vscode.commands.executeCommand('qyno.checkDocument');
+        assert.ok(errors(diagDoc).some(d=>/using io/.test(d.message)));checks++;
+        await replace(diagDoc,'using io, lib\nint main();\n\tint n = 42\n\tprint("{size(n)} {length(n)}")\n\tstr target=io.path.join("data", "a.txt")\n\treturn 0\n');
+        await vscode.commands.executeCommand('qyno.checkDocument');
+        assert.equal(errors(diagDoc).length,0);checks++;
+        await replace(diagDoc,'int main();\n\tlib.\n\treturn 0\n');
+        const libraryItems=await vscode.commands.executeCommand('vscode.executeCompletionItemProvider',diagDoc.uri,new vscode.Position(1,5));
+        assert.ok(libraryItems.items.some(i=>i.label==='size'));assert.ok(libraryItems.items.some(i=>i.label==='length'));checks++;
+        await replace(diagDoc,'int main();\n\tio.path.\n\treturn 0\n');
+        const pathItems=await vscode.commands.executeCommand('vscode.executeCompletionItemProvider',diagDoc.uri,new vscode.Position(1,9));
+        assert.ok(pathItems.items.some(i=>i.label==='with_extension'));checks++;
+        await replace(diagDoc,'int main();\n\treturn 0\n');
         await config.update('compilerPath', path.join(temporary, 'missing-qyc'), vscode.ConfigurationTarget.Global);
         await vscode.commands.executeCommand('qyno.checkDocument');
         assert.ok(vscode.languages.getDiagnostics(diagDoc.uri).some(d => d.severity === vscode.DiagnosticSeverity.Warning && /qyno.compilerPath/.test(d.message))); checks++;
