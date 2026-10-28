@@ -2108,6 +2108,7 @@ static void check_stmts(Node *list)
 }
 
 #include "generic_functions.inc"
+#include "module_visibility_type.inc"
 #include "return_inference.inc"
 
 static void ensure_const(Var *v)
@@ -2167,6 +2168,7 @@ static void check_names(Ast *ast)
     if (main_fn == NULL) {
         fatal("main 関数がありません（int main(); が必要です）");
     }
+    if(main_fn->is_private)error_tok(main_fn->tok,"main 関数は private にできません");
     if (main_fn->infer_return || main_fn->ret != TY_INT || main_fn->param_count != 0) {
         error_tok(main_fn->tok, "main 関数は int main(); の形（戻り値 int、引数なし）で定義してください");
     }
@@ -2205,6 +2207,7 @@ void typecheck(Ast *ast)
 
     /* ファイル先頭の const（ほかの const から参照されたものは、その時点で計算済み） */
     check_stmts(ast->globals);
+    check_module_exports(ast);
 
     for (fn = ast->funcs; fn != NULL; fn = fn->next) {
         Var *param;

@@ -1,4 +1,4 @@
-# QYNO 0.26.15
+# QYNO 0.26.16
 
 C99とGCCの128bit数値拡張で実装した、Linux x64 / Windows x64 向けのコンパイラ。
 UTF-8 の `.qy` ソースから実行ファイルを直接生成する。
@@ -35,11 +35,18 @@ int main();
 
 ## VS Code 拡張
 
-[QYNO 0.26.15](vscode-extensions/README.md) はハイライト、ユーザー定義の関数名・変数名の補完、
+[QYNO 0.26.16](vscode-extensions/README.md) はハイライト、ユーザー定義の関数名・変数名の補完、
 定義への移動、引数ヒント、セミコロン後の自動インデント、qyc連携の構文・型エラーの赤線表示に対応する。
-[vscode-extensions/0.26.15_VSCode_option.vsix](vscode-extensions/0.26.15_VSCode_option.vsix) を
+[vscode-extensions/0.26.16_VSCode_option.vsix](vscode-extensions/0.26.16_VSCode_option.vsix) を
 VS Code の「VSIX からのインストール…」で指定する。
 診断には別途qycが必要。PATHにない場合は拡張設定の `qyno.compilerPath` に実行ファイルを指定する。
+
+## モジュールの公開制御（新段階7）
+
+トップレベルの関数・const・model・interfaceにpublic / privateを指定できる。
+省略時はpublic。privateは宣言元モジュール内で使用し、外部の参照・usingからは隠す。
+公開APIにprivate型が露出する場合も検査する。
+[仕様](docs/module-visibility.md)と[実行例](examples/module-visibility/main.qy)を参照。
 
 ## 書記素クラスタとvoid（新段階6）
 

@@ -1,0 +1,13 @@
+private const SCALE = 2.0
+
+private double square(double x) = x * x
+
+public double squared_length(double x, double y);
+	return (square(x) + square(y)) * SCALE
+
+private model State;
+	int count = 3
+
+public model Counter;
+	private State state
+	public readonly int current() = this.state.count

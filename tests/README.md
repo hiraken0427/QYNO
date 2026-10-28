@@ -230,3 +230,10 @@ Python complexを参照した四則演算、定数と実行時の一致、主平
 auto・ジェネリック・モデル・interface・定数・file.write・明示close・GCを検証する。
 端末編集にも結合文字のBackspace、ZWJ列のDelete、国旗の左右移動を追加した。
 以前のスカラー値単位と戻り値なしvoidに依存していた期待値は、新しい仕様の検証へ移行している。
+
+## 0.26.16 のモジュール公開制御（追加の新段階7）
+
+`make test-module-visibility` の22メソッドを追加した。モジュール内のprivate参照、外部の修飾・別名・
+選択usingの拒否、using-allの非公開名除外と衝突、公開APIのprivate型漏れ、推論・ジェネリック・
+配列・モデル・interface・mainを検証する。以前はトップレベルで拒否していたpublic / privateの
+テストは、新しい成功ケースへ移行し、修飾子の重複・無効な配置・予約語の検査を維持する。

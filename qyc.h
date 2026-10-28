@@ -7,7 +7,7 @@
 #include "grapheme_runtime.h"
 #include <stdio.h>
 
-#define QYC_VERSION "0.26.15"
+#define QYC_VERSION "0.26.16"
 
 typedef struct SourceFile SourceFile;
 typedef struct Module Module;
@@ -229,6 +229,7 @@ struct Var {
     int is_loop;        /* for 文の繰り返しの変数なら 1 */
     int depth;          /* 宣言したブロックの深さ（関数の引数は 0） */
     int is_global;      /* ファイル先頭の const なら 1 */
+    int is_private;     /* module-private top-level constant */
     Node *default_arg;  /* initializer-only default recipe */
     int parameter_index;
     Node *const_val;    /* const の値（コンパイル時に計算したリテラルのノード） */
@@ -414,6 +415,7 @@ struct ModelField {
 };
 struct Interface {
     Interface *next;
+    int is_private;
     Token *tok;
     char *name;
     Type ty;
@@ -426,6 +428,7 @@ struct Implementation {
 };
 struct Model {
     Model *next;
+    int is_private;
     Token *tok;
     char *name;
     Type ty;
