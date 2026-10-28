@@ -1,7 +1,7 @@
-# QYNO 0.27.0
+# QYNO 0.27.1
 
-QYNO **0.27.0** 用の VS Code 拡張です。配布ファイルは同じフォルダの
-[`0.27.0_VSCode_option.vsix`](0.27.0_VSCode_option.vsix) です。
+QYNO **0.27.1** 用の VS Code 拡張です。配布ファイルは同じフォルダの
+[`0.27.1_VSCode_option.vsix`](0.27.1_VSCode_option.vsix) です。
 VS Code 1.85 以降に対応します。
 
 int / unsigned intは32bitの別名です。int_8 / int_16 / int_32 / int_64 / int_128とunsigned整数型の
@@ -11,7 +11,7 @@ int / unsigned intは32bitの別名です。int_8 / int_16 / int_32 / int_64 / i
 half / quadrupleの型名・変換、実数のe / E指数表記にも対応します。
 
 char / strはUnicode 17の拡張書記素クラスタ単位です。void / Voidは唯一の値 `()` を持つ型です。
-型名・引数・配列の補完とホバー、0.27.0の診断に対応します。
+型名・引数・配列の補完とホバー、0.27.1の診断に対応します。
 
 complex / complex_64 / complex_128と虚数リテラル、型付き変数・配列要素のreal / imag補完、
 成分のホバー、名前付き構築の補完・引数ヒントに対応します。
@@ -22,16 +22,16 @@ complex / complex_64 / complex_128と虚数リテラル、型付き変数・配�
 ## インストール
 
 VS Code の拡張機能画面右上の「…」から **VSIX からのインストール…** を選び、
-`0.27.0_VSCode_option.vsix` を指定してください。CLI でもインストールできます。
+`0.27.1_VSCode_option.vsix` を指定してください。CLI でもインストールできます。
 
 ```sh
-code --install-extension vscode-extensions/0.27.0_VSCode_option.vsix --force
+code --install-extension vscode-extensions/0.27.1_VSCode_option.vsix --force
 ```
 
 `.qy` ファイルを開くと有効になります。別の拡張が `.qy` を担当している場合は、
 画面右下の言語モードを「QYNO」に変更してください。手動の補完表示は Ctrl+Space です。
 Marketplace への公開やコンパイラのインストールは行いません。
-拡張機能の表示名は **QYNO 0.27.0** です。同じバージョンをインストール済みの場合も、上のコマンドで更新できます。
+拡張機能の表示名は **QYNO 0.27.1** です。同じバージョンをインストール済みの場合も、上のコマンドで更新できます。
 
 ## 機能
 
@@ -110,7 +110,7 @@ int main();
 
 ## 検証と制約
 
-診断には別途 **QYNO 0.27.0 の `qyc`** が必要です。PATH 上の `qyc` を既定で使用します。
+診断には別途 **QYNO 0.27.1 の `qyc`** が必要です。PATH 上の `qyc` を既定で使用します。
 Windows などで PATH にない場合は、設定の `Qyno: Compiler Path` に `qyc.exe` のフルパスを指定してください。
 
 ```json
@@ -156,8 +156,8 @@ npm run package
 コンパイラ連携のテストには、リポジトリのルートで事前に `make` してください。
 Linux の GUI のない環境では Xvfb などが必要です。
 取得済みの VS Code を使う場合は `QYNO_VSCODE_EXECUTABLE` に実行ファイルのパスを設定できます。
-`npm run package` はこのフォルダに VSIX を出力します。内部の拡張バージョンは SemVer の `0.27.0`、
-配布ファイル名は `0.27.0_VSCode_option.vsix` です。
+`npm run package` はこのフォルダに VSIX を出力します。内部の拡張バージョンは SemVer の `0.27.1`、
+配布ファイル名は `0.27.1_VSCode_option.vsix` です。
 
 ## インターフェース
 
@@ -172,6 +172,13 @@ print / input / file.write内の式・変数・配列要素の補完と定義参
 int / strのbase / prefix引数をヒントへ表示し、名前付き引数の記述順が異なる場合も現在の引数を示す。
 intのbaseは文字列の解析、strのbase / prefixはintの文字列化にだけ使用できる。
 
-0.27.0では全標準関数の省略にusingが必要です。usingがない関数は修飾名で補完し、
+0.27.1では全標準関数の省略にusingが必要です。usingがない関数は修飾名で補完し、
 `lib.size` / `lib.length` / `io.path`の9関数にも補完・引数ヒントを提供します。
 using漏れはコンパイラ診断で赤線表示します。
+
+0.27.1ではio.fileのバイナリモード、read_bytes / write_bytesの補完・引数ヒントに対応します。
+バイト配列の型、count、ref不要のdataを表示し、型不一致・readonly・未closeをコンパイラ診断で検出します。
+
+0.27.1追加改訂では独立enum型とmatchに対応します。enumのメンバー、期待型に基づく省略名、
+caseの候補、定義参照、Enum/EnumMemberのアウトライン、構文ハイライトと診断を提供します。
+同じバージョンの拡張を使っている場合も、更新したVSIXを上記の--forceで再インストールしてください。

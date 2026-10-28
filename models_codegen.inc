@@ -110,7 +110,8 @@ static void gen_model_runtime(void)
             if (printed++) gen_write_const(", ");
             gen_write_const(f->name); gen_write_const("=");
             rt_load(RAX, 1); x64_load(RAX, RAX, 24); x64_load(RAX, RAX, f->index * 8);
-            if (type_is_model(f->ty)) x64_call(type_model(f->ty)->print_label);
+            if(type_is_enum(f->ty)){x64_call(type_enum(f->ty)->name_label);x64_call(print_str_label);}
+            else if (type_is_model(f->ty)) x64_call(type_model(f->ty)->print_label);
             else if (type_is_array(f->ty)) x64_call(array_print_label);
             else if(type_is_wide(f->ty)){x64_mov_imm(RDI,10);x64_xor(RSI,RSI);gen_wide(W_FORMAT,f->ty,f->ty,0,NULL);x64_call(print_str_label);}
             else if (type_is_complex(f->ty)) x64_call(complex_print_labels[f->ty == TY_C128]);

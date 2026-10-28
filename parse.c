@@ -74,7 +74,7 @@ static Node *stmt(void);
 static const char *keywords[] = {
     "complex", "complex_64", "complex_128", "int", "int_8", "int_16", "int_32", "int_64", "int_128", "half", "quadruple", "unsigned", "float", "double", "bool", "str", "char", "void", "Void", "file", "const", "auto",
     "true", "false", "return", "print", "if", "else", "for", "while",
-    "break", "continue", "and", "or", "xor", "bnot", "not", "struct", "enum", "import", "of", "using", "input",
+    "break", "continue", "and", "or", "xor", "bnot", "not", "struct", "enum", "match", "case", "import", "of", "using", "input",
     "ref", "val", "none", "as", "interface", "implements", "model", "public", "private", "readonly",
     NULL
 };
@@ -1672,6 +1672,29 @@ static Node *loop_jump(NodeKind kind, Token *start)
     return new_node(kind, start);
 }
 
+static Node *match_stmt(Token *start)
+{
+    Node *node=new_node(ND_MATCH,start),**end=&node->then;Var *saved=visible;Using *saved_using=local_usings;
+    expect("(");node->cond=expr();expect(")");expect(";");
+    expect_kind(TK_NEWLINE,"match には改行が必要です");expect_kind(TK_INDENT,"match の case は1段インデントしてください");
+    node->var=hidden_var(TY_NONE,start);
+    while(tok->kind!=TK_DEDENT&&tok->kind!=TK_EOF){
+        Token *site=tok;
+        if(consume("case")){
+            Node *arm=new_node(ND_CASE,site),**patterns=&arm->lhs;
+            do{*patterns=expr();patterns=&(*patterns)->next;}while(consume(","));
+            expect(";");arm->then=block("case の本体は1段インデントしてください");*end=arm;end=&arm->next;
+        }else if(consume("else")){
+            expect(";");node->els=block("else の本体は1段インデントしてください");
+            if(tok->kind!=TK_DEDENT)error_tok(tok,"match の else は最後に1回だけ記述してください");
+            break;
+        }else error_tok(tok,"match の中には case または else を記述してください");
+    }
+    expect_kind(TK_DEDENT,"match の終わりが必要です");visible=saved;local_usings=saved_using;
+    if(!node->then&&!node->els)error_tok(start,"match は空にできません");
+    return node;
+}
+
 /* stmt = return 文 | print 文 | if 文 | while 文 | for 文 | break() | continue() | const 定数 | 変数宣言 | 更新 */
 static Node *stmt(void)
 {
@@ -1703,6 +1726,7 @@ static Node *stmt(void)
         expect_kind(TK_NEWLINE, "文の終わりには改行が必要です");
         return node;
     }
+    if (consume("match")) return match_stmt(start);
     if (consume("if")) {
         return if_stmt(start);
     }
@@ -1973,6 +1997,35 @@ static Function *function_def(int is_readonly)
     return fn;
 }
 
+static EnumDef *enum_def(void)
+{
+    EnumDef *e=calloc(1,sizeof(*e));EnumMember **end;Token *name;
+    if(!e)fatal("enum を確保できません");
+    expect("enum");name=tok;
+    if(tok->kind!=TK_IDENT||is_keyword(tok))error_tok(tok,"enum の型名が必要です");
+    e->tok=tok;e->name=calloc((size_t)tok->len+1,1);if(!e->name)fatal("enum 名を確保できません");
+    memcpy(e->name,tok->loc,(size_t)tok->len);e->ty=enum_type(e);tok=tok->next;
+    expect(";");expect_kind(TK_NEWLINE,"enum 定義には改行が必要です");
+    expect_kind(TK_INDENT,"enum の中にはメンバーを1段インデントしてください");end=&e->members;
+    while(tok->kind!=TK_DEDENT&&tok->kind!=TK_EOF){
+        EnumMember *m=calloc(1,sizeof(*m));EnumMember *old;
+        if(!m)fatal("enum メンバーを確保できません");
+        if(tok->kind!=TK_IDENT||is_keyword(tok))error_tok(tok,"enum のメンバー名には予約語以外の識別子が必要です");
+        m->owner=e;m->tok=tok;m->index=e->count++;m->name=calloc((size_t)tok->len+1,1);
+        if(!m->name)fatal("enum メンバー名を確保できません");
+        memcpy(m->name,tok->loc,(size_t)tok->len);
+        for(old=e->members;old;old=old->next)if(!strcmp(old->name,m->name))error_tok(tok,"enum のメンバー名 %s が重複しています",m->name);
+        tok=tok->next;if(consume("="))m->initial=expr();
+        m->symbol=calloc(1,sizeof(*m->symbol));if(!m->symbol)fatal("enum の定数を確保できません");
+        m->symbol->name=m->name;m->symbol->name_len=(int)strlen(m->name);m->symbol->ty=e->ty;
+        m->symbol->is_const=1;m->symbol->is_global=1;m->symbol->tok=m->tok;m->symbol->enum_member=m;
+        *end=m;end=&m->next;expect_kind(TK_NEWLINE,"enum の各メンバーには改行が必要です");
+    }
+    expect_kind(TK_DEDENT,"enum 定義の終わりが必要です");
+    if(!e->members)error_tok(name,"enum は空にできません");
+    return e;
+}
+
 static Model *model_def(Function **tail)
 {
     Model *m = calloc(1, sizeof(*m)); ModelField **fields;
@@ -2111,6 +2164,11 @@ Ast *parse(Token *t)
         }
         if (tok->kind == TK_INDENT) {
             error_tok(tok, "余分なインデントがあります");
+        }
+        if (equal(tok, "enum")) {
+            EnumDef *e=enum_def(),**end=&ast->enums;e->is_private=is_private;
+            while(*end)end=&(*end)->next;
+            *end=e;continue;
         }
         if (equal(tok, "interface")) {
             Interface *in = interface_def(), **end = &ast->interfaces;

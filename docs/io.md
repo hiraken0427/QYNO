@@ -192,3 +192,11 @@ is_relative / normalize / with_extensionを提供する。ファイルへアク�
 
 `lib.size(value)` は値のビット数、`lib.length(value)` は文字列の書記素数・配列長・数値の整数部分の桁数。
 詳細と後続の入出力拡張候補は [0.27.0仕様](standard-library-0270-design.md) を参照。
+
+## バイナリファイル（0.27.1）
+
+io.file.openのrb / wb / abとread_bytes / write_bytesを利用できる。
+read_bytesは必須の非負countを上限に読み、実際の長さのunsigned int_8配列を返す。
+EOFは空配列、エラーは診断付き停止。write_bytesは全量を書いてバイト数をint_64で返す。
+モードとテキストAPIは混在させず、明示closeの検査も維持する。
+詳細: [バイナリI/O仕様](binary-file-design.md)。

@@ -1,12 +1,15 @@
-# io.file（0.25.2）
+# io.file（テキストI/O: 0.25.2、バイナリ拡張: 0.27.1）
 
 UTF-8 のファイル操作と、明示的な close のコンパイル時検査の仕様。
+
+バイナリI/Oの追加仕様は [0.27.1 バイナリファイル操作](binary-file-design.md) を参照。
+本書のread / readline / writeはテキスト用、read_bytes / write_bytesはバイナリ用として区別する。
 
 ## 1. 対象と名前空間
 
 io.file は import 不要の標準サブモジュールとする。
-UTF-8 の通常ファイルの読み書きを最初の対象とし、バイナリ、ディレクトリ操作、
-標準入出力ハンドルの取り込み、seek / tell は後続の拡張とする。
+UTF-8とバイナリの通常ファイルを扱う。ディレクトリ操作、標準入出力ハンドルの取り込み、
+seek / tell は後続の拡張とする。
 
 | 記述 | 意味 |
 | --- | --- |
@@ -113,7 +116,9 @@ int main();
 | `is_open(file source)` | bool。開いているかを返す |
 | `read(file source)` | str。現在位置から EOF まで読む |
 | `readline(file source, ref str line)` | bool。1行読めれば true、読む行がなければ false |
-| `write(file destination, value)` | int。全体を書き込み、書き込んだ UTF-8 バイト数を返す |
+| `write(file destination, value)` | int_64。全体を書き込み、書き込んだ UTF-8 バイト数を返す |
+| `read_bytes(file source, int_64 count)` | unsigned int_8の1次元配列。最大countバイトを読む |
+| `write_bytes(file destination, unsigned int_8 data[])` | int_64。全バイトを書き込む |
 | `exists(str path)` | bool。指定先が通常ファイルとして存在するかを返す |
 
 引数は既存の関数と同じく左から順に1回だけ評価する。
@@ -130,7 +135,7 @@ readline の出力先には、通常の ref 渡しと同じく str 変数や str
 | `"a"` | 内容を保持 | 作成 | 書き込み専用、毎回末尾に追加 |
 
 mode 省略時は r。文字列は完全一致で判定し、大文字や空白を自動補正しない。
-r+ / w+ / a+ と b 指定は初版では受け付けない。
+0.27.1ではrb / wb / abをバイナリ専用として追加。r+ / w+ / a+などの更新モードは受け付けない。
 定数で分かる不正モードはコンパイルエラー、実行時に決まる不正モードは終了コード70。
 ディレクトリや通常ファイル以外を開こうとした場合は終了コード74とする。
 

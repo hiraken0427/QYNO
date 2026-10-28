@@ -74,7 +74,8 @@ static void gen_print_value(Node *expr);
 #define EX_IOERR    74      /* sysexits.h：入出力の失敗 */
 
 #define OUTPUT_SINK 288
-static int file_labels[7];
+static int file_labels[BI_COUNT - BI_FILE_OPEN];
+static int file_write_all_label;
 static int file_error_label, file_validate_label, file_path_label, file_raw_close_label;
 static int file_finalize_label, file_cleanup_label, file_kind_label, file_raw_open_label;
 static int file_check_label, file_append_label, file_string_label, file_capture_label;
@@ -109,6 +110,7 @@ static int array_equal_label, array_print_label, quoted_string_label;
 static int array_ref_label, string_get_label, string_replace_label;
 static Function *emitting_function;
 static Model *emitting_models;
+static EnumDef *emitting_enums;
 static int concat_label;
 static int str_eq_label;
 static int utf8_next_checked_label;
@@ -1657,7 +1659,7 @@ static void gen_compare(Node *cmp)
         gen_convert_for_compare(cmp->rhs->ty, ty);
     }
 
-    if (type_is_integer(ty)) {
+    if (type_is_enum(ty) || type_is_integer(ty)) {
         Cond cc = int_cond(kind);
         if (integer_unsigned(ty)) cc = kind == CMP_LT ? CC_B : kind == CMP_LE ? CC_BE : kind == CMP_GT ? CC_A : kind == CMP_GE ? CC_AE : cc;
         x64_cmp(RDI, RAX); x64_setcc(cc, RAX); x64_movzx8(RAX, RAX); return;
@@ -4835,6 +4837,7 @@ static void gen_real_to_float(int range)
 #include "models_codegen.inc"
 #include "places_codegen.inc"
 #include "library_codegen.inc"
+#include "enums_codegen.inc"
 
 /*
  * 値の形：input() ・ input(プロンプト)
@@ -4878,7 +4881,8 @@ static void gen_input_value(Node *node)
     x64_cmp(RSI, RDX);
     x64_jcc(CC_AE, missing);
     if (type_is_integer(ty)) x64_mov_imm(RDI, 0);
-    if (type_is_wide(ty)||ty==TY_VOID) gen_wide_parse(ty);
+    if(type_is_enum(ty))x64_call(type_enum(ty)->parse_label);
+    else if (type_is_wide(ty)||ty==TY_VOID) gen_wide_parse(ty);
     else if (type_is_integer(ty)) gen_parse_integer(ty);
     else if (type_is_complex(ty)) x64_call(complex_parse_labels[ty == TY_C128]);
     else x64_call(ty == TY_BOOL ? parse_bool_label : parse_real_label);
@@ -5089,7 +5093,8 @@ static void gen_input_pattern(Node *node)
         x64_jcc(CC_AE, missing[i]);
         x64_store(RBP, -f->temp->offset, RSI);          /* 値の先頭（float の範囲外の表示に使う） */
         if (type_is_integer(ty)) x64_mov_imm(RDI, f->base);
-        if (type_is_wide(ty)||ty==TY_VOID) gen_wide_parse(ty);
+        if(type_is_enum(ty))x64_call(type_enum(ty)->parse_label);
+    else if (type_is_wide(ty)||ty==TY_VOID) gen_wide_parse(ty);
     else if (type_is_integer(ty)) gen_parse_integer(ty);
         else if (type_is_complex(ty)) x64_call(complex_parse_labels[ty == TY_C128]);
         else x64_call(ty == TY_BOOL ? parse_bool_label : parse_real_label);
@@ -5513,8 +5518,9 @@ static void gen_expr_inner(Node *node)
         gen_expr(node->lhs);
         x64_xor_imm(RAX, 1);
         return;
+    case ND_ENUM_CONVERT:
     case ND_CAST:
-        gen_cast(node);
+        if(type_is_enum(node->ty)||type_is_enum(node->lhs->ty))gen_enum_cast(node);else gen_cast(node);
         return;
     case ND_NEG:
         gen_neg(node);
@@ -5560,6 +5566,7 @@ static void gen_print_value(Node *expr)
         x64_call(print_str_label); return;
     }
     if(type_is_wide(expr->ty)){x64_mov_imm(RDI,10);x64_xor(RSI,RSI);gen_wide(W_FORMAT,expr->ty,expr->ty,0,NULL);x64_call(print_str_label);return;}
+    if(type_is_enum(expr->ty)){x64_call(type_enum(expr->ty)->name_label);x64_call(print_str_label);return;}
     if (type_is_complex(expr->ty)) { x64_call(complex_print_labels[expr->ty == TY_C128]); return; }
     if (type_is_array(expr->ty)) { x64_call(array_print_label); return; }
     if (type_is_model(expr->ty)) { x64_call(type_model(expr->ty)->print_label); return; }
@@ -6020,9 +6027,10 @@ void codegen(Ast *ast, Program *out_prog, FILE *out_text, Target out_target)
     label_seq = 0;
     loop_depth = 0;
 
-    emitting_models = ast->models;
+    emitting_models = ast->models;emitting_enums=ast->enums;
     x64_begin(prog, text);
     path_call_label=new_label("path.call");
+    {EnumDef *e;for(e=ast->enums;e;e=e->next){e->check_label=new_label("enum.check");e->name_label=new_label("enum.name");e->parse_label=new_label("enum.parse");}}
     { Model *m;
       for (m = ast->models; m; m = m->next) {
           snprintf(label_name, sizeof(label_name), ".L.model.%d.copy", m->ty);
@@ -6109,6 +6117,7 @@ void codegen(Ast *ast, Program *out_prog, FILE *out_text, Target out_target)
             file_labels[b - BI_FILE_OPEN] = x64_new_label(label_name);
         }
     }
+    file_write_all_label = x64_new_label(".L.qy_file_write_all");
     file_error_label = x64_new_label(".L.qy_file_error");
     file_validate_label = x64_new_label(".L.qy_file_validate");
     file_path_label = x64_new_label(".L.qy_file_path");
@@ -6191,6 +6200,7 @@ void codegen(Ast *ast, Program *out_prog, FILE *out_text, Target out_target)
         if (!fn->is_template) gen_function(fn);
     }
 
+    gen_enum_runtime();
     gen_library_size_runtime();
     gen_library_path_runtime();
     dump_data();

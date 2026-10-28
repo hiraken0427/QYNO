@@ -64,6 +64,7 @@ static void check_array_literal(Node *node, Type expected)
 
 static void check_expected(Node *node, Type expected)
 {
+    enum_context_name(node,expected);
     wide_literal_context(node,expected);
     if(node->kind==ND_WIDE && node->raw_numeric && node->ty==TY_I128 && integer_unsigned(expected) && node->tok->kind==TK_NUM && node->tok->len>2 && node->tok->loc[0]=='0' && integer_prefix(node->tok->loc[1]) && integer_prefix(node->tok->loc[1])!=10) node->ty=TY_U128;
     if (node->kind == ND_NUM && integer_unsigned(expected) && node->val < 0 && node->tok->kind == TK_NUM &&

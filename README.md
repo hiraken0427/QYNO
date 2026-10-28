@@ -1,4 +1,4 @@
-# QYNO 0.27.0
+# QYNO 0.27.1
 
 C99とGCCの128bit数値拡張で実装した、Linux x64 / Windows x64 向けのコンパイラ。
 UTF-8 の `.qy` ソースから実行ファイルを直接生成する。
@@ -35,9 +35,9 @@ int main();
 
 ## VS Code 拡張
 
-[QYNO 0.27.0](vscode-extensions/README.md) はハイライト、ユーザー定義の関数名・変数名の補完、
+[QYNO 0.27.1](vscode-extensions/README.md) はハイライト、ユーザー定義の関数名・変数名の補完、
 定義への移動、引数ヒント、セミコロン後の自動インデント、qyc連携の構文・型エラーの赤線表示に対応する。
-[vscode-extensions/0.27.0_VSCode_option.vsix](vscode-extensions/0.27.0_VSCode_option.vsix) を
+[vscode-extensions/0.27.1_VSCode_option.vsix](vscode-extensions/0.27.1_VSCode_option.vsix) を
 VS Code の「VSIX からのインストール…」で指定する。
 診断には別途qycが必要。PATHにない場合は拡張設定の `qyno.compilerPath` に実行ファイルを指定する。
 
@@ -220,7 +220,7 @@ int main();
 
 ## ファイル操作
 
-`io.file.open(path, mode)` のモードは r / w / a。省略時は r。
+`io.file.open(path, mode)` のモードは r / w / a（UTF-8）、rb / wb / ab（バイナリ）。省略時は r。
 `readline(f, ref line)` は、1行読めれば true、EOFなら false を返す。
 取得した file は、正常終了へ至る全経路で明示的な close が必要。
 コンパイラが close を確認できない場合はエラーになる。
@@ -325,3 +325,40 @@ int main();
 
 io.pathは結合・ファイル名・親・拡張子・stem・絶対/相対判定・normalize・拡張子置換の基本9関数を提供する。
 詳細: [0.27.0仕様と拡張候補](docs/standard-library-0270-design.md)、[実行例](examples/stdlib/main.qy)。
+
+## バイナリI/O（0.27.1）
+
+`io.file.read_bytes(source, count)` は最大countバイトをunsigned int_8の1次元配列で返す。
+正のcountでEOFなら空配列、不足分の0埋めは行わない。受け取り先は上限なしのdata[]を推奨する。
+`io.file.write_bytes(destination, data)` は配列を1要素1バイトで全量書き、バイト数をint_64で返す。
+
+read_bytesはrb、write_bytesはwb / abで開いたハンドルを使用する。
+UTF-8検証・改行変換・BOM操作はせず、任意のバイトを保持する。パスのUTF-8検証と明示closeの検査は維持する。
+
+詳細: [バイナリI/O仕様](docs/binary-file-design.md)、[実行例](examples/io/binary.qy)。
+
+## enumとmatch（0.27.1追加改訂）
+
+独立した列挙型を `enum sex;` で定義し、typedefなしで `sex gender` のように使用できる。
+先頭0からの連番または明示値に対応し、値0のメンバーを既定値とする。
+名前の表示・入力・明示変換、配列・model・ref・readonly・const・型推論・モジュール公開制御に対応する。
+
+```text
+enum sex;
+	undetermined
+	male
+	female=3
+
+int main();
+	sex gender=female
+	match(gender);
+		case undetermined,male;
+			io.print("other")
+		case female;
+			io.print(gender) // female
+	return 0
+```
+
+matchはenumの全メンバーを列挙するかelseが必要。重複と列挙漏れはコンパイルエラーになり、対象式は1回だけ評価する。
+メソッド定義・呼び出しの括弧は従来どおり必要。回復可能I/Oは今回追加していない。
+[詳細な仕様](docs/enums-design.md)・[ユーザー例](examples/enums/main.qy)。

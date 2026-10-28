@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.27.1 追加改訂
+
+- 独立enumとメンバーの解析・補完・定義参照・アウトラインに対応。
+- 期待型とcaseのメンバー補完、enumコンストラクターの引数ヒントを追加。
+- enum / match / caseのハイライトとコンパイラ診断に対応。
+- ユーザー指定によりバージョンを0.27.1に維持し、同名VSIXを更新。
+
+## 0.27.1
+
+- io.fileのrb/wb/abとread_bytes/write_bytesの補完・引数ヒントを追加。
+- 読み取り結果はunsigned int_8配列、write_bytesのdataはref不要として表示。
+- QYNO 0.27.1の診断・表示名・VSIXに更新。
+
 ## 0.27.0
 
 - 標準関数の省略名はusingで導入。usingなしの補完は修飾名を提示。

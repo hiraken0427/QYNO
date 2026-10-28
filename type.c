@@ -34,6 +34,7 @@
 const char *type_name(Type ty)
 {
     if (type_is_array(ty)) return array_type_name(ty);
+    if (type_is_enum(ty)) return type_enum(ty)->name;
     if (type_is_model(ty)) return type_model(ty)->name;
     if (type_is_interface(ty)) return type_interface(ty)->name;
     switch (ty) {
@@ -208,6 +209,8 @@ static Node *new_cast(Node *expr, Type ty)
 }
 
 #include "wide_type.inc"
+static Value convert_value(Node *node,Value v,Type to);
+#include "enums_type.inc"
 
 static int integer_literal(Node *n)
 {
@@ -242,6 +245,12 @@ static Node *convert(Node *expr, Type to)
     if (from == to) {
         return expr;
     }
+    if(type_is_enum(to)&&type_is_integer(from)&&is_const_expr(expr)){
+        Value v=eval_const(expr);
+        if(type_is_wide(v.ty))v=wide_calculate(expr,W_CONVERT,v,(Value){0},TY_I32,0);
+        if(!integer_fits(v.i,v.ty,TY_I32)||!enum_value_member(to,v.i))error_tok(expr->tok,"enum に宣言されていない数値です");
+        return new_cast(expr,to);
+    }
     if (type_is_complex(to) && is_number(from)) {
         if (from == TY_QUAD) return NULL;
         if ((from != TY_C128 && from != TY_DOUBLE) || to == TY_C128 || is_float_literal(expr)) return new_cast(expr, to);
@@ -256,7 +265,7 @@ static Node *convert(Node *expr, Type to)
     }
     /* 値の形の input は、代入先の型で読む */
     if (expr->kind == ND_INPUT && !expr->input_pattern && from == TY_STR &&
-        (type_is_integer(to) || type_is_real(to) || to == TY_VOID || to == TY_BOOL || type_is_complex(to))) {
+        (type_is_integer(to) || type_is_real(to) || type_is_enum(to) || to == TY_VOID || to == TY_BOOL || type_is_complex(to))) {
         expr->ty = to;
         return expr;
     }
@@ -360,17 +369,22 @@ static void check_cmp(Node *cmp)
     Type r;
     CmpKind kind;
 
-    if ((cmp->lhs->kind == ND_ARRAY_LITERAL || cmp->lhs->kind == ND_MODEL_INIT) && cmp->rhs->kind != ND_ARRAY_LITERAL && cmp->rhs->kind != ND_MODEL_INIT) {
+    if (enum_unbound_name(cmp->lhs) && !enum_unbound_name(cmp->rhs)) {
+        check_expr(cmp->rhs);check_expected(cmp->lhs,cmp->rhs->ty);
+    } else if ((cmp->lhs->kind == ND_ARRAY_LITERAL || cmp->lhs->kind == ND_MODEL_INIT) && cmp->rhs->kind != ND_ARRAY_LITERAL && cmp->rhs->kind != ND_MODEL_INIT) {
         check_expr(cmp->rhs);
         check_expected(cmp->lhs, cmp->rhs->ty);
     } else {
         check_expr(cmp->lhs);
         check_expected(cmp->rhs, cmp->lhs->ty);
     }
+    if(type_is_enum(cmp->lhs->ty)&&type_is_integer(cmp->rhs->ty))cmp->rhs=coerce(cmp->rhs,cmp->lhs->ty,cmp->rhs->tok,"enum の比較");
+    if(type_is_enum(cmp->rhs->ty)&&type_is_integer(cmp->lhs->ty))cmp->lhs=coerce(cmp->lhs,cmp->rhs->ty,cmp->lhs->tok,"enum の比較");
     l = cmp->lhs->ty;
     r = cmp->rhs->ty;
     kind = (CmpKind)cmp->val;
     cmp->ty = TY_BOOL;
+    if(type_is_enum(l)||type_is_enum(r)){if(l!=r||(kind!=CMP_EQ&&kind!=CMP_NE))error_tok(cmp->tok,"enum は同じ型で == / != を使って比較してください");cmp->cmp_ty=l;return;}
     if (type_is_model(l) || type_is_model(r)) {
         if (l != r || (kind != CMP_EQ && kind != CMP_NE)) error_tok(cmp->tok, "モデルは同じ型で == または != を使って比較してください");
         cmp->cmp_ty = l; return;
@@ -437,10 +451,12 @@ static void check_file_builtin(Node *node)
     Builtin b = (Builtin)node->val;
     Node *first = node->lhs;
     Node *second = first != NULL ? first->next : NULL;
-    int expected = b == BI_FILE_READLINE || b == BI_FILE_WRITE ? 2 : 1;
+    int expected = b == BI_FILE_READLINE || b == BI_FILE_WRITE || b == BI_FILE_READ_BYTES || b == BI_FILE_WRITE_BYTES ? 2 : 1;
     allow_void = 0;
     if (node->nargs != expected && !(b == BI_FILE_OPEN && node->nargs == 2))
         error_tok(node->tok, "io.file.%s の引数の数が不正です（%d 個）", builtin_name(b), node->nargs);
+    if ((b == BI_FILE_READ_BYTES || b == BI_FILE_WRITE_BYTES) && first->kind == ND_REFARG)
+        error_tok(first->tok, "バイナリI/Oの呼び出しに ref は付けません");
     check_expr(first);
     if (b == BI_FILE_OPEN || b == BI_FILE_EXISTS) {
         if (!type_is_text(first->ty)) error_tok(first->tok, "ファイルのパスは str・char にしてください");
@@ -460,10 +476,23 @@ static void check_file_builtin(Node *node)
         if (!type_is_text(second->ty)) error_tok(second->tok, "ファイルのモードは str・char にしてください");
         if (is_const_expr(second)) {
             Value mode = eval_const(second);
-            if (mode.len != 1 || (mode.s[0] != 'r' && mode.s[0] != 'w' && mode.s[0] != 'a'))
-                error_tok(second->tok, "ファイルのモードは r・w・a のいずれかです");
+            if ((mode.len != 1 && (mode.len != 2 || mode.s[1] != 'b')) || (mode.s[0] != 'r' && mode.s[0] != 'w' && mode.s[0] != 'a'))
+                error_tok(second->tok, "ファイルのモードは r・w・a・rb・wb・ab のいずれかです");
         }
         node->ty = TY_FILE;
+    } else if (b == BI_FILE_READ_BYTES || b == BI_FILE_WRITE_BYTES) {
+        if (second->kind == ND_REFARG) error_tok(second->tok, "バイナリI/Oの呼び出しに ref は付けません");
+        if (b == BI_FILE_READ_BYTES) {
+            check_expected(second, TY_I64);
+            if (!type_is_integer(second->ty)) error_tok(second->tok, "read_bytes の count は非負の int_64 にしてください");
+            second = coerce(second, TY_I64, second->tok, "read_bytes の count"); first->next = second;
+            if (is_const_expr(second) && eval_const(second).i < 0) error_tok(second->tok, "read_bytes の count は非負にしてください");
+            node->ty = array_type(TY_U8);
+        } else {
+            check_expected(second, array_type(TY_U8));
+            if (second->ty != array_type(TY_U8)) error_tok(second->tok, "write_bytes の data は unsigned int_8 の1次元配列にしてください");
+            node->ty = TY_I64;
+        }
     } else if (b == BI_FILE_READLINE) {
         Var target = {0};
         target.ty = TY_STR;
@@ -475,12 +504,12 @@ static void check_file_builtin(Node *node)
             Node *part;
             check_print_parts(second->lhs);
             for (part = second->lhs; part; part = part->next)
-                if (part->kind != ND_STR && !is_number(part->ty) && part->ty != TY_BOOL && part->ty != TY_VOID && !type_is_text(part->ty))
+                if (part->kind != ND_STR && !is_number(part->ty) && !type_is_enum(part->ty) && part->ty != TY_BOOL && part->ty != TY_VOID && !type_is_text(part->ty))
                     error_tok(part->tok, "write の埋め込みは int・float・double・bool・str・char にしてください");
         }
         else {
             check_expr(second);
-            if (!is_number(second->ty) && second->ty != TY_BOOL && second->ty != TY_VOID && !type_is_text(second->ty))
+            if (!is_number(second->ty) && !type_is_enum(second->ty) && second->ty != TY_BOOL && second->ty != TY_VOID && !type_is_text(second->ty))
                 error_tok(second->tok, "write できるのは int・float・double・bool・str・char です");
         }
         node->ty = TY_I64;
@@ -509,6 +538,16 @@ static void check_builtin(Node *node)
     Value v;
 
     b = (Builtin)node->val;
+    if(node->lhs&&(b==BI_INT||b==BI_STR)){
+        check_expr(node->lhs);
+        if(type_is_enum(node->lhs->ty)){
+            if(node->nargs!=1)error_tok(node->tok,"enum の変換には値を1個だけ指定してください");
+            if(node->lhs->arg_name)error_tok(node->lhs->arg_name,"enum からの変換に名前付き引数は指定できません");
+            node->kind=ND_CAST;node->ty=b==BI_STR?TY_STR:node->cmp_ty?node->cmp_ty:TY_INT;
+            if(is_const_expr(node))(void)eval_const(node);
+            return;
+        }
+    }
     if (b>=BI_LIB_SIZE && b<BI_FILE_OPEN) { check_library_builtin(node); return; }
     if (b >= BI_FILE_OPEN) { check_file_builtin(node); return; }
     if (b == BI_COMPLEX) { check_complex_constructor(node); return; }
@@ -611,7 +650,7 @@ static void check_input(Node *node)
             Type ty;
             check_expr(node->lhs);
             ty = node->lhs->ty;
-            if (!is_number(ty) && ty != TY_BOOL && ty != TY_VOID && !type_is_text(ty))
+            if (!is_number(ty) && !type_is_enum(ty) && ty != TY_BOOL && ty != TY_VOID && !type_is_text(ty))
                 error_tok(node->lhs->tok, "input のプロンプトは int・float・double・bool・str・char にしてください");
         }
         node->ty = TY_STR;
@@ -623,7 +662,7 @@ static void check_input(Node *node)
         check_place(f->var);
         ty = f->var->ty;
         if (f->base && !type_is_integer(ty)) error_tok(f->var->tok, "基数指定の入力先は int にしてください");
-        if (!is_number(ty) && ty != TY_BOOL && ty != TY_VOID && !type_is_text(ty))
+        if (!is_number(ty) && !type_is_enum(ty) && ty != TY_BOOL && ty != TY_VOID && !type_is_text(ty))
             error_tok(f->var->tok, "%s には直接入力できません。変数または末端の配列要素を指定してください", type_name(ty));
         /* 文字列内の1文字への入力も1スカラー値に制限する。 */
         f->temp->ty = f->var->kind == ND_INDEX && type_is_text(f->var->lhs->ty) ? TY_CHAR : ty;
@@ -710,6 +749,7 @@ static void check_call(Node *node)
     allow_void = 0;
 
     if (!node->func) resolve_module_name(node);
+    if(node->kind==ND_ENUM_CONVERT){check_enum_conversion(node);return;}
     if (node->kind == ND_MODEL_METHOD) {
         allow_void = allow; check_model_method(node); allow_void = 0; return;
     }
@@ -791,8 +831,10 @@ static void check_expr(Node *node)
         return;
     }
 
+    if(node->kind==ND_VAR&&!node->var&&enum_initial_owner)enum_context_name(node,enum_initial_owner->ty);
     if (node->kind == ND_VAR && node->var == NULL) resolve_module_name(node);
     switch (node->kind) {
+    case ND_ENUM_CONVERT:check_enum_conversion(node);return;
     case ND_UNIT: node->ty=TY_VOID;return;
     case ND_WIDE: return;
     case ND_NUM:
@@ -859,6 +901,7 @@ static void check_expr(Node *node)
         }
         return;
     case ND_VAR:
+        if(node->var->enum_member)ensure_enum_member(node->var->enum_member);
         if (node->var->is_const && node->var->is_inferred && node->var->ty == TY_NONE)
             ensure_const(node->var);
         node->ty = node->var->ty;
@@ -1024,6 +1067,8 @@ static long long string_info(Node *node, Value v, long long index, int *offset, 
     *offset=off==UINT64_MAX?-1:(int)off;*length=(int)width;return (long long)count;
 }
 
+#include "enums_const.inc"
+
 /* 値 v を to 型に変換する（型検査で許した変換のみ） */
 static Value convert_value(Node *node, Value v, Type to)
 {
@@ -1033,6 +1078,7 @@ static Value convert_value(Node *node, Value v, Type to)
     if (v.ty == to) {
         return v;
     }
+    if(type_is_enum(v.ty)||type_is_enum(to))return enum_convert_value(node,v,to);
     if ((type_is_wide(v.ty)||type_is_wide(to)) && is_numeric(v.ty) && is_numeric(to)) return wide_calculate(node,W_CONVERT,v,(Value){0},to,0);
     if(v.ty==TY_VOID&&to==TY_STR){v.ty=TY_STR;v.s="()";v.len=2;return v;}
     if (type_is_complex(to)) {
@@ -1092,7 +1138,7 @@ static int compare_values(Value l, Value r, CmpKind kind)
         uint64_t a = (uint64_t)l.i, b = (uint64_t)r.i;
         return kind == CMP_EQ ? a == b : kind == CMP_NE ? a != b : kind == CMP_LT ? a < b : kind == CMP_LE ? a <= b : kind == CMP_GT ? a > b : a >= b;
     }
-    if (type_is_integer(l.ty) || l.ty == TY_BOOL || l.ty == TY_FILE) {
+    if (type_is_enum(l.ty) || type_is_integer(l.ty) || l.ty == TY_BOOL || l.ty == TY_FILE) {
         switch (kind) {
         case CMP_EQ:
             return l.i == r.i;
@@ -1589,6 +1635,7 @@ static Value eval_const_inner(Node *node)
         }
         ensure_const(node->var);
         return eval_const(node->var->const_val);
+    case ND_ENUM_CONVERT:
     case ND_CAST:
         return convert_value(node, eval_const(node->lhs), node->ty);
     case ND_LENGTH:
@@ -1711,6 +1758,7 @@ static int is_const_expr(Node *node)
         return 1;
     case ND_VAR:
         return node->var->is_const;
+    case ND_ENUM_CONVERT:
     case ND_CREAL: case ND_CIMAG:
     case ND_CAST:
     case ND_NEG:
@@ -1782,7 +1830,7 @@ static Node *value_node(Value v, Token *tok)
     }
     if(type_is_wide(v.ty)){node->kind=ND_WIDE;node->wide=v.wide;return node;}
     if (type_is_complex(v.ty)) { node->kind = ND_COMPLEX; node->fval = v.d; node->imag = v.imag; return node; }
-    if (type_is_integer(v.ty)) { node->kind = ND_NUM; node->val = v.i; return node; }
+    if (type_is_enum(v.ty) || type_is_integer(v.ty)) { node->kind = ND_NUM; node->val = v.i; return node; }
     switch (v.ty) {
     case TY_INT:
     case TY_FILE:
@@ -1953,9 +2001,12 @@ static int stmts_return(Node *list)
     return 0;
 }
 
+#include "match_type.inc"
+
 static void check_stmt(Node *node)
 {
     switch (node->kind) {
+    case ND_MATCH:check_match(node);return;
     case ND_DECL:
         if (node->var->is_const) {
             if (node->var->const_state == 2) return;
@@ -2120,13 +2171,16 @@ static void check_stmts(Node *list)
 
 static void ensure_const(Var *v)
 {
+    EnumDef *saved_enum=enum_initial_owner;
+    if(v->enum_member){ensure_enum_member(v->enum_member);return;}
+    enum_initial_owner=NULL;
     Function *saved_func = cur_func;
     int saved_allow = allow_void;
     if (v->is_global) cur_func = NULL;
     allow_void = 0;
     check_stmt(v->decl);
     cur_func = saved_func;
-    allow_void = saved_allow;
+    allow_void = saved_allow;enum_initial_owner=saved_enum;
 }
 
 /* 名前の重なりと main を確かめる */
@@ -2138,6 +2192,7 @@ static void check_names(Ast *ast)
     Var *g;
     Function *main_fn;
 
+    check_enum_names(ast);
     validate_module_names(ast);
 
     main_fn = NULL;
@@ -2200,6 +2255,7 @@ void typecheck(Ast *ast, Target out_target)
     check_names(ast);
     resolve_model_types(ast);
     prepare_builders(ast);
+    {EnumDef *e;for(e=ast->enums;e;e=e->next)ensure_enum(e);}
     check_interface_positions(ast);
     { Model *m, *other; Function *f;
       for (m = ast->models; m; m = m->next) {

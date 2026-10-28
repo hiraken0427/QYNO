@@ -3,7 +3,8 @@
 static void check_export_type(Type ty,Token *site)
 {
     int hidden=0;Type base=array_base(ty);
-    if(type_is_model(base))hidden=type_model(base)->is_private;
+    if(type_is_enum(base))hidden=type_enum(base)->is_private;
+    else if(type_is_model(base))hidden=type_model(base)->is_private;
     else if(type_is_interface(base))hidden=type_interface(base)->is_private;
     if(hidden)error_tok(site,"公開する定義に private の型 %s を使用できません。定義を private にするか公開型へ変換してください",type_name(base));
 }

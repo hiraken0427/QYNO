@@ -9,9 +9,10 @@
 #include <string.h>
 #include <sys/stat.h>
 
-typedef enum { SYM_NONE, SYM_MODEL, SYM_INTERFACE, SYM_MODULE, SYM_FUNCTION, SYM_CONSTANT, SYM_BUILTIN } SymbolKind;
+typedef enum { SYM_NONE, SYM_ENUM, SYM_MODEL, SYM_INTERFACE, SYM_MODULE, SYM_FUNCTION, SYM_CONSTANT, SYM_BUILTIN } SymbolKind;
 typedef struct {
     SymbolKind kind;
+    EnumDef *enumeration;
     Model *model;
     Interface *contract;
     Module *module;
@@ -201,6 +202,7 @@ Ast *load_program(const char *path, const char **roots, int root_count)
     Node **global_tail = &program->globals;
     Var **variable_tail = &program->global_vars;
     Model **model_tail = &program->models;
+    EnumDef **enum_tail = &program->enums;
     Interface **interface_tail = &program->interfaces;
     int i;
     if (canonical == NULL) fatal("%s を開けません: %s", path, strerror(errno));
@@ -240,6 +242,7 @@ Ast *load_program(const char *path, const char **roots, int root_count)
     /* 所有モジュールは Token.source に残す。リストだけを出力単位へ連結する。 */
     for (module = modules; module != NULL; module = module->next) {
         if (module->builtin) continue;
+        *enum_tail=module->ast->enums;while(*enum_tail)enum_tail=&(*enum_tail)->next;
         *interface_tail = module->ast->interfaces;
         while (*interface_tail) interface_tail = &(*interface_tail)->next;
         *model_tail = module->ast->models;
@@ -296,6 +299,16 @@ static Symbol exported_symbol(Module *module, const char *name)
         }
         return symbol;
     }
+    { EnumDef *e;
+      for(e=module->ast->enums;e;e=e->next)if(e->tok->source->module==module){
+          size_t n=strlen(e->name);
+          if(!strcmp(e->name,name)){symbol.kind=SYM_ENUM;symbol.enumeration=e;return symbol;}
+          if(!strncmp(e->name,name,n)&&name[n]=='.'){
+              EnumMember *m=enum_find(e,name+n+1);
+              if(m){symbol.kind=SYM_CONSTANT;symbol.constant=m->symbol;return symbol;}
+          }
+      }
+    }
     if (strchr(name, '.') != NULL) return symbol;
     { Interface *in;
       for (in = module->ast->interfaces; in; in = in->next)
@@ -342,7 +355,7 @@ static Symbol direct_symbol(Module *owner, const char *name)
             if (symbol.kind != SYM_NONE) return symbol;
         }
     }
-    if (strchr(name, '.') == NULL) {
+    {
         symbol = exported_symbol(owner, name);
         if (symbol.kind != SYM_NONE) return symbol;
     }
@@ -361,6 +374,7 @@ static int same_symbol(Symbol a, Symbol b)
 {
     if (a.kind != b.kind) return 0;
     switch (a.kind) {
+    case SYM_ENUM: return a.enumeration == b.enumeration;
     case SYM_MODEL: return a.model == b.model;
     case SYM_INTERFACE: return a.contract == b.contract;
     case SYM_MODULE: return a.module == b.module;
@@ -391,11 +405,21 @@ static Symbol using_symbol(Using *u, const char *name)
         Symbol candidate=exported_symbol(u->target_module,name);
         return symbol_accessible(candidate,u->tok->source->module)?candidate:symbol;
     }
+    if(u->target_enum&&strchr(name,'.')){
+        size_t n=strlen(u->target_enum->name);
+        const char *short_name=strrchr(u->path,'.');short_name=short_name?short_name+1:u->path;n=strlen(short_name);
+        if(!strncmp(name,short_name,n)&&name[n]=='.'){
+            EnumMember *m=enum_find(u->target_enum,name+n+1);
+            if(m){symbol.kind=SYM_CONSTANT;symbol.constant=m->symbol;}
+        }
+        return symbol;
+    }
     if (strchr(name, '.') != NULL) return symbol;
     last = strrchr(u->path, '.');
     last = last != NULL ? last + 1 : u->path;
     if (strcmp(last, name) != 0) return symbol;
-    if (u->target_model != NULL) {
+    if(u->target_enum){symbol.kind=SYM_ENUM;symbol.enumeration=u->target_enum;}
+    else if (u->target_model != NULL) {
         symbol.kind = SYM_MODEL; symbol.model = u->target_model;
     } else if (u->target_interface != NULL) {
         symbol.kind = SYM_INTERFACE; symbol.contract = u->target_interface;
@@ -423,10 +447,11 @@ static int symbol_accessible(Symbol symbol,Module *owner)
 {
     Token *declaration=NULL;int private=0;
     switch(symbol.kind){
+    case SYM_ENUM:private=symbol.enumeration->is_private;declaration=symbol.enumeration->tok;break;
     case SYM_MODEL:private=symbol.model->is_private;declaration=symbol.model->tok;break;
     case SYM_INTERFACE:private=symbol.contract->is_private;declaration=symbol.contract->tok;break;
     case SYM_FUNCTION:private=symbol.function->is_private;declaration=symbol.function->tok;break;
-    case SYM_CONSTANT:private=symbol.constant->is_private;declaration=symbol.constant->tok;break;
+    case SYM_CONSTANT:private=symbol.constant->enum_member?symbol.constant->enum_member->owner->is_private:symbol.constant->is_private;declaration=symbol.constant->tok;break;
     default:break;
     }
     return !private || declaration->source->module==owner;
@@ -470,6 +495,7 @@ static void resolve_using(Using *u)
     target = scoped_symbol(u->tok->source->module, u->path, u->scope, u, u->path_tok);
     if (target.kind == SYM_NONE) error_tok(u->path_tok, "using の対象 %s はありません。必要な import と名前を確認してください", u->path);
     if (u->alias != NULL && target.kind != SYM_MODULE) error_tok(u->alias, "as の別名はモジュールにだけ指定できます: %s", u->path);
+    u->target_enum = target.enumeration;
     u->target_model = target.model;
     u->target_interface = target.contract;
     u->target_module = target.module;
@@ -558,7 +584,8 @@ static void validate_using(Using *u)
             introduced_name(u, builtin_name((Builtin)b), symbol);
         }
     } else {
-        Model *m; Interface *in;
+        Model *m; Interface *in;EnumDef *e;
+        for(e=target->ast->enums;e;e=e->next)if(e->tok->source->module==target&&(!e->is_private||target==u->tok->source->module)){symbol.kind=SYM_ENUM;symbol.enumeration=e;introduced_name(u,e->name,symbol);}
         for (in = target->ast->interfaces; in; in = in->next) if (in->tok->source->module == target && (!in->is_private || target==u->tok->source->module)) {
             symbol.kind = SYM_INTERFACE; symbol.contract = in; introduced_name(u, in->name, symbol);
         }
@@ -603,6 +630,7 @@ static void validate_declaration(Token *site, Using *scope)
         if (symbol.kind != SYM_NONE &&
             !(symbol.kind == SYM_FUNCTION && symbol.function->tok == site) &&
             !(symbol.kind == SYM_CONSTANT && symbol.constant->tok == site) &&
+            !(symbol.kind == SYM_ENUM && symbol.enumeration->tok == site) &&
             !(symbol.kind == SYM_MODEL && symbol.model->tok == site) &&
             !(symbol.kind == SYM_INTERFACE && symbol.contract->tok == site)) {
             error_tok(site, "名前 %s は using %s と衝突しています", name, u->path);
@@ -629,6 +657,7 @@ void validate_module_names(Ast *program)
         }
       }
     }
+    { EnumDef *e;for(e=program->enums;e;e=e->next)validate_declaration(e->tok,NULL); }
     { Model *m; for (m = program->models; m; m = m->next) validate_declaration(m->tok, NULL); }
     for (fn = program->funcs; fn != NULL; fn = fn->next) {
         if (!fn->model) validate_declaration(fn->tok, NULL);
@@ -704,6 +733,7 @@ void resolve_module_name(Node *node)
         }
     }
     if (node->kind == ND_CALL) {
+        if(symbol.kind==SYM_ENUM){node->kind=ND_ENUM_CONVERT;node->cmp_ty=symbol.enumeration->ty;return;}
         if (symbol.kind == SYM_INTERFACE) error_tok(node->tok, "interface は生成できません");
         if (symbol.kind == SYM_MODEL) {
             if (node->nargs) error_tok(node->tok, "モデルの初期化は 型 変数 = {フィールド=値} と書いてください");
@@ -734,7 +764,14 @@ void resolve_module_name(Node *node)
 Type resolve_module_type(Token *tok, const char *name, Using *scope)
 {
     Symbol symbol = scoped_symbol(tok->source->module, name, scope, NULL, tok);
+    if(symbol.kind==SYM_ENUM)return symbol.enumeration->ty;
     if (symbol.kind == SYM_INTERFACE) return symbol.contract->ty;
     if (symbol.kind != SYM_MODEL) error_tok(tok, "モデル型 %s は定義されていません。import と using を確認してください", name);
     return symbol.model->ty;
+}
+
+int module_name_exists(Node *node)
+{
+    char *name=node->name?node->name:copy_name(node->tok->loc,(size_t)node->tok->len);
+    return scoped_symbol(node->tok->source->module,name,node->usings,NULL,node->tok).kind!=SYM_NONE;
 }

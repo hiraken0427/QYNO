@@ -1,0 +1,22 @@
+using io
+
+enum State;
+	undetermined
+	ready
+	failed=-1
+
+str describe(State state);
+	match(state);
+		case undetermined;
+			return "pending"
+		case ready;
+			return "ready"
+		case failed;
+			return "failed"
+
+int main();
+	State state=ready
+	print("{state}: {describe(state)} ({int(state)}), {lib.size(state)} bits")
+	State values[]=[undetermined,ready,failed]
+	print(values)
+	return 0

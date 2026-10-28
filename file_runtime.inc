@@ -1,4 +1,4 @@
-/* io.file: managed handle [OS handle, mode(0=closed), path, pos, len, buffer].
+/* io.file: managed handle [OS handle, mode(0=closed,1=r,2=w,3=a,bit2=binary), path, pos, len, buffer].
  * Each handle owns a 4096-byte read buffer. Values and array copies share the
  * managed handle. Allocation flag bit 1 identifies finalizable handles.
  */
@@ -251,22 +251,28 @@ static void gen_file_open_runtime(void)
     int mode = rt_label("file.open.mode.ok");
     int opened = rt_label("file.open.success");
     int regular = rt_label("file.open.regular");
-    rt_enter(file_labels[BI_FILE_OPEN - BI_FILE_OPEN], 5);
+    rt_enter(file_labels[BI_FILE_OPEN - BI_FILE_OPEN], 6);
+    rt_set(6, 0);
     x64_load(RAX, RBP, 24); rt_save(1, RAX); x64_store(R14, FILE_PATH, RAX);
     x64_load(RAX, RBP, 16); x64_load(RCX, RAX, 0); rt_cmp(RCX, 1); x64_jcc(CC_Z, mode_length);
-    file_fail(EX_SOFTWARE, "モードは r・w・a のいずれかです");
+    { int binary = rt_label("file.open.mode.binary");
+      rt_cmp(RCX, 2); x64_jcc(CC_NZ, binary);
+      x64_load8(RCX, RAX, 9); rt_cmp(RCX, 'b'); x64_jcc(CC_NZ, binary);
+      rt_set(6, 4); x64_jmp(mode_length);
+      x64_bind(binary); }
+    file_fail(EX_SOFTWARE, "モードは r・w・a・rb・wb・ab のいずれかです");
     x64_bind(mode_length); x64_load8(RCX, RAX, 8);
     rt_cmp(RCX, 'r'); x64_jcc(CC_Z, r); rt_cmp(RCX, 'w'); x64_jcc(CC_Z, w); rt_cmp(RCX, 'a'); x64_jcc(CC_Z, a);
-    file_fail(EX_SOFTWARE, "モードは r・w・a のいずれかです");
+    file_fail(EX_SOFTWARE, "モードは r・w・a・rb・wb・ab のいずれかです");
     x64_bind(r); rt_set(2, 1); x64_jmp(mode);
     x64_bind(w); rt_set(2, 2); x64_jmp(mode);
     x64_bind(a); rt_set(2, 3);
-    x64_bind(mode); rt_load(RAX, 1); x64_call(file_path_label); rt_save(3, RAX);
+    x64_bind(mode); rt_load(RAX, 2); rt_load(RCX, 6); x64_add(RAX, RCX); rt_save(2, RAX); rt_load(RAX, 1); x64_call(file_path_label); rt_save(3, RAX);
     x64_mov_imm(RDI, 48); x64_call(alloc_label); rt_save(4, RAX); x64_store_imm(RAX, -8, 2);
     rt_load(RCX, 1); x64_store(RAX, 16, RCX);
     x64_mov_imm(RDI, FILE_BUFFER_SIZE); x64_call(alloc_label);
     rt_load(RCX, 4); x64_store(RCX, 40, RAX);
-    rt_load(RAX, 3); rt_load(RDI, 2); x64_call(file_raw_open_label);
+    rt_load(RAX, 3); rt_load(RDI, 2); x64_and_imm(RDI, 3); x64_call(file_raw_open_label);
     x64_test(RAX, RAX); x64_jcc(CC_NS, opened); file_os_fail("ファイルを開けません");
     x64_bind(opened); rt_save(5, RAX); x64_call(file_kind_label);
     rt_cmp(RAX, 1); x64_jcc(CC_Z, regular);
@@ -282,7 +288,7 @@ static void gen_file_open_runtime(void)
     rt_load(RCX, 2); x64_store(RAX, 8, RCX); rt_leave();
 }
 
-/* rax=control, rdi=required mode(0 any,1 read,2 write) -> same control. */
+/* rax=control, rdi=required mode(0 any,1 text read,2 text write,5 binary read,6 binary write). */
 static void gen_file_check_runtime(void)
 {
     int nonnull = rt_label("file.check.nonnull");
@@ -295,9 +301,11 @@ static void gen_file_check_runtime(void)
     x64_load(RCX, RAX, 8); x64_test(RCX, RCX); x64_jcc(CC_NZ, opened);
     file_fail(EX_SOFTWARE, "file は閉じられています");
     x64_bind(opened); x64_test(RDI, RDI); x64_jcc(CC_Z, good);
-    rt_cmp(RDI, 2); x64_jcc(CC_Z, writing);
-    rt_cmp(RCX, 1); x64_jcc(CC_Z, good); file_fail(EX_SOFTWARE, "この file は読み取り用ではありません");
-    x64_bind(writing); rt_cmp(RCX, 2); x64_jcc(CC_AE, good); file_fail(EX_SOFTWARE, "この file は書き込み用ではありません");
+    rt_cmp(RDI, 2); x64_jcc(CC_Z, writing); rt_cmp(RDI, 6); x64_jcc(CC_Z, writing);
+    x64_cmp(RCX, RDI); x64_jcc(CC_Z, good); file_fail(EX_SOFTWARE, "この file は指定モードの読み取り用ではありません");
+    x64_bind(writing); x64_cmp(RCX, RDI); x64_jcc(CC_Z, good);
+    x64_mov(R8, RDI); x64_add_imm(R8, 1); x64_cmp(RCX, R8); x64_jcc(CC_Z, good);
+    file_fail(EX_SOFTWARE, "この file は指定モードの書き込み用ではありません");
     x64_bind(good); x64_ret();
 }
 
@@ -433,38 +441,40 @@ static void gen_file_read_text_runtime(void)
     }
 }
 
-/* rax=control, rdi=validated string -> bytes written. */
+/* rax=control, rsi=raw bytes, rdx=length -> all bytes written.
+ * Callers validate mode/content. Shared by text output and packed binary chunks. */
 static void gen_file_write_runtime(void)
 {
-    int loop = rt_label("file.write.loop");
-    int retry = rt_label("file.write.retry");
-    int good = rt_label("file.write.good");
-    int done = rt_label("file.write.done");
-    int limited = rt_label("file.write.limited");
-    rt_enter(file_labels[BI_FILE_WRITE - BI_FILE_OPEN], 4); rt_save(1, RAX); rt_save(2, RDI); rt_set(3, 0);
-    x64_mov_imm(RDI, 2); x64_call(file_check_label);
-    rt_load(RAX, 2); x64_call(file_validate_label);
-    x64_bind(loop); rt_load(RAX, 2); x64_load(RDX, RAX, 0); rt_load(RCX, 3);
+    int loop = rt_label("file.write.loop"), retry = rt_label("file.write.retry");
+    int limited = rt_label("file.write.limited"), done = rt_label("file.write.done");
+    int good = rt_label("file.write.good"), result = rt_label("file.write.result");
+    rt_enter(file_write_all_label, 6);
+    rt_save(1, RAX); rt_save(2, RSI); rt_save(3, RDX); rt_set(4, 0);
+    x64_bind(loop); rt_load(RDX, 3); rt_load(RCX, 4);
     x64_cmp(RCX, RDX); x64_jcc(CC_AE, done); x64_sub(RDX, RCX);
     rt_cmp(RDX, 0x40000000); x64_jcc(CC_BE, limited); x64_mov_imm(RDX, 0x40000000);
-    x64_bind(limited); rt_save(4, RDX);
-    x64_bind(retry);
-    rt_load(RAX, 2); x64_lea(RSI, RAX, 8); rt_load(RCX, 3); x64_add(RSI, RCX);
-    rt_load(RAX, 1);
+    x64_bind(limited); rt_save(5, RDX);
+    x64_bind(retry); rt_load(RSI, 2); rt_load(RCX, 4); x64_add(RSI, RCX); rt_load(RAX, 1);
     if (target == TARGET_LINUX) {
-        x64_load(RDI, RAX, 0); rt_load(RDX, 4); x64_mov_imm(RAX, 1); x64_syscall();
+        x64_load(RDI, RAX, 0); rt_load(RDX, 5); x64_mov_imm(RAX, 1); x64_syscall();
         rt_cmp(RAX, -4); x64_jcc(CC_Z, retry);
     } else {
-        x64_load(RCX, RAX, 0); x64_mov(RDX, RSI); rt_load(R8, 4); x64_lea(R9, RBP, -32); rt_set(4, 0);
+        x64_load(RCX, RAX, 0); x64_mov(RDX, RSI); rt_load(R8, 5); x64_lea(R9, RBP, -48); rt_set(6, 0);
         file_win_begin(); x64_store_imm(RSP, 32, 0); file_win_end(IMP_WRITE_FILE);
-        x64_test(RAX, RAX); x64_jcc(CC_NZ, good); file_windows_error(); x64_jmp(limited = rt_label("file.write.check.error"));
-        x64_bind(good); rt_load(RAX, 4); x64_bind(limited);
+        x64_test(RAX, RAX); x64_jcc(CC_NZ, good); file_windows_error(); x64_jmp(result);
+        x64_bind(good); rt_load(RAX, 6); x64_bind(result);
     }
     x64_test(RAX, RAX); x64_jcc(CC_NS, good = rt_label("file.write.not.error")); file_os_fail("write に失敗しました");
     x64_bind(good); x64_test(RAX, RAX); x64_jcc(CC_NZ, good = rt_label("file.write.progress"));
     file_fail(EX_IOERR, "write が進みません");
-    x64_bind(good); rt_load(RCX, 3); x64_add(RCX, RAX); rt_save(3, RCX); x64_jmp(loop);
-    x64_bind(done); rt_load(RAX, 3); rt_leave();
+    x64_bind(good); rt_load(RCX, 4); x64_add(RCX, RAX); rt_save(4, RCX); x64_jmp(loop);
+    x64_bind(done); rt_load(RAX, 4); rt_leave();
+
+    /* Existing formatting code calls the text wrapper in registers. */
+    rt_enter(file_labels[BI_FILE_WRITE - BI_FILE_OPEN], 2); rt_save(1, RAX); rt_save(2, RDI);
+    x64_mov_imm(RDI, 2); x64_call(file_check_label);
+    rt_load(RAX, 2); x64_call(file_validate_label);
+    x64_load(RDX, RAX, 0); x64_lea(RSI, RAX, 8); rt_load(RAX, 1); x64_call(file_write_all_label); rt_leave();
 }
 
 static void gen_file_exists_runtime(void)
@@ -500,6 +510,8 @@ static void gen_file_exists_runtime(void)
     x64_bind(done); rt_leave();
 }
 
+#include "binary_file_runtime.inc"
+
 static void gen_file_runtime(void)
 {
     gen_file_error_runtime(); gen_file_validate_runtime(); gen_file_path_runtime();
@@ -507,4 +519,5 @@ static void gen_file_runtime(void)
     gen_file_raw_open(); gen_file_open_runtime(); gen_file_check_runtime();
     gen_file_close_runtime(); gen_file_buffer_runtime(); gen_file_capture_runtime();
     gen_file_getc_runtime(); gen_file_read_text_runtime(); gen_file_write_runtime(); gen_file_exists_runtime();
+    gen_file_binary_runtime();
 }

@@ -7,13 +7,15 @@
 #include "grapheme_runtime.h"
 #include <stdio.h>
 
-#define QYC_VERSION "0.27.0"
+#define QYC_VERSION "0.27.1"
 
 typedef struct SourceFile SourceFile;
 typedef struct Module Module;
 typedef struct ModuleImport ModuleImport;
 typedef struct Ast Ast;
 typedef struct Model Model;
+typedef struct EnumDef EnumDef;
+typedef struct EnumMember EnumMember;
 typedef struct ModelField ModelField;
 typedef struct Interface Interface;
 typedef struct Implementation Implementation;
@@ -193,6 +195,7 @@ typedef enum {
     BI_FILE_READLINE,
     BI_FILE_WRITE,
     BI_FILE_EXISTS,
+    BI_FILE_READ_BYTES, BI_FILE_WRITE_BYTES,
     BI_COUNT
 } Builtin;
 
@@ -207,6 +210,7 @@ struct Using {
     Using *scope;       /* 宣言前のブロック内 using */
     Using *all_next;
     Var *locals;        /* 宣言位置で見える変数 */
+    EnumDef *target_enum;
     Model *target_model;
     Interface *target_interface;
     Module *target_module;
@@ -216,6 +220,7 @@ struct Using {
     int state;         /* 0:未解決、1:解決中、2:解決済み */
 };
 struct Var {
+    EnumMember *enum_member;
     Var *next;          /* 関数内の全変数の並び */
     Var *vnext;         /* 見えている変数の並び（スコープ） */
     const char *name;
@@ -244,6 +249,7 @@ struct Var {
 };
 
 typedef enum {
+    ND_ENUM_CONVERT, ND_MATCH, ND_CASE,
     ND_UNIT,
     ND_WIDE,
     ND_ADD,     /* + （str 同士なら連結） */
@@ -404,6 +410,15 @@ struct Function {
     int label;          /* コード生成で使うラベル */
 };
 
+struct EnumMember {
+    EnumMember *next; EnumDef *owner; Token *tok; char *name;
+    Node *initial; Var *symbol; long long value; int state, index;
+};
+struct EnumDef {
+    EnumDef *next; Token *tok; char *name; Type ty; int is_private, state, count;
+    EnumMember *members; int check_label, name_label, parse_label;
+};
+
 struct ModelField {
     ModelField *next;
     Model *model;       /* declaring nominal model */
@@ -466,6 +481,7 @@ struct InputField {
 
 /* プログラム全体 */
 struct Ast {
+    EnumDef *enums;
     Model *models;
     Interface *interfaces;
     Function *funcs;    /* すべての関数（main を含む） */
@@ -557,6 +573,11 @@ int array_rank(Type array);
 const char *array_type_name(Type array);
 void typecheck(Ast *ast, Target target);
 int value_bit_width(Type ty);
+int type_is_enum(Type ty);
+EnumDef *type_enum(Type ty);
+Type enum_type(EnumDef *definition);
+EnumMember *enum_find(EnumDef *definition, const char *name);
+int module_name_exists(Node *node);
 int type_is_model(Type ty);
 Model *type_model(Type ty);
 Type model_type(Model *model);

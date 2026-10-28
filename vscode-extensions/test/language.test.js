@@ -695,3 +695,49 @@ test('block using does not leak library short names',()=>{
     assert.ok(labels('using ¦').includes('lib'));
     assert.ok(labels('using io.¦').includes('path'));
 });
+
+test('binary file catalog exposes byte arrays and no implicit ref argument',()=>{
+    const read=STANDARD.find(s=>s.path==='io.file.read_bytes');
+    const write=STANDARD.find(s=>s.path==='io.file.write_bytes');
+    assert.equal(read.type,'unsigned int_8');assert.equal(read.rank,1);
+    assert.equal(write.params[1].type,'unsigned int_8');assert.equal(write.params[1].rank,1);
+    assert.ok(!write.params[1].ref);
+    assert.ok(labels('using io.file as fs\nint main();\n\tfs.¦').includes('read_bytes'));
+    assert.ok(!labels('int main();\n\t¦').includes('read_bytes'));
+    assert.match(hint('io.file.read_bytes(source, ¦').label,/int_64 count/);
+    assert.match(hint('io.file.read_bytes(source, ¦').label,/\[\]$/);
+    assert.match(hint('using io.file\nint main();\n\twrite_bytes(out, ¦').label,/unsigned int_8 data\[\]/);
+});
+
+const ENUM_SOURCE='enum sex;\n\tundetermined\n\tmale\n\tfemale=3\n';
+test('enum definitions and member navigation are independent of models',()=>{
+    assert.ok(labels(ENUM_SOURCE+'int main();\n\tsex.¦').includes('female'));
+    assert.ok(!labels(ENUM_SOURCE+'int main();\n\t¦').includes('female'));
+    assert.equal(at(ENUM_SOURCE+'int main();\n\tsex.fe¦male').kind,'enumMember');
+    assert.equal(at(ENUM_SOURCE+'int main();\n\tsex.fe¦male').line,3);
+    assert.equal(hint(ENUM_SOURCE+'int main();\n\tsex(¦').activeParameter,0);
+});
+test('enum member completion uses assignment array argument and return types',()=>{
+    assert.ok(labels(ENUM_SOURCE+'int main();\n\tsex gender=fe¦').includes('female'));
+    assert.ok(labels(ENUM_SOURCE+'int main();\n\tsex gender\n\tgender=fe¦').includes('female'));
+    assert.ok(labels(ENUM_SOURCE+'int main();\n\tsex genders[]=[male, fe¦').includes('female'));
+    assert.ok(labels(ENUM_SOURCE+'void set(sex gender);\n\treturn\nint main();\n\tset(fe¦').includes('female'));
+    assert.ok(labels(ENUM_SOURCE+'sex get();\n\treturn fe¦').includes('female'));
+    assert.ok(!labels(ENUM_SOURCE+'int main();\n\tint gender=fe¦').includes('female'));
+    assert.equal(at(ENUM_SOURCE+'int main();\n\tsex gender=fe¦male').kind,'enumMember');
+});
+test('enum fields case blocks and comparisons preserve contextual types',()=>{
+    const source=ENUM_SOURCE+'model User;\n\tsex gender\nint main();\n\tUser user\n';
+    assert.ok(labels(source+'\tuser.gender=fe¦').includes('female'));
+    assert.ok(labels(source+'\tif(user.gender==fe¦').includes('female'));
+    assert.ok(labels(source+'\tmatch(user.gender);\n\t\tcase fe¦').includes('female'));
+    assert.ok(labels(source+'\tUser other={gender=fe¦').includes('female'));
+    assert.ok(!labels(source+'\tsex gender\n\tgender.¦').includes('female'));
+});
+test('imported enum types and selective members honor module privacy',()=>{
+    const files={'profile':ENUM_SOURCE+'private enum Secret;\n\tzero\n\thidden\n'};
+    assert.ok(labels('import profile\nint main();\n\tprofile.sex.¦',files).includes('female'));
+    assert.ok(!labels('import profile\nint main();\n\tprofile.Secret.¦',files).includes('hidden'));
+    assert.ok(labels('import profile\nusing profile.sex\nint main();\n\tsex.¦',files).includes('female'));
+    assert.ok(labels('import profile\nusing profile.sex.female\nint main();\n\tfe¦',files).includes('female'));
+});
