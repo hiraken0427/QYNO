@@ -82,9 +82,17 @@
   ],
   "wordPattern": "[A-Za-z_][A-Za-z0-9_]*",
   "indentationRules": {
-    "increaseIndentPattern": "^\\s*(?:(?:if|else|while|for|model)\\b.*|(?:int|float|double|bool|str|char|file|void)\\s+[A-Za-z_]\\w*\\s*\\(.*)\\s*;\\s*(?://.*)?$"
+    "increaseIndentPattern": "^(?:[^\"'/]|/(?!/)|\"(?:\\\\.|[^\"\\\\])*\"|'(?:\\\\.|[^'\\\\])*')*;\\s*(?://.*)?$"
   },
   "folding": {
     "offSide": true
-  }
+  },
+  "onEnterRules": [
+    {
+      "beforeText": "^(?:[^\"'/]|/(?!/)|\"(?:\\\\.|[^\"\\\\])*\"|'(?:\\\\.|[^'\\\\])*')*;\\s*(?://.*)?$",
+      "action": {
+        "indent": "indent"
+      }
+    }
+  ]
 }

@@ -35,10 +35,11 @@ int main();
 
 ## VS Code 拡張
 
-[VSCode Option](vscode-extensions/README.md) は QYNO 0.26.13 のハイライト、
-ユーザー定義の関数名・変数名の補完、定義への移動、引数ヒントに対応する。
+[QYNO 0.26.13](vscode-extensions/README.md) はハイライト、ユーザー定義の関数名・変数名の補完、
+定義への移動、引数ヒント、セミコロン後の自動インデント、qyc連携の構文・型エラーの赤線表示に対応する。
 [vscode-extensions/0.26.13_VSCode_option.vsix](vscode-extensions/0.26.13_VSCode_option.vsix) を
 VS Code の「VSIX からのインストール…」で指定する。
+診断には別途qycが必要。PATHにない場合は拡張設定の `qyno.compilerPath` に実行ファイルを指定する。
 
 ## 複素数（新段階4）
 

@@ -1,11 +1,18 @@
 'use strict';
 const vscode = require('vscode');
 const path = require('node:path');
+const os = require('node:os');
 const { analyze, typeLabel, functionLabel } = require('./analysis');
 const language = require('./language');
+const { registerDiagnostics } = require('./diagnostics');
 
 class Index {
     constructor() { this.cache = new Map(); }
+    directory(document) {
+        return document.uri.scheme === 'file' ? document.uri.with({ path: document.uri.path.slice(0, document.uri.path.lastIndexOf('/')) })
+            : vscode.workspace.workspaceFolders?.[0]?.uri || vscode.Uri.file(os.tmpdir());
+    }
+    base(document) { return vscode.workspace.getWorkspaceFolder(document.uri)?.uri || this.directory(document); }
     async model(uri) {
         const open = vscode.workspace.textDocuments.find(d => d.uri.toString() === uri.toString());
         if (open) return analyze(open.getText(), uri.toString());
@@ -15,11 +22,10 @@ class Index {
     }
     roots(document) {
         const config = vscode.workspace.getConfiguration('qyno', document.uri);
-        const folder = vscode.workspace.getWorkspaceFolder(document.uri)?.uri;
         const directory = uri => uri.with({ path: uri.path.slice(0, uri.path.lastIndexOf('/')) });
-        const relative = value => path.isAbsolute(value) ? vscode.Uri.file(value) : vscode.Uri.joinPath(folder || directory(document.uri), value);
+        const relative = value => path.isAbsolute(value) ? vscode.Uri.file(value) : vscode.Uri.joinPath(this.base(document), value);
         const entry = config.get('entryFile', '');
-        return [entry ? directory(relative(entry)) : directory(document.uri), ...config.get('moduleRoots', []).map(relative)];
+        return [entry ? directory(relative(entry)) : this.directory(document), ...config.get('moduleRoots', []).map(relative)];
     }
     async project(document, discover, token) {
         const model = analyze(document.getText(), document.uri.toString());
@@ -55,7 +61,7 @@ class Index {
             };
             for (const root of roots) await walk(root);
         }
-        return { model, modules, moduleNames };
+        return { model, modules, moduleNames, roots: roots.map(root => root.fsPath) };
     }
 }
 const kinds = { interface: vscode.CompletionItemKind.Interface, model: vscode.CompletionItemKind.Class, field: vscode.CompletionItemKind.Field, function: vscode.CompletionItemKind.Function, variable: vscode.CompletionItemKind.Variable, parameter: vscode.CompletionItemKind.Variable, constant: vscode.CompletionItemKind.Constant, namespace: vscode.CompletionItemKind.Module, property: vscode.CompletionItemKind.Property, type: vscode.CompletionItemKind.TypeParameter, keyword: vscode.CompletionItemKind.Keyword };
@@ -69,6 +75,10 @@ function activate(context) {
     const index = new Index(), selector = { language: 'qyno' };
     const watch = vscode.workspace.createFileSystemWatcher('**/*.qy');
     context.subscriptions.push(watch, watch.onDidChange(uri => index.cache.delete(uri.toString())), watch.onDidDelete(uri => index.cache.delete(uri.toString())));
+    const diagnostics = registerDiagnostics(vscode, context, index);
+    context.subscriptions.push(watch.onDidChange(() => diagnostics.schedule(vscode.window.activeTextEditor?.document)),
+        watch.onDidCreate(() => { index.cache.clear(); diagnostics.schedule(vscode.window.activeTextEditor?.document); }),
+        watch.onDidDelete(() => diagnostics.schedule(vscode.window.activeTextEditor?.document)));
     context.subscriptions.push(vscode.languages.registerCompletionItemProvider(selector, {
         async provideCompletionItems(document, position, token) {
             const discover = /^\s*(import|using)\s/.test(document.lineAt(position.line).text);

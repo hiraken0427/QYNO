@@ -1,6 +1,8 @@
 'use strict';
 const assert = require('node:assert/strict');
 const path = require('node:path');
+const fs = require('node:fs/promises');
+const os = require('node:os');
 const vscode = require('vscode');
 async function run() {
     let checks = 0;
@@ -281,6 +283,97 @@ async function run() {
     assert.equal(complexHint.activeParameter,1); checks++;
     const complexHover=await vscode.commands.executeCommand('vscode.executeHoverProvider',complexDoc.uri,new vscode.Position(6,11));
     assert.ok(complexHover.some(h=>h.contents.some(c=>c.value?.includes('float real')))); checks++;
+    assert.equal(extension.packageJSON.displayName, 'QYNO 0.26.13'); checks++;
+    const config = vscode.workspace.getConfiguration('qyno');
+    const settings = ['compilerPath', 'diagnostics.enabled', 'diagnostics.delay', 'entryFile', 'moduleRoots'];
+    const original = settings.map(name => config.inspect(name).globalValue);
+    const temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'qyno-vscode-integration-'));
+    const replace = async (doc, text) => {
+        const edit = new vscode.WorkspaceEdit();
+        edit.replace(doc.uri, new vscode.Range(0, 0, doc.lineCount - 1, doc.lineAt(doc.lineCount - 1).text.length), text);
+        assert.ok(await vscode.workspace.applyEdit(edit));
+    };
+    try {
+        await config.update('diagnostics.enabled', false, vscode.ConfigurationTarget.Global);
+        const indentDoc = await vscode.workspace.openTextDocument({ language: 'qyno', content: '' });
+        const indentEditor = await vscode.window.showTextDocument(indentDoc);
+        indentEditor.options = { insertSpaces: false, tabSize: 4 };
+        for (const [before, after] of [
+            ['int main();', '\t'], ['\tfor(0 <= i < 3, i++);', '\t\t'],
+            ['\tif(true); // comment', '\t\t'], ['complex_128 get();', '\t'],
+            ['private readonly get();', '\t'], ['Point make();', '\t'], ['square(x);', '\t'],
+            ['\tprint(";")', '\t'], ['\tprint(1) // ;', '\t'], ['\treturn 0', '\t']
+        ]) {
+            await replace(indentDoc, before);
+            const end = new vscode.Position(0, before.length);
+            indentEditor.selection = new vscode.Selection(end, end);
+            await vscode.commands.executeCommand('type', { text: '\n' });
+            assert.equal(indentDoc.lineAt(1).text, after, before); checks++;
+        }
+        const entry = path.join(temporary, 'main.qy');
+        const modulePath = path.join(temporary, 'helper.qy');
+        await fs.writeFile(entry, 'int main();\n\treturn 0\n');
+        await fs.writeFile(modulePath, 'int answer() = 3\n');
+        const diagDoc = await vscode.workspace.openTextDocument(vscode.Uri.file(entry));
+        await vscode.window.showTextDocument(diagDoc);
+        await config.update('compilerPath', path.resolve(__dirname, '../../qyc'), vscode.ConfigurationTarget.Global);
+        await config.update('entryFile', entry, vscode.ConfigurationTarget.Global);
+        await config.update('moduleRoots', [], vscode.ConfigurationTarget.Global);
+        await config.update('diagnostics.delay', 100, vscode.ConfigurationTarget.Global);
+        await config.update('diagnostics.enabled', true, vscode.ConfigurationTarget.Global);
+        const errors = doc => vscode.languages.getDiagnostics(doc.uri).filter(d => d.source === 'QYNO' && d.severity === vscode.DiagnosticSeverity.Error);
+        for (const text of [
+            'int main();\n\tint n = (1 + )\n\treturn 0\n',
+            'int main();\n\tint n = "wrong"\n\treturn 0\n',
+            'int main();\n\tprint(missing)\n\treturn 0\n',
+            'int main();\n\tmissing_call()\n\treturn 0\n',
+            'int main();\n\tprint("日本😀", missing)\n\treturn 0\n'
+        ]) {
+            await replace(diagDoc, text);
+            await vscode.commands.executeCommand('qyno.checkDocument');
+            assert.ok(errors(diagDoc).length, text); checks++;
+        }
+        assert.equal(errors(diagDoc)[0].range.start.character, 15); checks++;
+        await replace(diagDoc, 'int main();\n\tn = 3\n\tcomplex z = 3+i4\n\tprint("{n}: {z}")\n\treturn 0\n');
+        await vscode.commands.executeCommand('qyno.checkDocument');
+        assert.equal(errors(diagDoc).length, 0); checks++;
+        await replace(diagDoc, 'int main();\n\tauto_error()\n\treturn 0\n');
+        const autoDeadline = Date.now() + 10000;
+        while (!errors(diagDoc).length && Date.now() < autoDeadline) await new Promise(resolve => setTimeout(resolve, 50));
+        assert.ok(errors(diagDoc).some(d => /auto_error/.test(d.message))); checks++;
+        // Both the entry and an imported file are dirty; edits must never be saved by checking.
+        await replace(diagDoc, 'import helper\nint main();\n\tprint(helper.answer())\n\treturn 0\n');
+        const moduleDoc = await vscode.workspace.openTextDocument(vscode.Uri.file(modulePath));
+        await replace(moduleDoc, 'int answer() = "wrong"\n');
+        await vscode.window.showTextDocument(diagDoc);
+        await vscode.commands.executeCommand('qyno.checkDocument');
+        assert.ok(errors(moduleDoc).length); checks++;
+        await replace(moduleDoc, 'int answer() = 4\n');
+        // Debounced checks also run without the explicit command and clear old results.
+        const deadline = Date.now() + 10000;
+        while (errors(moduleDoc).length && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50));
+        await vscode.commands.executeCommand('qyno.checkDocument');
+        assert.equal(errors(moduleDoc).length, 0); assert.equal(errors(diagDoc).length, 0); checks++;
+        assert.equal(await fs.readFile(entry, 'utf8'), 'int main();\n\treturn 0\n');
+        assert.equal(await fs.readFile(modulePath, 'utf8'), 'int answer() = 3\n'); checks++;
+        assert.deepEqual((await fs.readdir(temporary)).sort(), ['helper.qy', 'main.qy']); checks++;
+        await config.update('compilerPath', path.join(temporary, 'missing-qyc'), vscode.ConfigurationTarget.Global);
+        await vscode.commands.executeCommand('qyno.checkDocument');
+        assert.ok(vscode.languages.getDiagnostics(diagDoc.uri).some(d => d.severity === vscode.DiagnosticSeverity.Warning && /qyno.compilerPath/.test(d.message))); checks++;
+        await config.update('diagnostics.enabled', false, vscode.ConfigurationTarget.Global);
+        await vscode.commands.executeCommand('qyno.checkDocument');
+        assert.equal(vscode.languages.getDiagnostics(diagDoc.uri).length, 0); checks++;
+        await config.update('compilerPath', path.resolve(__dirname, '../../qyc'), vscode.ConfigurationTarget.Global);
+        await config.update('entryFile', '', vscode.ConfigurationTarget.Global);
+        const untitled = await vscode.workspace.openTextDocument({ language: 'qyno', content: 'int main();\n\tunknown()\n\treturn 0\n' });
+        await vscode.window.showTextDocument(untitled);
+        await config.update('diagnostics.enabled', true, vscode.ConfigurationTarget.Global);
+        await vscode.commands.executeCommand('qyno.checkDocument');
+        assert.ok(errors(untitled).some(d => /unknown/.test(d.message)), JSON.stringify(vscode.languages.getDiagnostics(untitled.uri))); checks++;
+    } finally {
+        for (let i = 0; i < settings.length; i++) await config.update(settings[i], original[i], vscode.ConfigurationTarget.Global);
+        await fs.rm(temporary, { recursive: true, force: true });
+    }
     console.log(`QYNO VS Code integration: ${checks} checks passed`);
 }
 module.exports={run};
