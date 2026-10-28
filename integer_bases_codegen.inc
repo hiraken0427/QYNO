@@ -10,7 +10,7 @@ static void gen_parse_int(void)
     int done = rt_label("integer.done"), positive = rt_label("integer.positive"), fail = rt_label("integer.bad"), range = rt_label("integer.range"), out = rt_label("integer.out");
     int i; const int bases[4] = {2,8,10,16}; const int letters[4] = {'b','o','d','x'};
     for (i = 0; i < 4; i++) pref[i] = rt_label("integer.prefix_kind");
-    rt_enter(parse_int_label, 6); rt_save(1, RSI); rt_save(2, RDX);
+    rt_enter(parse_int_label, 6); rt_save(1, RSI); rt_save(2, RDX); rt_save(6, R11);
     x64_xor(R8, R8);
     x64_cmp(RSI, RDX); x64_jcc(CC_AE, fail);
     x64_load8(RAX, RSI, 0); rt_cmp(RAX, '-'); x64_jcc(CC_NZ, sign);
@@ -26,8 +26,20 @@ static void gen_parse_int(void)
     x64_cmp(RDI, RAX); x64_jcc(CC_NZ, fail);
     x64_bind(pref_match); x64_mov(RDI, RAX); x64_add_imm(RSI, 2);
     x64_bind(digits); x64_test(RDI, RDI); x64_jcc(CC_NZ, base_ready); x64_mov_imm(RDI, 10);
-    x64_bind(base_ready); x64_mov_imm(RAX, -1); rt_cmp(RDI, 10); x64_jcc(CC_NZ, limit_ready);
-    x64_mov_imm(RAX, INT64_MAX); x64_add(RAX, R8);
+    x64_bind(base_ready);
+    { int ty;
+      for (ty = TY_INT; ty <= TY_U64; ty++) {
+          int next = rt_label("integer.limit.next");
+          rt_load(RCX, 6); rt_cmp(RCX, ty); x64_jcc(CC_NZ, next);
+          if (integer_unsigned((Type)ty)) { x64_test(R8, R8); x64_jcc(CC_NZ, range); }
+          x64_mov_imm(RAX, integer_width((Type)ty) == 64 ? -1 : integer_bits((UINT64_C(1) << integer_width((Type)ty)) - 1));
+          if (!integer_unsigned((Type)ty)) {
+              rt_cmp(RDI, 10); x64_jcc(CC_NZ, limit_ready);
+              x64_shr_imm(RAX, 1); x64_add(RAX, R8);
+          }
+          x64_jmp(limit_ready); x64_bind(next);
+      }
+    }
     x64_bind(limit_ready); x64_xor(RDX, RDX); x64_div(RDI); rt_save(3, RAX); rt_save(4, RDX); rt_load(RDX, 2);
     x64_xor(R9, R9); x64_xor(R10, R10);
     x64_bind(loop); x64_cmp(RSI, RDX); x64_jcc(CC_AE, done);
@@ -41,7 +53,13 @@ static void gen_parse_int(void)
     x64_bind(done); x64_test(R10, R10); x64_jcc(CC_Z, fail);
     x64_call(word_follows_label); x64_test(RAX, RAX); x64_jcc(CC_NZ, fail);
     x64_mov(RAX, R9); x64_test(R8, R8); x64_jcc(CC_Z, positive); x64_neg(RAX);
-    x64_bind(positive); x64_xor(RCX, RCX); x64_jmp(out);
+    x64_bind(positive);
+    { int ty; for (ty = TY_I8; ty <= TY_U32; ty++) {
+        int next = rt_label("integer.extend.next");
+        rt_load(RCX, 6); rt_cmp(RCX, ty); x64_jcc(CC_NZ, next);
+        gen_integer_normalize((Type)ty); x64_bind(next);
+    } }
+    x64_xor(RCX, RCX); x64_jmp(out);
     x64_bind(fail); x64_mov_imm(RCX, 1); rt_load(RSI, 1); x64_jmp(out);
     x64_bind(range); x64_mov_imm(RCX, 2); rt_load(RSI, 1);
     x64_bind(out); rt_load(RDX, 2); rt_leave();
@@ -55,6 +73,7 @@ static void gen_integer_format_runtime(void)
     int octal = rt_label("format.octal"), dec_prefix = rt_label("format.dec_prefix"), hex = rt_label("format.hex");
     int sign = rt_label("format.sign"), allocate = rt_label("format.allocate"), copy = rt_label("format.copy"), done = rt_label("format.done");
     rt_enter(integer_format_label, 16); rt_save(1, RDI); rt_save(2, RSI); rt_set(3, 0);
+    x64_test(R11, R11); x64_jcc(CC_NZ, magnitude);
     rt_cmp(RDI, 10); x64_jcc(CC_NZ, magnitude); x64_test(RAX, RAX); x64_jcc(CC_NS, magnitude);
     rt_set(3, 1); x64_neg(RAX);
     x64_bind(magnitude); x64_lea(R10, RBP, -49); x64_xor(R9, R9);
@@ -95,10 +114,10 @@ static void gen_integer_conversion(Node *node)
     rt_cmp(RDI, 10); x64_jcc(CC_Z, ok); rt_cmp(RDI, 16); x64_jcc(CC_Z, ok);
     gen_fail(node->tok, "整数変換の base が不正です", EX_SOFTWARE);
     x64_bind(ok); x64_load(RAX, RBP, -base);
-    if (is_format) { x64_load(RSI, RBP, -base + 16); x64_call(integer_format_label); }
+    if (is_format) { x64_load(RSI, RBP, -base + 16); gen_format_integer(node->lhs->ty); }
     else {
         x64_load(RDX, RAX, 0); x64_lea(RSI, RAX, 8); x64_add(RDX, RSI); x64_call(skip_ws_label);
-        x64_call(parse_int_label); x64_test(RCX, RCX); x64_jcc(CC_NZ, bad);
+        gen_parse_integer(node->ty); x64_test(RCX, RCX); x64_jcc(CC_NZ, bad);
         x64_store(RBP, -base + 16, RAX); x64_call(skip_ws_label); x64_cmp(RSI, RDX); x64_jcc(CC_NZ, bad);
         x64_load(RAX, RBP, -base + 16); x64_jmp(done);
         x64_bind(bad); gen_fail(node->tok, "文字列を指定された基数の int として読み取れません", EX_DATAERR);

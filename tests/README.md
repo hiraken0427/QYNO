@@ -185,3 +185,12 @@ readonly・private・interfaceの所有制限を維持し、未導入の引数�
 モデルの定義位置のprivate権限、interfaceとの組み合わせ、import / using、再帰、具体化上限4096件、
 fileの共有とclose責任、未使用テンプレートの扱いと警告の重複防止も確認する。
 残りの実装計画は新6段階へ再編し、今回の実装範囲は新段階1のみ。
+
+## 0.26.11 の整数型（新段階2、旧段階6・7）
+
+`make test-integer-types` / `tests/integer_types_test.py` の30メソッドを全体テストに含む。
+8/16/32/64bitのsigned/unsignedの上下限と暗黙・明示変換、Pythonを参照した演算、
+算術・論理シフト、符号なし除算・丸め・基数変換、二重丸めを避けるfloat変換、
+配列・モデル・定数・ref・readonly・import・interface・ジェネリック・return推論を検証する。
+入力失敗時の一括保持、ファイル出力、for境界と開区間、NaN/無限大/0除算の診断も含む。
+`integer_bases_test.py` は新たに許可したunsignedの10進リテラルと従来の不正表記を区別する。

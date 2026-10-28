@@ -1,6 +1,6 @@
 'use strict';
 
-const TYPES = new Set(['int', 'float', 'double', 'bool', 'str', 'char', 'file', 'void', 'auto']);
+const TYPES = new Set(['int', 'int_8', 'int_16', 'int_32', 'int_64', 'unsigned', 'float', 'double', 'bool', 'str', 'char', 'file', 'void', 'auto']);
 const KEYWORDS = new Set([...TYPES, 'const', 'ref', 'val', 'return', 'if', 'else', 'for', 'while', 'break', 'continue', 'and', 'or', 'xor', 'bnot', 'not', 'true', 'false', 'none', 'import', 'using', 'as', 'print', 'input', 'struct', 'enum', 'of', 'model', 'interface', 'implements', 'public', 'private', 'readonly']);
 const identifierStart = c => /[A-Za-z_]/.test(c || '');
 const identifierPart = c => /[A-Za-z0-9_]/.test(c || '');
@@ -129,10 +129,15 @@ function functionLabel(symbol, name = symbol.name) {
 
 function readType(tokens, start) {
     let end = start;
+    const unsigned = tokens[start]?.value === 'unsigned';
+    if (unsigned) {
+        if (!/^int(?:_(?:8|16|32|64))?$/.test(tokens[start + 1]?.value || '')) return null;
+        end++;
+    }
     if (tokens[end]?.kind !== 'id' || KEYWORDS.has(tokens[end].value) && !TYPES.has(tokens[end].value)) return null;
     while (tokens[end + 1]?.value === '.' && tokens[end + 2]?.kind === 'id') end += 2;
     if (tokens[end + 1]?.kind !== 'id') return null;
-    return { name: tokens.slice(start, end + 1).map(t => t.value).join(''), end: end + 1 };
+    return { name: tokens.slice(start, end + 1).map(t => t.value).join(unsigned ? ' ' : ''), end: end + 1 };
 }
 
 function analyze(text, uri = '') {
@@ -246,9 +251,9 @@ function analyze(text, uri = '') {
             }
             const body = newScope(line, indent + 1, 'for', scope, true);
             if (counter >= 0) {
-                const typed = TYPES.has(ts[counter]?.value);
-                const token = ts[counter + (typed ? 1 : 0)];
-                declare(token, { kind: 'variable', type: typed ? ts[counter].value : 'int', loop: true, scopeId: body.id, visibleAfter: token?.end || 0 });
+                const typed = TYPES.has(ts[counter]?.value) ? readType(ts, counter) : null;
+                const token = ts[typed ? typed.end : counter];
+                declare(token, { kind: 'variable', type: typed ? typed.name : 'int', loop: true, scopeId: body.id, visibleAfter: token?.end || 0 });
             }
             stack.push(body);
         } else if (['if', 'else', 'while'].includes(ts[0].value) && ts.some(t => t.value === ';')) {

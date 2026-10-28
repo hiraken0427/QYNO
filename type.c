@@ -37,8 +37,14 @@ const char *type_name(Type ty)
     if (type_is_model(ty)) return type_model(ty)->name;
     if (type_is_interface(ty)) return type_interface(ty)->name;
     switch (ty) {
-    case TY_INT:
-        return "int";
+    case TY_INT: return "int";
+    case TY_I8: return "int_8";
+    case TY_I16: return "int_16";
+    case TY_I32: return "int_32";
+    case TY_U8: return "unsigned int_8";
+    case TY_U16: return "unsigned int_16";
+    case TY_U32: return "unsigned int_32";
+    case TY_U64: return "unsigned int_64";
     case TY_FLOAT:
         return "float";
     case TY_DOUBLE:
@@ -67,7 +73,7 @@ int type_is_text(Type ty)
 
 static int is_numeric(Type ty)
 {
-    return ty == TY_INT || ty == TY_FLOAT || ty == TY_DOUBLE;
+    return type_is_integer(ty) || ty == TY_FLOAT || ty == TY_DOUBLE;
 }
 
 static Ast *cur_ast;
@@ -79,7 +85,7 @@ static int function_check_depth;
 /* const の計算に使う値 */
 typedef struct {
     Type ty;
-    long long i;        /* int・bool */
+    long long i;        /* all integer types and bool; unsigned uses the same bits */
     double d;           /* float・double（float は float に丸めた値） */
     char *s;            /* str */
     int len;
@@ -187,6 +193,29 @@ static Node *new_cast(Node *expr, Type ty)
     return node;
 }
 
+static int integer_literal(Node *n)
+{
+    if (n->ty != TY_INT) return 0;
+    if (n->kind == ND_NUM || (n->kind == ND_VAR && n->var->is_const)) return 1;
+    if (n->kind == ND_NEG) return integer_literal(n->lhs);
+    if (n->kind == ND_ADD || n->kind == ND_SUB || n->kind == ND_MUL || n->kind == ND_DIV || n->kind == ND_MOD || n->kind == ND_POW)
+        return integer_literal(n->lhs) && integer_literal(n->rhs);
+    return 0;
+}
+static int integer_constant_fits(Node *expr, Type to)
+{
+    return type_is_integer(expr->ty) && is_const_expr(expr) && integer_fits(eval_const(expr).i, expr->ty, to);
+}
+static int integer_widens(Type from, Type to)
+{
+    return integer_common(from, to) == to;
+}
+static int real_fits_integer(double d, Type to)
+{
+    int bits = integer_width(to);
+    double maximum = ldexp(1.0, bits - !integer_unsigned(to));
+    return isfinite(d) && d >= (integer_unsigned(to) ? 0.0 : -maximum) && d < maximum;
+}
 /* expr を to 型に変換する。変換できなければ NULL */
 static Node *convert(Node *expr, Type to)
 {
@@ -205,11 +234,15 @@ static Node *convert(Node *expr, Type to)
     }
     /* 値の形の input は、代入先の型で読む */
     if (expr->kind == ND_INPUT && !expr->input_pattern && from == TY_STR &&
-        (to == TY_INT || to == TY_FLOAT || to == TY_DOUBLE || to == TY_BOOL)) {
+        (type_is_integer(to) || to == TY_FLOAT || to == TY_DOUBLE || to == TY_BOOL)) {
         expr->ty = to;
         return expr;
     }
-    if (from == TY_INT && (to == TY_FLOAT || to == TY_DOUBLE)) {
+    if (type_is_integer(from) && type_is_integer(to)) {
+        if (integer_widens(from, to) || integer_constant_fits(expr, to)) return new_cast(expr, to);
+        return NULL;
+    }
+    if (type_is_integer(from) && (to == TY_FLOAT || to == TY_DOUBLE)) {
         return new_cast(expr, to);
     }
     if (from == TY_FLOAT && to == TY_DOUBLE) {
@@ -242,17 +275,22 @@ static Type binary_type(Node *lhs, Node *rhs)
     Type l;
     Type r;
 
+    check_expected(lhs, rhs->ty); check_expected(rhs, lhs->ty);
     l = lhs->ty;
     r = rhs->ty;
     if (l == r) {
         return l;
     }
-    if (l == TY_INT) {
-        return r;
+    if (type_is_integer(l) && type_is_integer(r)) {
+        Type common;
+        if (integer_literal(rhs) && integer_constant_fits(rhs, l)) return l;
+        if (integer_literal(lhs) && integer_constant_fits(lhs, r)) return r;
+        common = integer_common(l, r);
+        if (common == TY_NONE) error_tok(lhs->tok, "整数の型 %s と %s は安全に統一できません。明示的に変換してください", type_name(l), type_name(r));
+        return common;
     }
-    if (r == TY_INT) {
-        return l;
-    }
+    if (type_is_integer(l)) return r;
+    if (type_is_integer(r)) return l;
     /* float と double の組み合わせ */
     if (l == TY_FLOAT && is_float_literal(rhs)) {
         return TY_FLOAT;
@@ -417,11 +455,6 @@ static void check_file_builtin(Node *node)
 }
 
 /* int(x) に渡せる値か（NaN でなく、int の範囲に収まる） */
-static int fits_int(double d)
-{
-    return d == d && d >= -9223372036854775808.0 && d < 9223372036854775808.0;
-}
-
 /*
  * 組み込み関数の引数の数と型を確かめ、戻り値の型を決める
  *   math.sqrt(x)                 x は数値。int は double に変換する。戻り値は x の型
@@ -440,6 +473,7 @@ static void check_builtin(Node *node)
 
     b = (Builtin)node->val;
     if (b >= BI_FILE_OPEN) { check_file_builtin(node); return; }
+    if (b == BI_INT && node->lhs && integer_unsigned(node->cmp_ty)) check_expected(node->lhs, node->cmp_ty);
     if ((b == BI_INT || b == BI_STR) && check_integer_conversion(node)) return;
     min_args = 1;
     max_args = (b == BI_ROUND || b == BI_ROUNDUP || b == BI_ROUNDDOWN) ? 2 : 1;
@@ -470,25 +504,26 @@ static void check_builtin(Node *node)
     }
     if (digits != NULL) {
         check_expr(digits);
-        if (digits->ty != TY_INT) {
+        if (!type_is_integer(digits->ty)) {
             error_tok(digits->tok, "%s の桁数は int にしてください（%s が渡されています）",
                      builtin_name(b), type_name(digits->ty));
         }
     }
 
+    if (digits != NULL) { x->next = digits = new_cast(digits, TY_INT); }
     switch (b) {
     case BI_SQRT:
-        if (x->ty == TY_INT) {
+        if (type_is_integer(x->ty)) {
             node->lhs = new_cast(x, TY_DOUBLE);
         }
         node->ty = node->lhs->ty;
         return;
     case BI_INT:
-        node->ty = TY_INT;
+        node->ty = node->cmp_ty ? node->cmp_ty : TY_INT;
         /* 値がコンパイル時に分かるなら、範囲外や NaN はここでエラーにする */
-        if (x->ty != TY_INT && is_const_expr(x)) {
+        if (is_const_expr(x)) {
             v = eval_const(x);
-            if (!fits_int(v.d)) {
+            if (type_is_integer(x->ty) ? !integer_fits(v.i, x->ty, node->ty) : !real_fits_integer(v.d, node->ty)) {
                 error_tok(node->tok, "int() に int の範囲外の値（または NaN）が渡されています");
             }
         }
@@ -503,7 +538,7 @@ static void check_builtin(Node *node)
     case BI_ROUNDUP:
     case BI_ROUNDDOWN:
         node->ty = x->ty;
-        if (x->ty == TY_INT && is_const_expr(x) &&
+        if (type_is_integer(x->ty) && is_const_expr(x) &&
             (digits == NULL || is_const_expr(digits))) {
             v = eval_const(x);
             round_integer(node, v.i, digits != NULL ? eval_const(digits).i : 0, b);
@@ -540,7 +575,7 @@ static void check_input(Node *node)
         check_expr(f->var);
         check_place(f->var);
         ty = f->var->ty;
-        if (f->base && ty != TY_INT) error_tok(f->var->tok, "基数指定の入力先は int にしてください");
+        if (f->base && !type_is_integer(ty)) error_tok(f->var->tok, "基数指定の入力先は int にしてください");
         if (!is_numeric(ty) && ty != TY_BOOL && !type_is_text(ty))
             error_tok(f->var->tok, "%s には直接入力できません。変数または末端の配列要素を指定してください", type_name(ty));
         /* 文字列内の1文字への入力も1スカラー値に制限する。 */
@@ -756,9 +791,8 @@ static void check_expr(Node *node)
             type_is_array(node->lhs->ty) ? array_element(node->lhs->ty) : TY_STR;
         if (node->kind == ND_INDEX) {
             check_expr(node->rhs);
-            if (node->rhs->ty != TY_INT) {
-                error_tok(node->rhs->tok, "添字は int にしてください");
-            }
+            if (!type_is_integer(node->rhs->ty)) error_tok(node->rhs->tok, "添字は整数型にしてください");
+            node->rhs = new_cast(node->rhs, TY_INT);
             if (is_const_expr(node->rhs)) {
                 long long index = eval_const(node->rhs).i;
                 long long maximum = expression_max_length(node->lhs);
@@ -826,23 +860,28 @@ static void check_expr(Node *node)
     case ND_OR:
     case ND_XOR:
         check_expr(node->lhs); check_expr(node->rhs);
-        if (node->lhs->ty != node->rhs->ty || (node->lhs->ty != TY_BOOL && node->lhs->ty != TY_INT))
+        if (type_is_integer(node->lhs->ty) && type_is_integer(node->rhs->ty)) {
+            ty = binary_type(node->lhs, node->rhs);
+            node->lhs = coerce(node->lhs, ty, node->tok, "ビット演算");
+            node->rhs = coerce(node->rhs, ty, node->tok, "ビット演算");
+        }
+        if (node->lhs->ty != node->rhs->ty || (node->lhs->ty != TY_BOOL && !type_is_integer(node->lhs->ty)))
             error_tok(node->tok, "and / or / xor は bool 同士または int 同士にしてください。型を混在できません");
         node->ty = node->lhs->ty;
-        if (node->ty == TY_INT) node->kind = node->kind == ND_AND ? ND_BIT_AND : node->kind == ND_OR ? ND_BIT_OR : ND_BIT_XOR;
+        if (type_is_integer(node->ty)) node->kind = node->kind == ND_AND ? ND_BIT_AND : node->kind == ND_OR ? ND_BIT_OR : ND_BIT_XOR;
         return;
     case ND_BIT_NOT:
         check_expr(node->lhs);
-        if (node->lhs->ty != TY_INT) error_tok(node->tok, "bnot は int にだけ使用できます");
-        node->ty = TY_INT; return;
+        if (!type_is_integer(node->lhs->ty)) error_tok(node->tok, "bnot は int にだけ使用できます");
+        node->ty = node->lhs->ty; return;
     case ND_SHL:
     case ND_SHR:
         check_expr(node->lhs); check_expr(node->rhs);
-        if (node->lhs->ty != TY_INT || node->rhs->ty != TY_INT) error_tok(node->tok, "シフトの値と量は int にしてください");
-        node->ty = TY_INT;
+        if (!type_is_integer(node->lhs->ty) || !type_is_integer(node->rhs->ty)) error_tok(node->tok, "シフトの値と量は int にしてください");
+        node->ty = node->lhs->ty;
         if (is_const_expr(node->rhs)) {
             long long amount = eval_const(node->rhs).i;
-            if (amount < 0 || amount > 63) error_tok(node->tok, "シフト量は0以上63以下にしてください");
+            if ((uint64_t)amount >= (unsigned)integer_width(node->ty)) error_tok(node->tok, "シフト量は0以上%d以下にしてください", integer_width(node->ty) - 1);
         }
         return;
     case ND_NOT:
@@ -853,11 +892,13 @@ static void check_expr(Node *node)
     case ND_MOD:
         check_expr(node->lhs);
         check_expr(node->rhs);
-        if (node->lhs->ty != TY_INT || node->rhs->ty != TY_INT) {
+        if (!type_is_integer(node->lhs->ty) || !type_is_integer(node->rhs->ty)) {
             error_tok(node->tok, "%% は int 同士でのみ使えます（%s と %s）",
                      type_name(node->lhs->ty), type_name(node->rhs->ty));
         }
-        node->ty = TY_INT;
+        node->ty = binary_type(node->lhs, node->rhs);
+        node->lhs = coerce(node->lhs, node->ty, node->tok, "余り");
+        node->rhs = coerce(node->rhs, node->ty, node->tok, "余り");
         return;
     case ND_POW:
         check_expr(node->lhs);
@@ -866,10 +907,11 @@ static void check_expr(Node *node)
             error_tok(node->tok, "^ の底は数値（int・float・double）にしてください（%s が指定されています）",
                      type_name(node->lhs->ty));
         }
-        if (node->rhs->ty != TY_INT) {
+        if (!type_is_integer(node->rhs->ty)) {
             error_tok(node->tok, "^ の指数は int にしてください（%s の指数は未対応です）",
                      type_name(node->rhs->ty));
         }
+        node->rhs = new_cast(node->rhs, TY_INT);
         node->ty = node->lhs->ty;
         check_pow_domain(node);
         return;
@@ -956,8 +998,16 @@ static Value convert_value(Node *node, Value v, Type to)
         v.ty = to;
         return v;
     }
-    if (v.ty == TY_INT) {
-        v.d = to == TY_FLOAT ? (double)(float)v.i : (double)v.i;
+    if (type_is_integer(to)) {
+        if (type_is_integer(v.ty)) {
+            if (!integer_fits(v.i, v.ty, to)) const_error(node, "整数変換の結果が対象型の範囲外です");
+        } else {
+            if (!real_fits_integer(v.d, to)) const_error(node, "整数変換の結果が対象型の範囲外です");
+            v.i = integer_unsigned(to) ? integer_bits((uint64_t)v.d) : (long long)v.d;
+        }
+    } else if (type_is_integer(v.ty)) {
+        if (to == TY_FLOAT) v.d = integer_unsigned(v.ty) ? (double)(float)(uint64_t)v.i : (double)(float)v.i;
+        else v.d = integer_unsigned(v.ty) ? (double)(uint64_t)v.i : (double)v.i;
     } else if (to == TY_FLOAT) {
         v.d = (double)(float)v.d;
     }
@@ -984,7 +1034,11 @@ static int compare_values(Value l, Value r, CmpKind kind)
         eq = l.len == r.len && (l.len == 0 || memcmp(l.s, r.s, (size_t)l.len) == 0);
         return kind == CMP_EQ ? eq : !eq;
     }
-    if (l.ty == TY_INT || l.ty == TY_BOOL || l.ty == TY_FILE) {
+    if (integer_unsigned(l.ty)) {
+        uint64_t a = (uint64_t)l.i, b = (uint64_t)r.i;
+        return kind == CMP_EQ ? a == b : kind == CMP_NE ? a != b : kind == CMP_LT ? a < b : kind == CMP_LE ? a <= b : kind == CMP_GT ? a > b : a >= b;
+    }
+    if (type_is_integer(l.ty) || l.ty == TY_BOOL || l.ty == TY_FILE) {
         switch (kind) {
         case CMP_EQ:
             return l.i == r.i;
@@ -1022,11 +1076,11 @@ static void validate_pow(Node *node, Value base, long long exponent)
     if (exponent >= 0) {
         return;
     }
-    if ((base.ty == TY_INT && base.i == 0) ||
-        (base.ty != TY_INT && base.d == 0.0)) {
+    if ((type_is_integer(base.ty) && base.i == 0) ||
+        (!type_is_integer(base.ty) && base.d == 0.0)) {
         const_error(node, "0 の負の累乗は定義されていません");
     }
-    if (base.ty == TY_INT && base.i != 1 && base.i != -1) {
+    if (type_is_integer(base.ty) && base.i != 1 && (integer_unsigned(base.ty) || base.i != -1)) {
         const_error(node, "負の累乗の結果を int で表せません（2.0^(-1) のように底を小数にしてください）");
     }
 }
@@ -1064,7 +1118,7 @@ static Value eval_pow(Node *node, Value base, long long e)
     v = base;
     validate_pow(node, base, e);
     n = e < 0 ? 0ULL - (unsigned long long)e : (unsigned long long)e;
-    if (base.ty == TY_INT) {
+    if (type_is_integer(base.ty)) {
         if (e < 0) {
             v.i = base.i == 1 ? 1 : ((n & 1) ? -1 : 1);
             return v;
@@ -1135,7 +1189,7 @@ static Value eval_binary(Node *node, Value l, Value r)
         }
         return v;
     }
-    if (node->ty == TY_INT) {
+    if (type_is_integer(node->ty)) {
         switch (node->kind) {
         case ND_ADD:
             v.i = (long long)((unsigned long long)l.i + (unsigned long long)r.i);
@@ -1150,16 +1204,16 @@ static Value eval_binary(Node *node, Value l, Value r)
             if (r.i == 0) {
                 const_error(node, "const の計算で 0 で割った余りを求めています");
             }
-            v.i = r.i == -1 ? 0 : l.i % r.i;
+            v.i = integer_unsigned(node->ty) ? integer_bits((uint64_t)l.i % (uint64_t)r.i) : r.i == -1 ? 0 : l.i % r.i;
             break;
         default:
             if (r.i == 0) {
                 const_error(node, "const の計算で 0 で割っています");
             }
-            if (l.i == LLONG_MIN && r.i == -1) {
+            if (!integer_unsigned(node->ty) && l.i == -(INT64_C(1) << (integer_width(node->ty) - 2)) * 2 && r.i == -1) {
                 const_error(node, "const の計算が int の範囲を超えます");
             }
-            v.i = l.i / r.i;
+            v.i = integer_unsigned(node->ty) ? integer_bits((uint64_t)l.i / (uint64_t)r.i) : l.i / r.i;
             break;
         }
         return v;
@@ -1282,17 +1336,18 @@ static long long round_integer(Node *node, long long x, long long digits, Builti
     long long k;
     int increment;
 
+    int unsign = integer_unsigned(node->ty);
     if (digits >= 0 || x == 0) {
         return x;
     }
     if (digits < -19) {
         /* 10^20 以上では、四捨五入は必ず 0。非0方向の天井・床は範囲外。 */
-        if ((mode == BI_ROUNDUP && x > 0) || (mode == BI_ROUNDDOWN && x < 0)) {
+        if ((mode == BI_ROUNDUP && (unsign || x > 0)) || (mode == BI_ROUNDDOWN && !unsign && x < 0)) {
             const_error(node, "整数の丸め結果が int の範囲を超えます");
         }
         return 0;
     }
-    magnitude = x < 0 ? 0ULL - (unsigned long long)x : (unsigned long long)x;
+    magnitude = !unsign && x < 0 ? 0ULL - (unsigned long long)x : (unsigned long long)x;
     scale = 1;
     for (k = 0; k < -digits; k++) {
         scale *= 10;
@@ -1300,15 +1355,16 @@ static long long round_integer(Node *node, long long x, long long digits, Builti
     quotient = magnitude / scale;
     remainder = magnitude % scale;
     increment = mode == BI_ROUND ? remainder >= scale / 2 :
-                remainder != 0 && (mode == BI_ROUNDUP ? x > 0 : x < 0);
+                remainder != 0 && (mode == BI_ROUNDUP ? unsign || x > 0 : !unsign && x < 0);
     quotient += increment;
-    limit = x < 0 ? (unsigned long long)LLONG_MAX + 1 : (unsigned long long)LLONG_MAX;
+    limit = integer_width(node->ty) == 64 ? UINT64_MAX : (UINT64_C(1) << integer_width(node->ty)) - 1;
+    if (!unsign) limit = (limit >> 1) + (x < 0);
     if (quotient > limit / scale) {
         const_error(node, "整数の丸め結果が int の範囲を超えます");
     }
     result = quotient * scale;
-    if (x >= 0) {
-        return (long long)result;
+    if (unsign || x >= 0) {
+        return integer_bits(result);
     }
     return result == (unsigned long long)LLONG_MAX + 1 ? LLONG_MIN : -(long long)result;
 }
@@ -1332,8 +1388,8 @@ static Value eval_builtin(Node *node)
         v.d = x.ty == TY_FLOAT ? (double)(float)sqrt(x.d) : sqrt(x.d);
         return v;
     case BI_ABS:
-        if (x.ty == TY_INT) {
-            v.i = x.i < 0 ? (long long)(0ULL - (unsigned long long)x.i) : x.i;
+        if (type_is_integer(x.ty)) {
+            v.i = !integer_unsigned(x.ty) && x.i < 0 ? (long long)(0ULL - (unsigned long long)x.i) : x.i;
         } else {
             v.d = x.d < 0 || (x.d == 0 && 1.0 / x.d < 0) ? -x.d : x.d;
         }
@@ -1341,7 +1397,7 @@ static Value eval_builtin(Node *node)
     case BI_ROUND:
     case BI_ROUNDUP:
     case BI_ROUNDDOWN:
-        if (x.ty == TY_INT) {
+        if (type_is_integer(x.ty)) {
             v.i = round_integer(node, x.i, digits, b);
             return v;
         }
@@ -1351,14 +1407,7 @@ static Value eval_builtin(Node *node)
         }
         return v;
     case BI_INT:
-        if (x.ty == TY_INT) {
-            return v;
-        }
-        if (!fits_int(x.d)) {
-            const_error(node, "int() に int の範囲外の値（または NaN）が渡されています");
-        }
-        v.i = (long long)x.d;
-        return v;
+        return convert_value(node, x, node->ty);
     case BI_CHAR:
     case BI_STR:
         return convert_value(node, x, node->ty);
@@ -1400,9 +1449,9 @@ static Value eval_const_inner(Node *node)
         else if (node->kind == ND_BIT_XOR || node->kind == ND_XOR) v.i = integer_bits((uint64_t)l.i ^ (uint64_t)r.i);
         else {
             uint64_t bits = (uint64_t)l.i; int amount = (int)r.i;
-            if (r.i < 0 || r.i > 63) const_error(node, "シフト量は0以上63以下にしてください");
+            if ((uint64_t)r.i >= (unsigned)integer_width(node->ty)) const_error(node, "シフト量は0以上63以下にしてください");
             if (node->kind == ND_SHL) bits <<= amount;
-            else if (amount) { bits >>= amount; if (l.i < 0) bits |= UINT64_MAX << (64 - amount); }
+            else if (amount) { bits >>= amount; if (!integer_unsigned(l.ty) && l.i < 0) bits |= UINT64_MAX << (64 - amount); }
             v.i = integer_bits(bits);
         }
         return v;
@@ -1476,7 +1525,7 @@ static Value eval_const_inner(Node *node)
         return v;
     case ND_NEG:
         v = eval_const(node->lhs);
-        if (v.ty == TY_INT) {
+        if (type_is_integer(v.ty)) {
             v.i = (long long)(0ULL - (unsigned long long)v.i);
         } else {
             v.d = -v.d;
@@ -1498,8 +1547,8 @@ static Value eval_const_inner(Node *node)
         return eval_builtin(node);
     case ND_ABS:
         l = eval_const(node->lhs);
-        if (l.ty == TY_INT) {
-            l.i = l.i < 0 ? (long long)(0ULL - (unsigned long long)l.i) : l.i;
+        if (type_is_integer(l.ty)) {
+            l.i = !integer_unsigned(l.ty) && l.i < 0 ? (long long)(0ULL - (unsigned long long)l.i) : l.i;
         } else if (l.d < 0 || (l.d == 0 && 1.0 / l.d < 0)) {
             l.d = -l.d;
         }
@@ -1629,6 +1678,7 @@ static Node *value_node(Value v, Token *tok)
         node->nargs = v.len;
         return node;
     }
+    if (type_is_integer(v.ty)) { node->kind = ND_NUM; node->val = v.i; return node; }
     switch (v.ty) {
     case TY_INT:
     case TY_FILE:
@@ -1661,7 +1711,7 @@ static void check_stmts(Node *list);
 static void check_for_finite_constant(Node *expr, Type ty, const char *part)
 {
     Value v;
-    if (ty == TY_INT || !is_const_expr(expr)) return;
+    if (type_is_integer(ty) || !is_const_expr(expr)) return;
     v = convert_value(expr, eval_const(expr), ty);
     if (!isfinite(v.d)) error_tok(expr->tok, "for の%sは有限の数値にしてください", part);
 }
@@ -1678,13 +1728,13 @@ static void check_for_step(Node *node)
                  "for の増分の量は定数（リテラルや const）にしてください（向きと 0 をコンパイル時に確かめるため）");
     }
     v = convert_value(node->inc, eval_const(node->inc), ty);
-    if (ty != TY_INT && !isfinite(v.d)) {
+    if (!type_is_integer(ty) && !isfinite(v.d)) {
         error_tok(node->inc->tok, "for の増分は有限の数値にしてください");
     }
-    if (ty == TY_INT ? v.i == 0 : v.d == 0) {
+    if (type_is_integer(ty) ? v.i == 0 : v.d == 0) {
         error_tok(node->inc->tok, "for の増分が 0 です（ループが終わりません）");
     }
-    direction = (ty == TY_INT ? (v.i > 0 ? 1 : -1) : (v.d > 0 ? 1 : -1)) * node->inc_sign;
+    direction = (type_is_integer(ty) ? (integer_unsigned(ty) || v.i > 0 ? 1 : -1) : (v.d > 0 ? 1 : -1)) * node->inc_sign;
     if (direction != node->val) {
         error_tok(node->inc->tok, "増分の向きが範囲の向きと逆です（%s範囲なので、ループ変数を%sしてください）",
                  node->val > 0 ? "増やしていく" : "減らしていく", node->val > 0 ? "増や" : "減ら");
@@ -1696,12 +1746,12 @@ static void check_for_header(Node *node)
 {
     Type ty = node->init->var->ty;
     Node *limit = node->cond->lhs->rhs;
-    if (node->for_open && ty == TY_INT && (limit->ty != TY_INT || node->inc->ty != TY_INT)) {
+    if (node->for_open && type_is_integer(ty) && (!type_is_integer(limit->ty) || !type_is_integer(node->inc->ty))) {
         error_tok(limit->tok, "開始側が開いた int の for は、境界・増分も int にしてください");
     }
     check_for_finite_constant(node->init->lhs, ty, "開始値");
     check_for_finite_constant(limit, node->cond->lhs->cmp_ty, "終了境界");
-    if (node->for_open && ty != TY_INT && is_const_expr(node->init->lhs)) {
+    if (node->for_open && !type_is_integer(ty) && is_const_expr(node->init->lhs)) {
         Value start = eval_const(node->init->lhs);
         Value amount = eval_const(node->for_amount);
         double next;
@@ -1728,7 +1778,7 @@ static void check_print_parts(Node *list)
             continue;
         }
         check_expr(part);
-        if (part->format_base && part->ty != TY_INT) error_tok(part->tok, "基数指定は int の式にだけ使えます");
+        if (part->format_base && !type_is_integer(part->ty)) error_tok(part->tok, "基数指定は int の式にだけ使えます");
         if (part->ty == TY_FILE || (type_is_array(part->ty) && array_base(part->ty) == TY_FILE))
             error_tok(part->tok, "file は出力・文字列埋め込みに使えません");
     }

@@ -72,7 +72,7 @@ static Node *stmt(void);
 
 /* 変数名などに使えない予約語 */
 static const char *keywords[] = {
-    "int", "float", "double", "bool", "str", "char", "void", "file", "const", "auto",
+    "int", "int_8", "int_16", "int_32", "int_64", "unsigned", "float", "double", "bool", "str", "char", "void", "file", "const", "auto",
     "true", "false", "return", "print", "if", "else", "for", "while",
     "break", "continue", "and", "or", "xor", "bnot", "not", "struct", "enum", "import", "of", "using", "input",
     "ref", "val", "none", "as", "interface", "implements", "model", "public", "private", "readonly",
@@ -187,6 +187,17 @@ static int is_keyword(Token *t)
 /* 型名なら型を、そうでなければ TY_NONE を返す */
 static Type type_keyword(Token *t)
 {
+    if (equal(t, "unsigned")) {
+        Type base;
+        if (equal(t->next, "unsigned")) error_tok(t, "unsigned は1回だけ指定してください");
+        base = type_keyword(t->next);
+        if (!type_is_integer(base) || integer_unsigned(base)) error_tok(t, "unsigned の後は整数型にしてください");
+        return integer_type(integer_width(base), 1);
+    }
+    if (equal(t, "int_8")) return TY_I8;
+    if (equal(t, "int_16")) return TY_I16;
+    if (equal(t, "int_32")) return TY_I32;
+    if (equal(t, "int_64")) return TY_INT;
     if (equal(t, "file")) return TY_FILE;
     if (equal(t, "int")) {
         return TY_INT;
@@ -229,6 +240,7 @@ static Type type_keyword(Token *t)
 
 static void skip_type(void)
 {
+    if (equal(tok, "unsigned")) tok = tok->next;
     tok = tok->next;
     while (equal(tok, ".") && tok->next->kind == TK_IDENT) tok = tok->next->next;
 }
@@ -664,8 +676,8 @@ static Node *primary(void)
         return node;
     }
     if (tok->kind == TK_NUM) {
-        if (tok->decimal_min) error_tok(tok, "この10進整数は負号の直後の最小値としてだけ使用できます");
         node = new_num(tok->val, tok);
+        if (tok->unsigned_literal) node->ty = TY_U64;
         tok = tok->next;
         return node;
     }
@@ -705,12 +717,15 @@ static Node *primary(void)
         }
         return node;
     }
-    if ((equal(tok, "int") || equal(tok, "float") || equal(tok, "double") ||
-         equal(tok, "char") || equal(tok, "str")) && equal(tok->next, "(")) {
+    if (((type_is_integer(type_keyword(tok)) && equal((equal(tok, "unsigned") ? tok->next : tok)->next, "(")) || equal(tok, "float") || equal(tok, "double") ||
+         equal(tok, "char") || equal(tok, "str")) && (equal(tok, "unsigned") || equal(tok->next, "("))) {
         /* 型変換 int(x)・float(x)・double(x) */
         node = new_node(ND_BUILTIN, tok);
         node->val = builtin_find(NULL, tok);
-        tok = tok->next->next;
+        if (type_is_integer(type_keyword(tok))) {
+            node->cmp_ty = type_keyword(tok); node->val = BI_INT;
+        }
+        skip_type(); tok = tok->next;
         call_args(node);
         return node;
     }
@@ -839,6 +854,7 @@ static Node *unary(void)
     }
     if (consume("bnot")) return new_unary(ND_BIT_NOT, unary(), start);
     if (consume("-")) {
+        if (tok->kind == TK_NUM && tok->unsigned_literal && !tok->decimal_min) error_tok(tok, "負の整数リテラルが範囲外です");
         if (tok->kind == TK_NUM && tok->decimal_min && !equal(tok->next, "^")) {
             Node *minimum = new_num(tok->val, start); tok = tok->next; return minimum;
         }
@@ -1534,7 +1550,7 @@ static Node *for_stmt(Token *start)
     ty = type_keyword(tok);
     explicit_type = ty != TY_NONE;
     if (ty != TY_NONE) {
-        tok = tok->next;
+        skip_type();
     } else {
         ty = TY_INT;
     }

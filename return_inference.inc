@@ -8,6 +8,7 @@ static Type common_return_type(Type a, Type b, Token *site)
     if (is_numeric(a) && is_numeric(b)) {
         if (a == TY_DOUBLE || b == TY_DOUBLE) return TY_DOUBLE;
         if (a == TY_FLOAT || b == TY_FLOAT) return TY_FLOAT;
+        { Type common = integer_common(a, b); if (common != TY_NONE) return common; }
     }
     if (type_is_text(a) && type_is_text(b)) return TY_STR;
     error_tok(site, "戻り値の型 %s と %s は統一できません。戻り値型または変換を明示してください",

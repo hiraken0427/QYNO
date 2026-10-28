@@ -5,7 +5,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#define QYC_VERSION "0.26.10"
+#define QYC_VERSION "0.26.11"
 
 typedef struct SourceFile SourceFile;
 typedef struct Module Module;
@@ -107,7 +107,8 @@ struct Token {
     TokenKind kind;
     Token *next;
     long long val;      /* TK_NUM のときの値 */
-    int decimal_min;    /* magnitude 2^63, valid only directly after unary minus */
+    int unsigned_literal; /* decimal magnitude > INT64_MAX */
+    int decimal_min;    /* magnitude 2^63; signed-minimum spelling after unary minus */
     double fval;        /* TK_FNUM のときの値 */
     const char *loc;    /* ソース上の位置 */
     int len;            /* トークンの長さ */
@@ -120,7 +121,9 @@ struct Token {
 
 typedef enum {
     TY_NONE,    /* 型なし（文など） */
-    TY_INT,     /* 64ビット整数 */
+    TY_INT,     /* signed 64bit; int / int_64 until stage 3 */
+    TY_I8, TY_I16, TY_I32,
+    TY_U8, TY_U16, TY_U32, TY_U64,
     TY_FLOAT,   /* 32ビット浮動小数点数（C の float） */
     TY_DOUBLE,  /* 64ビット浮動小数点数（C の double） */
     TY_BOOL,    /* 真偽値（0 または 1） */
@@ -494,6 +497,15 @@ long long integer_bits(uint64_t n);
 int integer_digit(int c);
 int integer_prefix(int c);
 int integer_base_valid(long long base, int automatic);
+int type_is_integer(Type ty);
+int integer_width(Type ty);
+int integer_unsigned(Type ty);
+Type integer_type(int bits, int unsign);
+long long integer_normalize(long long value, Type ty);
+int integer_fits(long long value, Type from, Type to);
+Type integer_common(Type a, Type b);
+int integer_read_typed(const char *s, size_t len, int base, Type ty, long long *value);
+char *integer_format_typed(long long value, int base, int prefix, Type ty, int *length);
 int integer_read(const char *s, size_t len, int base, long long *value);
 char *integer_format(long long value, int base, int prefix, int *length);
 Token *tokenize_fragment(const char *start, const char *end, int line, const char *line_start);

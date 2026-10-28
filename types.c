@@ -141,3 +141,52 @@ void resolve_model_types(Ast *ast)
     }
     for (v = ast->global_vars; v; v = v->next) v->ty = resolve_type(v->ty);
 }
+
+/* Logical integer widths; runtime scalar slots stay eight bytes. */
+int type_is_integer(Type ty) { return ty >= TY_INT && ty <= TY_U64; }
+int integer_unsigned(Type ty) { return ty >= TY_U8 && ty <= TY_U64; }
+int integer_width(Type ty)
+{
+    switch (ty) {
+    case TY_I8: case TY_U8: return 8;
+    case TY_I16: case TY_U16: return 16;
+    case TY_I32: case TY_U32: return 32;
+    default: return 64;
+    }
+}
+Type integer_type(int bits, int u)
+{
+    return bits == 8 ? (u ? TY_U8 : TY_I8) : bits == 16 ? (u ? TY_U16 : TY_I16) :
+           bits == 32 ? (u ? TY_U32 : TY_I32) : (u ? TY_U64 : TY_INT);
+}
+long long integer_normalize(long long value, Type ty)
+{
+    int bits = integer_width(ty); uint64_t n = (uint64_t)value;
+    if (bits < 64) {
+        uint64_t mask = (UINT64_C(1) << bits) - 1;
+        n &= mask;
+        if (!integer_unsigned(ty) && (n & (UINT64_C(1) << (bits - 1)))) n |= ~mask;
+    }
+    return integer_bits(n);
+}
+int integer_fits(long long value, Type from, Type to)
+{
+    int bits = integer_width(to); uint64_t n = (uint64_t)value;
+    if (integer_unsigned(to)) {
+        if (!integer_unsigned(from) && value < 0) return 0;
+        return bits == 64 || n < (UINT64_C(1) << bits);
+    }
+    if (integer_unsigned(from)) return n <= (bits == 64 ? INT64_MAX : (UINT64_C(1) << (bits - 1)) - 1);
+    return bits == 64 || (value >= -(INT64_C(1) << (bits - 1)) && value < (INT64_C(1) << (bits - 1)));
+}
+Type integer_common(Type a, Type b)
+{
+    int aw = integer_width(a), bw = integer_width(b), bits = aw > bw ? aw : bw;
+    int au = integer_unsigned(a), bu = integer_unsigned(b);
+    if (au == bu) return integer_type(bits, au);
+    if ((au ? aw : bw) >= (au ? bw : aw)) {
+        if (bits == 64) return TY_NONE;
+        bits = bits == 8 ? 16 : bits == 16 ? 32 : 64;
+    }
+    return integer_type(bits, 0);
+}

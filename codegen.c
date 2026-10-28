@@ -41,6 +41,7 @@
  */
 
 #include "qyc.h"
+#include <math.h>
 
 #include <stdlib.h>
 #include <string.h>
@@ -83,6 +84,8 @@ static int depth;
 static int main_label;
 static int write_label;
 static int print_int_label;
+static int print_uint_label;
+static int parse_int_label;
 static int integer_format_label;
 static int print_double_label;
 static int print_float_label;
@@ -111,7 +114,7 @@ static int write_err_label;
 static int runtime_error_label;
 static int exit_label;
 static int round_labels[3];         /* 四捨五入・切り上げ・切り捨て */
-static int round_integer_labels[3]; /* int 専用。double へ変換しない */
+static int round_integer_labels[2][3]; /* int 専用。double へ変換しない */
 static int return_label;
 static int label_seq;
 
@@ -296,6 +299,13 @@ static void gen_print_int(void)
     x64_mov(RSP, RBP);
     x64_pop(RBP);
     x64_ret();
+}
+
+static void gen_print_uint(void)
+{
+    x64_bind(print_uint_label); x64_push(RBP); x64_mov(RBP, RSP);
+    x64_mov_imm(RDI, 10); x64_xor(RSI, RSI); x64_mov_imm(R11, 1); x64_call(integer_format_label);
+    x64_call(print_str_label); x64_pop(RBP); x64_ret();
 }
 
 /* [rbp+disp] の整数に add を足す */
@@ -1110,11 +1120,11 @@ static void gen_round(Builtin mode)
 }
 
 /* int 専用の丸めで使う、一意なラベルを作る */
-static int integer_round_label(Builtin mode, const char *suffix)
+static int integer_round_label(Builtin mode, int unsign, const char *suffix)
 {
     char name[96];
 
-    snprintf(name, sizeof(name), ".L.qy_round_integer.%d.%s", (int)mode, suffix);
+    snprintf(name, sizeof(name), ".L.qy_round_integer.%d.%d.%s", (int)mode, unsign, suffix);
     return x64_new_label(name);
 }
 
@@ -1123,7 +1133,7 @@ static int integer_round_label(Builtin mode, const char *suffix)
  * type.c の round_integer と同じ商・余りの算法を機械語にする。
  * r8=元の値、r9=絶対値、r10=10^k。k=19 も符号なしで扱う。
  */
-static void gen_round_integer(Builtin mode)
+static void gen_round_integer(Builtin mode, int unsign)
 {
     int magnitude;
     int scale_loop;
@@ -1134,23 +1144,22 @@ static void gen_round_integer(Builtin mode)
     int zero;
     int overflow;
 
-    magnitude = integer_round_label(mode, "magnitude");
-    scale_loop = integer_round_label(mode, "scale_loop");
-    huge = integer_round_label(mode, "huge");
-    rounded = integer_round_label(mode, "rounded");
-    limit = integer_round_label(mode, "limit");
-    success = integer_round_label(mode, "success");
-    zero = integer_round_label(mode, "zero");
-    overflow = integer_round_label(mode, "overflow");
+    magnitude = integer_round_label(mode, unsign, "magnitude");
+    scale_loop = integer_round_label(mode, unsign, "scale_loop");
+    huge = integer_round_label(mode, unsign, "huge");
+    rounded = integer_round_label(mode, unsign, "rounded");
+    limit = integer_round_label(mode, unsign, "limit");
+    success = integer_round_label(mode, unsign, "success");
+    zero = integer_round_label(mode, unsign, "zero");
+    overflow = integer_round_label(mode, unsign, "overflow");
 
-    x64_bind(round_integer_labels[mode - BI_ROUND]);
+    x64_bind(round_integer_labels[unsign][mode - BI_ROUND]);
     x64_test(RDI, RDI);
     x64_jcc(CC_NS, success);           /* 非負の桁数は元の整数を保持 */
     x64_test(RAX, RAX);
     x64_jcc(CC_Z, success);
     x64_mov(R8, RAX);
-    x64_jcc(CC_NS, magnitude);
-    x64_neg(RAX);                     /* |最小値| も符号なしなら表現できる */
+    if (!unsign) { x64_jcc(CC_NS, magnitude); x64_neg(RAX); }                     /* |最小値| も符号なしなら表現できる */
     x64_bind(magnitude);
     x64_mov(R9, RAX);
     x64_mov_imm(RCX, -19);
@@ -1175,32 +1184,34 @@ static void gen_round_integer(Builtin mode)
     } else {
         x64_test(RDX, RDX);
         x64_jcc(CC_Z, rounded);
-        x64_test(R8, R8);
-        x64_jcc(mode == BI_ROUNDUP ? CC_S : CC_NS, rounded);
+        if (unsign) { if (mode == BI_ROUNDDOWN) x64_jmp(rounded); }
+        else { x64_test(R8, R8); x64_jcc(mode == BI_ROUNDUP ? CC_S : CC_NS, rounded); }
     }
     x64_add_imm(RAX, 1);
     x64_bind(rounded);
     x64_mul(R10);                     /* rdx:rax = 商 × 10^k */
     x64_test(RDX, RDX);
     x64_jcc(CC_NZ, overflow);
-    x64_mov_imm(R11, 0x7FFFFFFFFFFFFFFFLL);
-    x64_test(R8, R8);
-    x64_jcc(CC_NS, limit);
-    x64_mov_imm(R11, (long long)0x8000000000000000ULL);
-    x64_bind(limit);
-    x64_cmp(RAX, R11);
-    x64_jcc(CC_A, overflow);
-    x64_test(R8, R8);
-    x64_jcc(CC_NS, success);
-    x64_neg(RAX);
+    if (!unsign) {
+        x64_mov_imm(R11, 0x7FFFFFFFFFFFFFFFLL);
+        x64_test(R8, R8);
+        x64_jcc(CC_NS, limit);
+        x64_mov_imm(R11, (long long)0x8000000000000000ULL);
+        x64_bind(limit);
+        x64_cmp(RAX, R11);
+        x64_jcc(CC_A, overflow);
+        x64_test(R8, R8);
+        x64_jcc(CC_NS, success);
+        x64_neg(RAX);
+    } else x64_bind(limit);
     x64_bind(success);
     x64_xor(RDX, RDX);
     x64_ret();
 
     x64_bind(huge);
     if (mode != BI_ROUND) {
-        x64_test(R8, R8);
-        x64_jcc(mode == BI_ROUNDUP ? CC_NS : CC_S, overflow);
+        if (unsign) { if (mode == BI_ROUNDUP) x64_jmp(overflow); }
+        else { x64_test(R8, R8); x64_jcc(mode == BI_ROUNDUP ? CC_NS : CC_S, overflow); }
     }
     x64_bind(zero);
     x64_xor(RAX, RAX);
@@ -1236,6 +1247,52 @@ static void pop(Reg r)
 static void gen_expr(Node *node);
 static void gen_input_state_init(void);
 
+/* All integer values are canonical sign/zero extended in the scalar ABI. */
+static void gen_integer_normalize(Type ty)
+{
+    int bits = integer_width(ty);
+    if (bits == 64) return;
+    x64_mov_imm(R10, integer_bits((UINT64_C(1) << bits) - 1)); x64_and(RAX, R10);
+    if (!integer_unsigned(ty)) {
+        x64_mov_imm(R10, INT64_C(1) << (bits - 1)); x64_xor(RAX, R10); x64_sub(RAX, R10);
+    }
+}
+static void gen_integer_range(Type from, Type to, int bad)
+{
+    int bits = integer_width(to), u = integer_unsigned(to);
+    if (integer_unsigned(from)) {
+        uint64_t max = u ? (bits == 64 ? UINT64_MAX : (UINT64_C(1) << bits) - 1) :
+                          (bits == 64 ? INT64_MAX : (UINT64_C(1) << (bits - 1)) - 1);
+        x64_mov_imm(R10, integer_bits(max)); x64_cmp(RAX, R10); x64_jcc(CC_A, bad);
+    } else if (u) {
+        x64_test(RAX, RAX); x64_jcc(CC_S, bad);
+        if (bits < 64) { x64_mov_imm(R10, integer_bits((UINT64_C(1) << bits) - 1)); x64_cmp(RAX, R10); x64_jcc(CC_G, bad); }
+    } else if (bits < 64) {
+        x64_mov_imm(R10, -(INT64_C(1) << (bits - 1))); x64_cmp(RAX, R10); x64_jcc(CC_L, bad);
+        x64_mov_imm(R10, (INT64_C(1) << (bits - 1)) - 1); x64_cmp(RAX, R10); x64_jcc(CC_G, bad);
+    }
+}
+static void gen_integer_checked(Type from, Type to, Token *tok)
+{
+    int bad = new_label("integer.cast.range"), done = new_label("integer.cast.done");
+    gen_integer_range(from, to, bad); x64_jmp(done);
+    x64_bind(bad); gen_fail(tok, "整数変換の結果が対象型の範囲外です", EX_SOFTWARE);
+    x64_bind(done);
+}
+static void gen_format_integer(Type ty)
+{
+    if (integer_width(ty) < 64) {
+        int decimal = new_label("integer.format.decimal");
+        x64_mov_imm(R10, 10); x64_cmp(RDI, R10); x64_jcc(CC_Z, decimal);
+        x64_mov_imm(R10, integer_bits((UINT64_C(1) << integer_width(ty)) - 1)); x64_and(RAX, R10);
+        x64_bind(decimal);
+    }
+    x64_mov_imm(R11, integer_unsigned(ty)); x64_call(integer_format_label);
+}
+static void gen_parse_integer(Type ty)
+{
+    x64_mov_imm(R11, ty); x64_call(parse_int_label);
+}
 /* rax の値を from 型から to 型に変換する */
 static void gen_convert(Type from, Type to)
 {
@@ -1245,15 +1302,20 @@ static void gen_convert(Type from, Type to)
     if (type_is_text(from) && type_is_text(to)) {
         return;  /* 表現は共通。char の制約検査は gen_cast で行う。 */
     }
-    if (from == TY_INT && to == TY_DOUBLE) {
-        x64_cvtsi2sd(0, RAX);
-        x64_movq_from_xmm(RAX, 0);
-        return;
-    }
-    if (from == TY_INT && to == TY_FLOAT) {
-        x64_cvtsi2ss(0, RAX);
-        x64_movd_from_xmm(RAX, 0);
-        return;
+    if (type_is_integer(from) && type_is_integer(to)) return;
+    if (type_is_integer(from) && (to == TY_DOUBLE || to == TY_FLOAT)) {
+        int ordinary = new_label("integer.real.low"), done = new_label("integer.real.done");
+        if (integer_unsigned(from) && integer_width(from) == 64) {
+            x64_test(RAX, RAX); x64_jcc(CC_NS, ordinary);
+            x64_mov(R10, RAX); x64_shl_imm(R10, 63); x64_shr_imm(R10, 63); x64_shr_imm(RAX, 1); x64_or(RAX, R10);
+            if (to == TY_DOUBLE) { x64_cvtsi2sd(0, RAX); x64_sse_sd(SSE_ADD, 0, 0); x64_movq_from_xmm(RAX, 0); }
+            else { x64_cvtsi2ss(0, RAX); x64_sse_ss(SSE_ADD, 0, 0); x64_movd_from_xmm(RAX, 0); }
+            x64_jmp(done);
+        }
+        x64_bind(ordinary);
+        if (to == TY_DOUBLE) { x64_cvtsi2sd(0, RAX); x64_movq_from_xmm(RAX, 0); }
+        else { x64_cvtsi2ss(0, RAX); x64_movd_from_xmm(RAX, 0); }
+        x64_bind(done); return;
     }
     if (from == TY_FLOAT && to == TY_DOUBLE) {
         x64_movd_to_xmm(0, RAX);
@@ -1312,6 +1374,7 @@ static void gen_cast(Node *node)
         gen_char_check(node->tok, node->lhs->kind == ND_INPUT ? EX_DATAERR : EX_SOFTWARE);
         return;
     }
+    if (type_is_integer(node->lhs->ty) && type_is_integer(node->ty)) gen_integer_checked(node->lhs->ty, node->ty, node->tok);
     gen_convert(node->lhs->ty, node->ty);
 }
 
@@ -1373,10 +1436,8 @@ static void gen_text_operation(Node *node)
 static void gen_neg(Node *node)
 {
     gen_expr(node->lhs);
+    if (type_is_integer(node->ty)) { x64_neg(RAX); return; }
     switch (node->ty) {
-    case TY_INT:
-        x64_neg(RAX);
-        return;
     case TY_DOUBLE:
         x64_btc(RAX, 63);       /* 符号ビットを反転 */
         return;
@@ -1417,10 +1478,11 @@ static void gen_div_check(Node *node)
     x64_jcc(CC_NZ, nonzero);
     gen_fail(node->tok, node->kind == ND_MOD ? "0 で割った余りを求めようとしました" : "0 で割ろうとしました", EX_SOFTWARE);
     x64_bind(nonzero);
+    if (integer_unsigned(node->ty)) return;
     x64_mov_imm(RCX, -1);
     x64_cmp(RDI, RCX);
     x64_jcc(CC_NZ, ok);
-    x64_mov_imm(RCX, (long long)0x8000000000000000ULL);
+    x64_mov_imm(RCX, -(INT64_C(1) << (integer_width(node->ty) - 2)) * 2);
     x64_cmp(RAX, RCX);
     x64_jcc(CC_NZ, ok);
     if (node->kind == ND_MOD) {
@@ -1451,13 +1513,11 @@ static void gen_pow_check(Node *node)
     x64_jcc(CC_NZ, nonzero);
     gen_fail(node->tok, "0 の負の累乗は定義されていません", EX_SOFTWARE);
     x64_bind(nonzero);
-    if (node->ty == TY_INT) {
+    if (type_is_integer(node->ty)) {
         x64_mov_imm(RCX, 1);
         x64_cmp(RAX, RCX);
         x64_jcc(CC_Z, ok);
-        x64_mov_imm(RCX, -1);
-        x64_cmp(RAX, RCX);
-        x64_jcc(CC_Z, ok);
+        if (!integer_unsigned(node->ty)) { x64_mov_imm(RCX, -1); x64_cmp(RAX, RCX); x64_jcc(CC_Z, ok); }
         gen_fail(node->tok, "負の累乗の結果を int で表せません（2.0^(-1) のように底を小数にしてください）", EX_SOFTWARE);
     }
     x64_bind(ok);
@@ -1472,8 +1532,7 @@ static void gen_binary(Node *node)
     x64_mov(RDI, RAX);
     pop(RAX);
 
-    switch (node->ty) {
-    case TY_INT:
+    if (type_is_integer(node->ty)) {
         switch (node->kind) {
         case ND_ADD:
             x64_add(RAX, RDI);
@@ -1486,16 +1545,18 @@ static void gen_binary(Node *node)
             return;
         case ND_MOD:
             gen_div_check(node);
-            x64_cqo();
-            x64_idiv(RDI);
+            if (integer_unsigned(node->ty)) { x64_xor(RDX, RDX); x64_div(RDI); }
+            else { x64_cqo(); x64_idiv(RDI); }
             x64_mov(RAX, RDX);  /* 余りは rdx に入る */
             return;
         default:
             gen_div_check(node);
-            x64_cqo();
-            x64_idiv(RDI);
+            if (integer_unsigned(node->ty)) { x64_xor(RDX, RDX); x64_div(RDI); }
+            else { x64_cqo(); x64_idiv(RDI); }
             return;
         }
+    }
+    switch (node->ty) {
     case TY_DOUBLE:
         x64_movq_to_xmm(0, RAX);
         x64_movq_to_xmm(1, RDI);
@@ -1583,8 +1644,12 @@ static void gen_compare(Node *cmp)
         gen_convert_for_compare(cmp->rhs->ty, ty);
     }
 
+    if (type_is_integer(ty)) {
+        Cond cc = int_cond(kind);
+        if (integer_unsigned(ty)) cc = kind == CMP_LT ? CC_B : kind == CMP_LE ? CC_BE : kind == CMP_GT ? CC_A : kind == CMP_GE ? CC_AE : cc;
+        x64_cmp(RDI, RAX); x64_setcc(cc, RAX); x64_movzx8(RAX, RAX); return;
+    }
     switch (ty) {
-    case TY_INT:
     case TY_BOOL:
     case TY_FILE:
     case TY_ADDR:
@@ -1705,14 +1770,11 @@ static void gen_abs_rax(Type ty)
 {
     int done;
 
+    if (type_is_integer(ty)) {
+        if (integer_unsigned(ty)) return;
+        done = new_label("abs.integer.done"); x64_test(RAX, RAX); x64_jcc(CC_NS, done); x64_neg(RAX); x64_bind(done); return;
+    }
     switch (ty) {
-    case TY_INT:
-        done = new_label("abs.done");
-        x64_test(RAX, RAX);
-        x64_jcc(CC_NS, done);
-        x64_neg(RAX);
-        x64_bind(done);
-        return;
     case TY_DOUBLE:
         x64_btr(RAX, 63);       /* 符号ビットを 0 にする */
         return;
@@ -1723,44 +1785,24 @@ static void gen_abs_rax(Type ty)
 }
 
 /* rax（double）を int にする。NaN や int の範囲外なら実行時エラーで止める */
-static void gen_double_to_int_checked(Token *tok)
+static void gen_real_to_integer(Type from, Type to, Token *tok)
 {
-    char msg[512];
-    int len;
-    int err;
-    int ok;
-    size_t offset;
-
-    err = new_label("int.error");
-    ok = new_label("int.ok");
-    x64_movq_to_xmm(0, RAX);
-    x64_ucomisd(0, 0);
-    x64_jcc(CC_P, err);                         /* NaN */
-    x64_mov_imm(RCX, double_bits(-9223372036854775808.0));
-    x64_movq_to_xmm(1, RCX);
-    x64_ucomisd(0, 1);
-    x64_jcc(CC_B, err);                         /* -2^63 より小さい */
-    x64_mov_imm(RCX, double_bits(9223372036854775808.0));
-    x64_movq_to_xmm(1, RCX);
-    x64_ucomisd(0, 1);
-    x64_jcc(CC_AE, err);                        /* 2^63 以上 */
-    x64_cvttsd2si(RAX, 0);
-    x64_jmp(ok);
-
-    x64_bind(err);
-    len = snprintf(msg, sizeof(msg), "QYNO 実行時エラー: %s:%d:%d: int() に int の範囲外の値（または NaN）が渡されました\n",
-                   tok->source->filename, tok->line, tok->col);
-    if (len < 0 || len >= (int)sizeof(msg)) {
-        len = (int)strlen(msg);
+    int bad = new_label("real.integer.bad"), low = new_label("real.integer.low"), done = new_label("real.integer.done");
+    int bits = integer_width(to); double high = ldexp(1.0, bits - !integer_unsigned(to));
+    gen_convert(from, TY_DOUBLE); x64_movq_to_xmm(0, RAX);
+    x64_ucomisd(0, 0); x64_jcc(CC_P, bad);
+    x64_mov_imm(R10, double_bits(integer_unsigned(to) ? 0.0 : -high)); x64_movq_to_xmm(1, R10);
+    x64_ucomisd(0, 1); x64_jcc(CC_B, bad);
+    x64_mov_imm(R10, double_bits(high)); x64_movq_to_xmm(1, R10);
+    x64_ucomisd(0, 1); x64_jcc(CC_AE, bad);
+    if (integer_unsigned(to) && bits == 64) {
+        x64_mov_imm(R10, double_bits(9223372036854775808.0)); x64_movq_to_xmm(1, R10);
+        x64_ucomisd(0, 1); x64_jcc(CC_B, low); x64_sse_sd(SSE_SUB, 0, 1); x64_cvttsd2si(RAX, 0); x64_btc(RAX, 63); x64_jmp(done);
     }
-    offset = prog_add_data(prog, msg, (size_t)len);
-    x64_lea_data(RSI, offset);
-    x64_mov_imm(RDX, len);
-    x64_mov_imm(R8, 70);        /* sysexits.h の EX_SOFTWARE */
-    x64_jmp(runtime_error_label);
-    x64_bind(ok);
+    x64_bind(low); x64_cvttsd2si(RAX, 0); x64_jmp(done);
+    x64_bind(bad); gen_fail(tok, "整数変換の結果が対象型の範囲外です", EX_SOFTWARE);
+    x64_bind(done);
 }
-
 static void gen_builtin(Node *node)
 {
     Builtin b;
@@ -1803,10 +1845,10 @@ static void gen_builtin(Node *node)
     case BI_ROUNDUP:
     case BI_ROUNDDOWN:
         gen_expr(x);
-        if (ty == TY_INT && digits == NULL) {
+        if (type_is_integer(ty) && digits == NULL) {
             return;             /* int はすでに整数 */
         }
-        if (ty != TY_INT) {
+        if (!type_is_integer(ty)) {
             gen_convert(ty, TY_DOUBLE);
         }
         if (digits != NULL) {
@@ -1817,13 +1859,14 @@ static void gen_builtin(Node *node)
         } else {
             x64_xor(RDI, RDI);
         }
-        if (ty == TY_INT) {
+        if (type_is_integer(ty)) {
             int ok = new_label("round_integer.ok");
-            x64_call(round_integer_labels[b - BI_ROUND]);
+            x64_call(round_integer_labels[integer_unsigned(ty)][b - BI_ROUND]);
             x64_test(RDX, RDX);
             x64_jcc(CC_Z, ok);
             gen_fail(node->tok, "整数の丸め結果が int の範囲を超えます", EX_SOFTWARE);
             x64_bind(ok);
+            gen_integer_checked(ty, ty, node->tok);
             return;
         }
         x64_call(round_labels[b - BI_ROUND]);
@@ -1833,11 +1876,8 @@ static void gen_builtin(Node *node)
         return;
     case BI_INT:
         gen_expr(x);
-        if (ty == TY_INT) {
-            return;
-        }
-        gen_convert(ty, TY_DOUBLE);
-        gen_double_to_int_checked(node->tok);
+        if (type_is_integer(ty)) gen_integer_checked(ty, node->ty, node->tok);
+        else gen_real_to_integer(ty, node->ty, node->tok);
         return;
     case BI_FLOAT:
         gen_expr(x);
@@ -1888,7 +1928,6 @@ static int getc_label;
 static int readline_label;
 static int skip_ws_label;
 static int word_follows_label;
-static int parse_int_label;
 static int parse_real_label;
 static int parse_bool_label;
 static int match_sep_label;
@@ -4838,8 +4877,9 @@ static void gen_input_value(Node *node)
     x64_call(skip_ws_label);
     x64_cmp(RSI, RDX);
     x64_jcc(CC_AE, missing);
-    if (ty == TY_INT) x64_mov_imm(RDI, 0);
-    x64_call(ty == TY_INT ? parse_int_label : ty == TY_BOOL ? parse_bool_label : parse_real_label);
+    if (type_is_integer(ty)) x64_mov_imm(RDI, 0);
+    if (type_is_integer(ty)) gen_parse_integer(ty);
+    else x64_call(ty == TY_BOOL ? parse_bool_label : parse_real_label);
     x64_mov_imm(R8, 1);
     x64_cmp(RCX, R8);
     x64_jcc(CC_Z, type_err);
@@ -5045,8 +5085,9 @@ static void gen_input_pattern(Node *node)
         x64_cmp(RSI, RDX);
         x64_jcc(CC_AE, missing[i]);
         x64_store(RBP, -f->temp->offset, RSI);          /* 値の先頭（float の範囲外の表示に使う） */
-        if (ty == TY_INT) x64_mov_imm(RDI, f->base);
-        x64_call(ty == TY_INT ? parse_int_label : ty == TY_BOOL ? parse_bool_label : parse_real_label);
+        if (type_is_integer(ty)) x64_mov_imm(RDI, f->base);
+        if (type_is_integer(ty)) gen_parse_integer(ty);
+        else x64_call(ty == TY_BOOL ? parse_bool_label : parse_real_label);
         x64_mov_imm(R8, 1);
         x64_cmp(RCX, R8);
         x64_jcc(CC_Z, type_err[i]);
@@ -5304,7 +5345,13 @@ static void gen_call(Node *node)
 }
 
 /* 式を評価し、結果を rax に入れる */
+static void gen_expr_inner(Node *node);
 static void gen_expr(Node *node)
+{
+    gen_expr_inner(node);
+    if (type_is_integer(node->ty)) gen_integer_normalize(node->ty);
+}
+static void gen_expr_inner(Node *node)
 {
     switch (node->kind) {
     case ND_CONSTRUCT:
@@ -5423,10 +5470,11 @@ static void gen_expr(Node *node)
         else {
             int valid = new_label("shift.valid"), invalid = new_label("shift.invalid");
             x64_test(RCX, RCX); x64_jcc(CC_S, invalid);
-            x64_mov_imm(RDX, 63); x64_cmp(RCX, RDX); x64_jcc(CC_BE, valid);
-            x64_bind(invalid); gen_fail(node->tok, "シフト量は0以上63以下にしてください", EX_SOFTWARE);
+            x64_mov_imm(RDX, integer_width(node->ty) - 1); x64_cmp(RCX, RDX); x64_jcc(CC_BE, valid);
+            x64_bind(invalid);
+            { char message[128]; snprintf(message, sizeof(message), "シフト量は0以上%d以下にしてください", integer_width(node->ty) - 1); gen_fail(node->tok, message, EX_SOFTWARE); }
             x64_bind(valid);
-            if (node->kind == ND_SHL) x64_shl_cl(RAX); else x64_sar_cl(RAX);
+            if (node->kind == ND_SHL) x64_shl_cl(RAX); else if (integer_unsigned(node->ty)) x64_shr_cl(RAX); else x64_sar_cl(RAX);
         }
         return;
     case ND_AND:
@@ -5458,7 +5506,7 @@ static void gen_expr(Node *node)
         x64_mov(RDI, RAX);
         pop(RAX);
         gen_pow_check(node);
-        if (node->ty == TY_INT) {
+        if (type_is_integer(node->ty)) {
             x64_call(pow_int_label);
         } else if (node->ty == TY_FLOAT) {
             x64_call(pow_float_label);
@@ -5478,15 +5526,13 @@ static void gen_print_value(Node *expr)
 {
     gen_expr(expr);
     if (expr->format_base) {
-        x64_mov_imm(RDI, expr->format_base); x64_mov_imm(RSI, 1); x64_call(integer_format_label);
+        x64_mov_imm(RDI, expr->format_base); x64_mov_imm(RSI, 1); gen_format_integer(expr->ty);
         x64_call(print_str_label); return;
     }
     if (type_is_array(expr->ty)) { x64_call(array_print_label); return; }
     if (type_is_model(expr->ty)) { x64_call(type_model(expr->ty)->print_label); return; }
+    if (type_is_integer(expr->ty)) { x64_call(integer_unsigned(expr->ty) ? print_uint_label : print_int_label); return; }
     switch (expr->ty) {
-    case TY_INT:
-        x64_call(print_int_label);
-        return;
     case TY_FLOAT:
         gen_convert(TY_FLOAT, TY_DOUBLE);
         x64_call(print_float_label);
@@ -5668,7 +5714,7 @@ static void gen_while(Node *node)
 static void gen_for_finite(Type ty, Token *tok, const char *message)
 {
     int ok;
-    if (ty == TY_INT) return;
+    if (type_is_integer(ty)) return;
     ok = new_label("for.finite");
     x64_mov(RCX, RAX);
     x64_mov_imm(RDX, ty == TY_FLOAT ? 0x7f800000LL : 0x7ff0000000000000LL);
@@ -5685,13 +5731,14 @@ static void gen_for_update(Node *node, int end)
     Var *v = node->init->var;
     Token *tok = node->inc->tok;
     int progress;
-    if (v->ty == TY_INT) {
+    if (type_is_integer(v->ty)) {
         gen_expr(node->for_amount);
         x64_mov(RDI, RAX);
         gen_load_var(v, tok);
         if (node->inc_sign > 0) x64_add(RAX, RDI);
         else x64_sub(RAX, RDI);
-        x64_jcc(CC_O, end); /* store や他の命令でフラグを壊す前に検査する */
+        x64_jcc(integer_unsigned(v->ty) ? CC_B : CC_O, end);
+        gen_integer_range(v->ty, v->ty, end); /* store や他の命令でフラグを壊す前に検査する */
         gen_store_var(v, tok);
         return;
     }
@@ -5954,6 +6001,7 @@ void codegen(Ast *ast, Program *out_prog, FILE *out_text, Target out_target)
         }
     }
     write_label = x64_new_label(".L.qy_write");
+    print_uint_label = x64_new_label(".L.qy_print_uint");
     integer_format_label = x64_new_label(".L.qy_integer_format");
     print_int_label = x64_new_label(".L.qy_print_int");
     print_double_label = x64_new_label(".L.qy_print_double");
@@ -5991,9 +6039,12 @@ void codegen(Ast *ast, Program *out_prog, FILE *out_text, Target out_target)
     round_labels[0] = x64_new_label(".L.qy_round");
     round_labels[1] = x64_new_label(".L.qy_roundup");
     round_labels[2] = x64_new_label(".L.qy_rounddown");
-    round_integer_labels[0] = x64_new_label(".L.qy_round_integer.round");
-    round_integer_labels[1] = x64_new_label(".L.qy_round_integer.roundup");
-    round_integer_labels[2] = x64_new_label(".L.qy_round_integer.rounddown");
+    round_integer_labels[0][0] = x64_new_label(".L.qy_round_integer.round");
+    round_integer_labels[1][0] = x64_new_label(".L.qy_round_unsigned.round");
+    round_integer_labels[0][1] = x64_new_label(".L.qy_round_integer.roundup");
+    round_integer_labels[1][1] = x64_new_label(".L.qy_round_unsigned.roundup");
+    round_integer_labels[0][2] = x64_new_label(".L.qy_round_integer.rounddown");
+    round_integer_labels[1][2] = x64_new_label(".L.qy_round_unsigned.rounddown");
     {
         int b;
         for (b = BI_FILE_OPEN; b < BI_COUNT; b++) {
@@ -6037,6 +6088,7 @@ void codegen(Ast *ast, Program *out_prog, FILE *out_text, Target out_target)
     gen_write(write_err_label, 1);
     gen_runtime_error();
     gen_print_int();
+    gen_print_uint();
     gen_print_double();
     gen_print_bool();
     gen_print_str();
@@ -6065,9 +6117,12 @@ void codegen(Ast *ast, Program *out_prog, FILE *out_text, Target out_target)
     gen_round(BI_ROUND);
     gen_round(BI_ROUNDUP);
     gen_round(BI_ROUNDDOWN);
-    gen_round_integer(BI_ROUND);
-    gen_round_integer(BI_ROUNDUP);
-    gen_round_integer(BI_ROUNDDOWN);
+    gen_round_integer(BI_ROUND, 0);
+    gen_round_integer(BI_ROUND, 1);
+    gen_round_integer(BI_ROUNDUP, 0);
+    gen_round_integer(BI_ROUNDUP, 1);
+    gen_round_integer(BI_ROUNDDOWN, 0);
+    gen_round_integer(BI_ROUNDDOWN, 1);
     gen_input_routines();
     gen_file_runtime();
     gen_model_runtime();

@@ -114,7 +114,7 @@ static void gen_model_runtime(void)
             else if (f->ty == TY_FILE) gen_write_const("<file>");
             else {
                 if (f->ty == TY_FLOAT) gen_convert(TY_FLOAT, TY_DOUBLE);
-                x64_call(f->ty == TY_BOOL ? print_bool_label : f->ty == TY_FLOAT ? print_float_label : f->ty == TY_DOUBLE ? print_double_label : print_int_label);
+                x64_call(f->ty == TY_BOOL ? print_bool_label : f->ty == TY_FLOAT ? print_float_label : f->ty == TY_DOUBLE ? print_double_label : integer_unsigned(f->ty) ? print_uint_label : print_int_label);
             }
         }
         gen_write_const("}"); rt_leave();

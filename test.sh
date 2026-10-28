@@ -164,7 +164,7 @@ printf 'int main();\n\tint a = 3\n\ta = a * 5\n\treturn a\n' > tmp.qy
 ./qyc tmp.qy && ./tmp
 if [ "$?" = "15" ]; then echo "OK  代入と return"; pass=$((pass + 1)); else echo "NG  代入と return"; exit 1; fi
 
-expected_version=$'QYNO version 0.26.10 (PROTOTYPE)\nPlease note that this product is a prototype. No warranties of any kind exist,\nincluding implied warranties of merchantability or fitness for a particular purpose.'
+expected_version=$'QYNO version 0.26.11 (PROTOTYPE)\nPlease note that this product is a prototype. No warranties of any kind exist,\nincluding implied warranties of merchantability or fitness for a particular purpose.'
 if [ "$(./qyc --version)" = "$expected_version" ]; then echo "OK  --version"; pass=$((pass + 1)); else echo "NG  --version"; exit 1; fi
 
 echo "--- 比較・論理演算・if・const ---"

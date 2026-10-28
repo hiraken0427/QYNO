@@ -1,11 +1,13 @@
 'use strict';
-// Reference: QYNO 0.26.10. No runtime dependency on a compiler installation.
+// Reference: QYNO 0.26.11. No runtime dependency on a compiler installation.
 const callable = (path, type, params, documentation) => ({
     kind: 'function', name: path.split('.').at(-1), path, type, rank: 0,
     params: params.map(p => typeof p === 'string' ? { name: p, type: 'value', rank: 0 } : { rank: 0, ...p }),
     documentation, builtin: true
 });
+const INTEGER_TYPES = ['int_8', 'int_16', 'int_32', 'int_64', 'unsigned int', 'unsigned int_8', 'unsigned int_16', 'unsigned int_32', 'unsigned int_64'];
 const STANDARD = [
+    ...INTEGER_TYPES.map(type => callable(type, type, [{name:'value',type:'integer / float / double / str'},{name:'base',type:'int',optional:true,defaultText:'0'}], '範囲を検査して整数型へ変換します。strの変換にはbase=0/2/8/10/16を指定できます。')),
     callable('math.sqrt', 'double / float', ['x'], '平方根を返します。int 引数は double に変換されます。'),
     callable('math.abs', 'int / float / double', ['x'], '絶対値。QYNO では |x| の表記も使用できます。'),
     callable('math.round', 'int / float / double', ['x', { name: 'digits', type: 'int', optional: true, default: '0' }], '指定桁で四捨五入します。'),
@@ -25,7 +27,7 @@ const STANDARD = [
     callable('io.file.write', 'int', [{ name: 'destination', type: 'file' }, { name: 'value', type: 'value', placeholder: '"text"' }], 'print と同じ書式で書き込み、UTF-8のバイト数を返します。改行は自動追加しません。'),
     callable('io.file.exists', 'bool', [{ name: 'path', type: 'str', placeholder: '"path.txt"' }], '通常ファイルの存在を確認します。相対パスは実行時の作業ディレクトリが基準です。')
 ];
-const KEYWORD_COMPLETIONS = ['int', 'float', 'double', 'bool', 'str', 'char', 'file', 'void', 'auto', 'const', 'ref', 'val', 'return', 'if', 'else', 'for', 'while', 'break', 'continue', 'and', 'or', 'xor', 'bnot', 'not', 'true', 'false', 'none', 'import', 'using', 'as', 'model', 'interface', 'implements', 'public', 'private', 'readonly'];
+const KEYWORD_COMPLETIONS = ['int', 'int_8', 'int_16', 'int_32', 'int_64', 'unsigned', 'float', 'double', 'bool', 'str', 'char', 'file', 'void', 'auto', 'const', 'ref', 'val', 'return', 'if', 'else', 'for', 'while', 'break', 'continue', 'and', 'or', 'xor', 'bnot', 'not', 'true', 'false', 'none', 'import', 'using', 'as', 'model', 'interface', 'implements', 'public', 'private', 'readonly'];
 const properties = {
     length: { name: 'length', kind: 'property', type: 'int', documentation: '配列の要素数、または文字列のUnicodeスカラー値の数。読み取り専用です。' },
     addr: { name: 'addr', kind: 'property', type: 'address', documentation: '変数の場所。ref 変数の場合は現在参照している場所です。' },
