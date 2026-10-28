@@ -1,12 +1,16 @@
 'use strict';
-// Reference: QYNO 0.27.1. No runtime dependency on a compiler installation.
+// Reference: QYNO 0.27.2. No runtime dependency on a compiler installation.
 const callable = (path, type, params, documentation) => ({
     kind: 'function', name: path.split('.').at(-1), path, type, rank: 0,
     params: params.map(p => typeof p === 'string' ? { name: p, type: 'value', rank: 0 } : { rank: 0, ...p }),
     documentation, builtin: true
 });
 const INTEGER_TYPES = ['int_8', 'int_16', 'int_32', 'int_64', 'int_128', 'unsigned int', 'unsigned int_8', 'unsigned int_16', 'unsigned int_32', 'unsigned int_64', 'unsigned int_128'];
+const IO_CODES = ['no_error','not_found','permission_denied','already_exists','invalid_path','not_regular_file','too_many_open_files','no_space','read_only','broken_pipe','resource_busy','io_error'];
+const IO_ERROR_CODE = {name:'ErrorCode',path:'io.ErrorCode',type:'io.ErrorCode',kind:'enum',builtin:true,members:IO_CODES.map((name,enumValue)=>({name,path:'io.ErrorCode.'+name,type:'io.ErrorCode',kind:'enumMember',readonly:true,builtin:true,enumValue,documentation:'回復可能なファイルI/Oエラー分類'}))};
+const IO_ERROR = {name:'Error',path:'io.Error',type:'io.Error',kind:'model',builtin:true,members:[['code','io.ErrorCode'],['message','str'],['operation','str'],['path','str'],['os_code','int_64'],['source','str'],['line','int'],['column','int']].map(([name,type])=>({name,type,kind:'field',rank:0,visibility:'public',builtin:true,documentation:'発生時点のI/Oエラー情報'}))};
 const STANDARD = [
+    IO_ERROR_CODE, IO_ERROR,
     ...['complex','complex_64','complex_128'].map(type=>callable(type,type,[{name:'real',type:type==='complex_128'?'double':'float',optional:true,defaultText:'0.0'},{name:'imag',type:type==='complex_128'?'double':'float',optional:true,defaultText:'0.0'}], '複素数を構築します。complexはcomplex_64の別名。real / imagは実数、値1個なら実数または複素数から変換できます。i4.0 / 4.0iも使用できます。')),
 
     ...INTEGER_TYPES.map(type => callable(type, type, [{name:'value',type:'integer / half / float / double / quadruple / str'},{name:'base',type:'int',optional:true,defaultText:'0'}], 'int / unsigned intは32bitの別名です。範囲を検査して整数型へ変換します。strの変換にはbase=0/2/8/10/16を指定できます。')),
@@ -26,6 +30,7 @@ const STANDARD = [
     ...['join','basename','dirname','extension','stem','is_absolute','is_relative','normalize','with_extension'].map(name=>callable('io.path.'+name, ['is_absolute','is_relative'].includes(name)?'bool':'str',
         name==='join'?[{name:'base',type:'str'},{name:'child',type:'str'}]:name==='with_extension'?[{name:'path',type:'str'},{name:'extension',type:'str'}]:[{name:'path',type:'str'}],
         ({join:'パス2個を結合します。',basename:'末尾の名前を取得します。',dirname:'親パスを取得します。',extension:'最後の拡張子をドット付きで返します。',stem:'拡張子を除いた末尾の名前を返します。',is_absolute:'完全な絶対パスか判定します。',is_relative:'完全な絶対パスでないか判定します。',normalize:'区切りと余分な . を整理します。.. は保持します。',with_extension:'拡張子を変更します。空文字なら削除します。'})[name]+' 生成先OSの規則で処理し、ファイルへはアクセスしません。')),
+    callable('io.file.try_open','bool',[{name:'path',type:'str'},{name:'destination',type:'file',ref:true},{name:'error',type:'io.Error',ref:true},{name:'mode',type:'str',optional:true,default:'"r"'}],'成功時trueとfile、失敗時falseとErrorを返します。出力先は未オープンが必要。falseではcaseへ移りません。'),
     callable('io.file.open', 'file', [{ name: 'path', type: 'str', placeholder: '"path.txt"' }, { name: 'mode', type: 'str', optional: true, default: '"r"' }], '通常ファイルを開きます。r/w/a はUTF-8、rb/wb/ab はバイナリ。w/wb は切り詰め、a/ab は追記。正常終了の全経路で明示的な close が必要です。'),
     callable('io.file.close', 'void', [{ name: 'source', type: 'file' }], '共有ハンドルを閉じます。二重 close と未オープンの close は許可されます。'),
     callable('io.file.is_open', 'bool', [{ name: 'source', type: 'file' }], 'ハンドルが開いているかを返します。'),
@@ -36,7 +41,7 @@ const STANDARD = [
     callable('io.file.write_bytes', 'int_64', [{name:'destination',type:'file'},{name:'data',type:'unsigned int_8',rank:1}], 'wb/abへ全要素を1バイトずつ書き、バイト数を返します。dataは読み取り専用で観測しref不要。UTF-8・改行変換は行いません。'),
     callable('io.file.exists', 'bool', [{ name: 'path', type: 'str', placeholder: '"path.txt"' }], '通常ファイルの存在を確認します。相対パスは実行時の作業ディレクトリが基準です。')
 ];
-const KEYWORD_COMPLETIONS = ['complex', 'complex_64', 'complex_128', 'int', 'int_8', 'int_16', 'int_32', 'int_64', 'int_128', 'half', 'quadruple', 'unsigned', 'float', 'double', 'bool', 'str', 'char', 'file', 'void', 'Void', 'auto', 'const', 'ref', 'val', 'return', 'if', 'else', 'for', 'while', 'break', 'continue', 'and', 'or', 'xor', 'bnot', 'not', 'true', 'false', 'none', 'import', 'using', 'as', 'enum', 'match', 'case', 'model', 'interface', 'implements', 'public', 'private', 'readonly'];
+const KEYWORD_COMPLETIONS = ['complex', 'complex_64', 'complex_128', 'int', 'int_8', 'int_16', 'int_32', 'int_64', 'int_128', 'half', 'quadruple', 'unsigned', 'float', 'double', 'bool', 'str', 'char', 'file', 'void', 'Void', 'auto', 'const', 'ref', 'val', 'return', 'if', 'else', 'for', 'while', 'break', 'continue', 'and', 'or', 'xor', 'bnot', 'not', 'true', 'false', 'none', 'import', 'using', 'as', 'enum', 'match', 'case', 'try', 'finally', 'throw', 'model', 'interface', 'implements', 'public', 'private', 'readonly'];
 const properties = {
     real: { name:'real',kind:'property',type:'float',readonly:true,documentation:'複素数の実部。読み取り専用です。' },
     imag: { name:'imag',kind:'property',type:'float',readonly:true,documentation:'複素数の虚部。読み取り専用です。' },

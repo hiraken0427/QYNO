@@ -291,7 +291,7 @@ async function run() {
     assert.equal(wideHint.signatures[0].label,'unsigned int_128 echo(ref int_128 n)');checks++;
     const quadHint=await vscode.commands.executeCommand('vscode.executeSignatureHelpProvider',wideDoc.uri,new vscode.Position(6,11));
     assert.ok(quadHint.signatures[0].label.startsWith('quadruple quadruple('));checks++;
-    assert.equal(extension.packageJSON.displayName, 'QYNO 0.27.1'); checks++;
+    assert.equal(extension.packageJSON.displayName, 'QYNO 0.27.2'); checks++;
     const unitDoc=await vscode.workspace.openTextDocument({language:'qyno',content:'Void echo(ref void value)=value\nint main();\n\tVoid units[3]\n\tuni\n\techo(ref \n'});
     await vscode.window.showTextDocument(unitDoc);
     const unitItems=await vscode.commands.executeCommand('vscode.executeCompletionItemProvider',unitDoc.uri,new vscode.Position(3,4));
@@ -315,6 +315,7 @@ async function run() {
         for (const [before, after] of [
             ['int main();', '\t'], ['\tfor(0 <= i < 3, i++);', '\t\t'],
             ['\tif(true); // comment', '\t\t'], ['complex_128 get();', '\t'],
+            ['try;', '\t'], ['case(io.ErrorCode.not_found);', '\t'], ['finally;', '\t'], ['\tthrow;', '\t'],
             ['enum State;', '\t'], ['match(gender);', '\t'], ['case male;', '\t'], ['private readonly get();', '\t'], ['Point make();', '\t'], ['square(x);', '\t'],
             ['\tprint(";")', '\t'], ['\tprint(1) // ;', '\t'], ['\treturn 0', '\t']
         ]) {
@@ -430,6 +431,26 @@ async function run() {
         await replace(diagDoc,enumSource+'int main();\n\tsex gender=female\n\tmatch(gender);\n\t\tcase undetermined,male;\n\t\t\treturn 0\n\t\tcase female;\n\t\t\treturn 0\n');
         await vscode.commands.executeCommand('qyno.checkDocument');
         assert.equal(errors(diagDoc).length,0);checks++;
+        await replace(diagDoc,'int main();\n\treturn 0\n');
+        const recoverSource='using io\nint main();\n\tfile f\n\ttry(f=file.open("missing")) as error;\n\t\tprint("opened")\n\tcase(io.ErrorCode.not_found);\n\t\tprint(error.code)\n\tfinally;\n\t\tfile.close(f)\n\treturn 0\n';
+        await replace(diagDoc,recoverSource);
+        await vscode.commands.executeCommand('qyno.checkDocument');
+        assert.equal(errors(diagDoc).length,0,JSON.stringify(errors(diagDoc)));checks++;
+        const errorColumn=diagDoc.lineAt(6).text.indexOf('error.')+6;
+        const errorFields=await vscode.commands.executeCommand('vscode.executeCompletionItemProvider',diagDoc.uri,new vscode.Position(6,errorColumn));
+        assert.ok(errorFields.items.some(i=>i.label==='code'));checks++;
+        assert.ok(errorFields.items.some(i=>i.label==='os_code'));checks++;
+        const errorDefinition=await vscode.commands.executeCommand('vscode.executeDefinitionProvider',diagDoc.uri,new vscode.Position(6,errorColumn-2));
+        assert.ok(errorDefinition.some(d=>(d.range||d.targetSelectionRange).start.line===3));checks++;
+        await replace(diagDoc,recoverSource.replace('print(error.code)','error.code=io.ErrorCode.io_error'));
+        await vscode.commands.executeCommand('qyno.checkDocument');
+        assert.ok(errors(diagDoc).some(d=>/readonly/.test(d.message)));checks++;
+        await replace(diagDoc,recoverSource.replace('\tfinally;\n\t\tfile.close(f)\n',''));
+        await vscode.commands.executeCommand('qyno.checkDocument');
+        assert.ok(errors(diagDoc).some(d=>/close/.test(d.message)));checks++;
+        await replace(diagDoc,'int main();\n\tthrow;\n');
+        await vscode.commands.executeCommand('qyno.checkDocument');
+        assert.ok(errors(diagDoc).some(d=>/case/.test(d.message)));checks++;
         await replace(diagDoc,'int main();\n\treturn 0\n');
         await config.update('compilerPath', path.join(temporary, 'missing-qyc'), vscode.ConfigurationTarget.Global);
         await vscode.commands.executeCommand('qyno.checkDocument');

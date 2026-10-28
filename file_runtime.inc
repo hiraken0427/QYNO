@@ -11,6 +11,13 @@
 #endif
 #define FILE_BUFFER_SIZE QYNO_FILE_BUFFER_SIZE
 
+static void file_io_call(int label)
+{
+    int ok=rt_label("io.runtime.ok");
+    x64_call(label);x64_load(R11,R14,IO_PENDING);x64_test(R11,R11);x64_jcc(CC_Z,ok);
+    rt_leave();x64_bind(ok);
+}
+
 static void file_win_begin(void)
 {
     x64_push(RBP); x64_mov(RBP, RSP);
@@ -25,7 +32,9 @@ static void file_win_end(Import imp)
 static void file_fail(int code, const char *reason)
 {
     x64_lea_data(RAX, prog_add_str(prog, reason, strlen(reason)));
-    x64_mov_imm(R8, code); x64_jmp(file_error_label);
+    if(code==EX_IOERR){
+        x64_mov_imm(RDI,11);x64_call(io_raise_label);rt_leave();
+    }else {x64_mov_imm(R8, code); x64_jmp(file_error_label);}
 }
 
 /* Raw OS helpers return negative OS error numbers. */
@@ -52,7 +61,9 @@ static void gen_file_error_runtime(void)
     int no_path = rt_label("file.error.no.path");
     int no_os = rt_label("file.error.no.os");
     int digits = rt_label("file.error.digits");
-    rt_enter(file_error_label, 8);
+    x64_bind(file_error_label);
+    x64_push(R8); x64_call(io_report_label); x64_pop(RAX);x64_jmp(exit_label);
+    rt_enter(io_report_label, 8);
     rt_save(1, RAX); rt_save(2, R8);
     x64_load(RAX, R14, FILE_CONTEXT); x64_test(RAX, RAX);
     x64_jcc(CC_Z, no_context);
@@ -76,7 +87,7 @@ static void gen_file_error_runtime(void)
     file_emit_err(")");
     x64_bind(no_os);
     rt_load(R8, 2); x64_lea_data(RSI, newline_offset); x64_mov_imm(RDX, 1);
-    x64_jmp(runtime_error_label);
+    x64_call(write_err_label);rt_leave();
 }
 
 /* rax=str -> same str, strictly validated. */
@@ -267,7 +278,7 @@ static void gen_file_open_runtime(void)
     x64_bind(r); rt_set(2, 1); x64_jmp(mode);
     x64_bind(w); rt_set(2, 2); x64_jmp(mode);
     x64_bind(a); rt_set(2, 3);
-    x64_bind(mode); rt_load(RAX, 2); rt_load(RCX, 6); x64_add(RAX, RCX); rt_save(2, RAX); rt_load(RAX, 1); x64_call(file_path_label); rt_save(3, RAX);
+    x64_bind(mode); rt_load(RAX, 2); rt_load(RCX, 6); x64_add(RAX, RCX); rt_save(2, RAX); rt_load(RAX, 1); file_io_call(file_path_label); rt_save(3, RAX);
     x64_mov_imm(RDI, 48); x64_call(alloc_label); rt_save(4, RAX); x64_store_imm(RAX, -8, 2);
     rt_load(RCX, 1); x64_store(RAX, 16, RCX);
     x64_mov_imm(RDI, FILE_BUFFER_SIZE); x64_call(alloc_label);
@@ -283,7 +294,8 @@ static void gen_file_open_runtime(void)
         x64_bind(no_error);
     }
     rt_load(RAX, 5); x64_call(file_raw_close_label);
-    file_fail(EX_IOERR, "通常ファイルではありません、またはファイル情報を取得できません");
+    x64_lea_data(RAX,prog_add_str(prog,"通常ファイルではありません、またはファイル情報を取得できません",strlen("通常ファイルではありません、またはファイル情報を取得できません")));
+    x64_mov_imm(RDI,5);x64_call(io_raise_label);rt_leave();
     x64_bind(regular); rt_load(RAX, 4); rt_load(RCX, 5); x64_store(RAX, 0, RCX);
     rt_load(RCX, 2); x64_store(RAX, 8, RCX); rt_leave();
 }
@@ -415,13 +427,13 @@ static void gen_file_read_text_runtime(void)
     int no_unread = rt_label("file.read.no.unread");
     rt_enter(file_text_label, 5); rt_save(1, RAX); rt_save(2, RDI);
     rt_set(5, 0); x64_mov_imm(RDI, 24); x64_call(alloc_label); rt_save(3, RAX);
-    x64_bind(loop); rt_load(RAX, 1); x64_call(file_getc_label);
+    x64_bind(loop); rt_load(RAX, 1); file_io_call(file_getc_label);
     rt_cmp(RAX, -1); x64_jcc(CC_Z, eof); rt_set(5, 1);
     rt_load(RCX, 2); x64_test(RCX, RCX); x64_jcc(CC_Z, append);
     rt_cmp(RAX, 10); x64_jcc(CC_Z, finish); rt_cmp(RAX, 13); x64_jcc(CC_Z, cr);
     x64_bind(append); x64_store8(RBP, -32, RAX); rt_load(RAX, 3);
     x64_lea(RSI, RBP, -32); x64_mov_imm(RDX, 1); x64_call(file_append_label); x64_jmp(loop);
-    x64_bind(cr); rt_load(RAX, 1); x64_call(file_getc_label);
+    x64_bind(cr); rt_load(RAX, 1); file_io_call(file_getc_label);
     rt_cmp(RAX, -1); x64_jcc(CC_Z, no_unread); rt_cmp(RAX, 10); x64_jcc(CC_Z, no_unread);
     rt_load(RAX, 1); x64_load(RCX, RAX, 24); x64_sub_imm(RCX, 1); x64_store(RAX, 24, RCX);
     x64_bind(no_unread); x64_jmp(finish);
@@ -429,12 +441,12 @@ static void gen_file_read_text_runtime(void)
     rt_load(RDX, 5); rt_leave();
     rt_enter(file_labels[BI_FILE_READ - BI_FILE_OPEN], 0);
     x64_load(RAX, RBP, 16); x64_mov_imm(RDI, 1); x64_call(file_check_label);
-    x64_xor(RDI, RDI); x64_call(file_text_label); rt_leave();
+    x64_xor(RDI, RDI); file_io_call(file_text_label); rt_leave();
     {
         int empty = rt_label("file.readline.empty");
         rt_enter(file_labels[BI_FILE_READLINE - BI_FILE_OPEN], 0);
         x64_load(RAX, RBP, 24); x64_mov_imm(RDI, 1); x64_call(file_check_label);
-        x64_mov_imm(RDI, 1); x64_call(file_text_label);
+        x64_mov_imm(RDI, 1); file_io_call(file_text_label);
         x64_test(RDX, RDX); x64_jcc(CC_Z, empty);
         x64_load(RCX, RBP, 16); x64_store(RCX, 0, RAX);
         x64_bind(empty); x64_mov(RAX, RDX); rt_leave();
@@ -474,7 +486,7 @@ static void gen_file_write_runtime(void)
     rt_enter(file_labels[BI_FILE_WRITE - BI_FILE_OPEN], 2); rt_save(1, RAX); rt_save(2, RDI);
     x64_mov_imm(RDI, 2); x64_call(file_check_label);
     rt_load(RAX, 2); x64_call(file_validate_label);
-    x64_load(RDX, RAX, 0); x64_lea(RSI, RAX, 8); rt_load(RAX, 1); x64_call(file_write_all_label); rt_leave();
+    x64_load(RDX, RAX, 0); x64_lea(RSI, RAX, 8); rt_load(RAX, 1); file_io_call(file_write_all_label); rt_leave();
 }
 
 static void gen_file_exists_runtime(void)
@@ -486,7 +498,7 @@ static void gen_file_exists_runtime(void)
     rt_enter(file_labels[BI_FILE_EXISTS - BI_FILE_OPEN], 22);
     x64_load(RAX, RBP, 16); x64_store(R14, FILE_PATH, RAX);
     x64_load(RCX, RAX, 0); x64_test(RCX, RCX); x64_jcc(CC_Z, missing);
-    x64_call(file_path_label); rt_save(1, RAX);
+    file_io_call(file_path_label); rt_save(1, RAX);
     if (target == TARGET_LINUX) {
         x64_bind(retry); x64_mov_imm(RDI, -100); rt_load(RSI, 1); x64_lea(RDX, RBP, -176);
         x64_xor(R10, R10); x64_mov_imm(RAX, 262); x64_syscall();
@@ -519,5 +531,5 @@ static void gen_file_runtime(void)
     gen_file_raw_open(); gen_file_open_runtime(); gen_file_check_runtime();
     gen_file_close_runtime(); gen_file_buffer_runtime(); gen_file_capture_runtime();
     gen_file_getc_runtime(); gen_file_read_text_runtime(); gen_file_write_runtime(); gen_file_exists_runtime();
-    gen_file_binary_runtime();
+    gen_file_binary_runtime(); gen_recoverable_runtime();
 }

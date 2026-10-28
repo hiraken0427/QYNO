@@ -1,7 +1,7 @@
 'use strict';
 
 const TYPES = new Set(['complex', 'complex_64', 'complex_128', 'int', 'int_8', 'int_16', 'int_32', 'int_64', 'int_128', 'half', 'quadruple', 'unsigned', 'float', 'double', 'bool', 'str', 'char', 'file', 'void', 'Void', 'auto']);
-const KEYWORDS = new Set([...TYPES, 'const', 'ref', 'val', 'return', 'if', 'else', 'for', 'while', 'break', 'continue', 'and', 'or', 'xor', 'bnot', 'not', 'true', 'false', 'none', 'import', 'using', 'as', 'print', 'input', 'struct', 'enum', 'match', 'case', 'of', 'model', 'interface', 'implements', 'public', 'private', 'readonly']);
+const KEYWORDS = new Set([...TYPES, 'const', 'ref', 'val', 'return', 'if', 'else', 'for', 'while', 'break', 'continue', 'and', 'or', 'xor', 'bnot', 'not', 'true', 'false', 'none', 'import', 'using', 'as', 'print', 'input', 'struct', 'enum', 'match', 'case', 'try', 'finally', 'throw', 'of', 'model', 'interface', 'implements', 'public', 'private', 'readonly']);
 const identifierStart = c => /[A-Za-z_]/.test(c || '');
 const identifierPart = c => /[A-Za-z0-9_]/.test(c || '');
 
@@ -149,7 +149,7 @@ function analyze(text, uri = '') {
     const lines = text.split(/\r?\n/);
     const tokens = lines.map(lexLine);
     const scopes = [{ id: 0, parent: null, depth: 0, startLine: 0, endLine: lines.length - 1, kind: 'module' }];
-    const symbols = [], imports = [], usings = [], stack = [scopes[0]];
+    const symbols = [], imports = [], usings = [], stack = [scopes[0]], tryHeaders=new Map();
     const newScope = (line, depth, kind, parent, headerVisible = false) => {
         const scope = { id: scopes.length, parent: parent.id, depth, startLine: headerVisible ? line : line + 1, endLine: lines.length - 1, headerLine: line, kind };
         scopes.push(scope); return scope;
@@ -274,6 +274,16 @@ function analyze(text, uri = '') {
             stack.push(body);
         } else if(ts[0].value==='match'){
             const body=newScope(line,indent+1,'match',scope);body.targetText=ts.slice(2,ts.findLastIndex(t=>t.value===')')).map(t=>t.value).join('');stack.push(body);
+        } else if(ts[0].value==='try'){
+            const as=ts.findIndex(t=>t.value==='as');
+            tryHeaders.set(`${scope.id}:${indent}`,as<0?null:ts[as+1]);
+            if(ts.some(t=>t.value===';'))stack.push(newScope(line,indent+1,'try',scope));
+        } else if(ts[0].value==='case'&&ts[1]?.value==='('&&ts.some(t=>t.value===';')){
+            const body=newScope(line,indent+1,'case',scope),binding=tryHeaders.get(`${scope.id}:${indent}`);
+            if(binding)declare(binding,{kind:'variable',type:'io.Error',readonly:true,scopeId:body.id,visibleAfter:0});
+            stack.push(body);
+        } else if(ts[0].value==='finally'&&ts.some(t=>t.value===';')){
+            tryHeaders.delete(`${scope.id}:${indent}`);stack.push(newScope(line,indent+1,'finally',scope));
         } else if (['if', 'else', 'while', 'case'].includes(ts[0].value) && ts.some(t => t.value === ';')) {
             stack.push(newScope(line, indent + 1, ts[0].value, scope));
         }

@@ -21,7 +21,7 @@ static void gen_model_init(Node *node)
         gen_expr(item->lhs);
         if (node->constant_value && type_is_array(item->field->ty)) {
             collection_shape(item->field->ty, item->field->dims, RDI);
-            x64_mov_imm(RSI, 1); x64_call(array_copy_label);
+            x64_mov_imm(RSI, 1); x64_call(array_copy_label);gen_io_check();
         }
         x64_load(RDX, RSP, 0); x64_load(RDX, RDX, 24);
         x64_store(RDX, item->field->index * 8, RAX);
@@ -49,18 +49,18 @@ static void gen_construction(Node *node)
     gen_creation_context(node->tok); x64_store(RBP, -base, RAX);
     for (i = 0; i < count; i++) { x64_load(RAX, RBP, -base + i * 8); push(); }
     x64_call(node->func->label);
-    x64_add_imm(RSP, count * 8 + bytes); depth -= count + bytes / 8;
+    x64_add_imm(RSP, count * 8 + bytes); depth -= count + bytes / 8;gen_io_check();
 }
 static void gen_model_default(Model *m, Token *tok)
 {
     gen_creation_context(tok); push(); x64_call(m->default_builder->label);
-    x64_add_imm(RSP, 8); depth--;
+    x64_add_imm(RSP, 8); depth--;gen_io_check();
 }
 static void model_copy_field(ModelField *f)
 {
     if (type_is_model(f->ty)) x64_call(type_model(f->ty)->copy_label);
     else if (type_is_array(f->ty)) {
-        collection_shape(f->ty, f->dims, RDI); x64_xor(RSI, RSI); x64_call(array_copy_label);
+        collection_shape(f->ty, f->dims, RDI); x64_xor(RSI, RSI); x64_call(array_copy_label);io_rt_check();
     }
 }
 static void gen_model_runtime(void)

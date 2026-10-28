@@ -268,8 +268,10 @@ readline の false は EOF だけに使う。I/O 失敗を EOF に置き換え�
 呼び出し元ファイル・行・列、操作名、可能なら対象パスと OS エラー情報を診断する。
 他モジュール内の呼び出しも、その実際のソース位置を表示する。
 
-例外型や汎用 Result 型は初版で導入せず、既存の実行時診断方式を使う。
-回復可能な I/O が必要になった段階で try_open 等とエラー情報の型をまとめて設計する。
+0.27.2では、上記のOS I/O失敗をio.ErrorCode / io.Errorとtry/case/finallyで回復できる。
+try_openは同じ失敗をfalseとErrorで返す。型違反・API誤用・不正UTF-8は従来どおり扱う。
+詳細は[回復可能I/Oとtry制御文](recoverable-io-design.md)を参照。
+捕捉して継続する経路にも明示close検査を適用する。
 
 ## 10. 実装構成
 

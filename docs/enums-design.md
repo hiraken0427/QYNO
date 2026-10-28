@@ -275,6 +275,9 @@ destinationは未オープンを要求し、成功時だけ新しいclose責任�
 成功/失敗の分岐とclose解析を対応させる必要があるため、enumと同時には実装せず別段階にする。
 try_read / try_writeは部分転送量を含むエラー契約が必要であり、try_openの後に設計する。
 
+この方向を具体化した0.27.2の[回復可能I/Oとtry制御文の仕様](recoverable-io-design.md)では、
+try/case/finally・再送出・回復経路のclose検査も含めて実装した。
+
 ## 11. 実装順と検証観点
 
 1. enum宣言・型ID・メンバー表・定数検査・既定値とモジュール公開制御。

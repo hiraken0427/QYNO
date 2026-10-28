@@ -1,4 +1,4 @@
-# QYNO 0.27.1
+# QYNO 0.27.2
 
 C99とGCCの128bit数値拡張で実装した、Linux x64 / Windows x64 向けのコンパイラ。
 UTF-8 の `.qy` ソースから実行ファイルを直接生成する。
@@ -35,9 +35,9 @@ int main();
 
 ## VS Code 拡張
 
-[QYNO 0.27.1](vscode-extensions/README.md) はハイライト、ユーザー定義の関数名・変数名の補完、
+[QYNO 0.27.2](vscode-extensions/README.md) はハイライト、ユーザー定義の関数名・変数名の補完、
 定義への移動、引数ヒント、セミコロン後の自動インデント、qyc連携の構文・型エラーの赤線表示に対応する。
-[vscode-extensions/0.27.1_VSCode_option.vsix](vscode-extensions/0.27.1_VSCode_option.vsix) を
+[vscode-extensions/0.27.2_VSCode_option.vsix](vscode-extensions/0.27.2_VSCode_option.vsix) を
 VS Code の「VSIX からのインストール…」で指定する。
 診断には別途qycが必要。PATHにない場合は拡張設定の `qyno.compilerPath` に実行ファイルを指定する。
 
@@ -362,3 +362,30 @@ int main();
 matchはenumの全メンバーを列挙するかelseが必要。重複と列挙漏れはコンパイルエラーになり、対象式は1回だけ評価する。
 メソッド定義・呼び出しの括弧は従来どおり必要。回復可能I/Oは今回追加していない。
 [詳細な仕様](docs/enums-design.md)・[ユーザー例](examples/enums/main.qy)。
+
+## 回復可能I/Oとtry（0.27.2）
+
+標準の`io.ErrorCode`と`io.Error`でI/O失敗を扱う。
+`io.file.try_open(path, ref destination, ref error, mode="r")`はboolで成否を返す。
+通常のopen/read/write等は`try`の`case`で捕捉し、`finally`で明示的なcloseを共通化できる。
+
+```text
+using io
+
+int main();
+	file source
+	try(source = file.open("settings.txt")) as error;
+		print(file.read(source))
+	case(ErrorCode.not_found);
+		print("設定ファイルがありません")
+	case();
+		print("{error.operation}: {error.message}")
+	finally;
+		file.close(source)
+	return 0
+```
+
+case内の`throw;`で再送出する。try_openのfalse・EOFは送出しない。
+回復するエラー経路のclose不足もコンパイルエラーになる。
+詳細は[回復可能I/Oとtryの仕様](docs/recoverable-io-design.md)、
+[実行例](examples/recoverable-io/main.qy)を参照。

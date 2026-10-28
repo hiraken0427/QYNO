@@ -44,7 +44,19 @@ static InitState init_statements(Node *list, InitState s, Function *fn)
 {
     Node *n;
     for (n = list; n; n = n->next) {
-        if (n->kind == ND_IF) {
+        if(n->kind==ND_TRY){
+            InitState entry=init_state_copy(s),normal=init_state_copy(s),merged;Node *arm;int i;
+            normal=init_statements(n->lhs,normal,fn);normal=init_statements(n->then,normal,fn);merged=normal;
+            for(arm=n->els;arm;arm=arm->next){
+                InitState branch=init_statements(arm->then,init_state_copy(entry),fn);
+                if(merged.reachable&&branch.reachable)for(i=0;i<completion_model->field_count;i++)merged.ready[i]&=branch.ready[i];
+                else if(branch.reachable)memcpy(merged.ready,branch.ready,(size_t)completion_model->field_count);
+                merged.reachable|=branch.reachable;free(branch.ready);
+            }
+            if(n->rhs){InitState cleanup=init_state_copy(entry);cleanup=init_statements(n->rhs,cleanup,fn);free(cleanup.ready);merged=init_statements(n->rhs,merged,fn);}
+            free(s.ready);free(entry.ready);s=merged;
+        }else if(n->kind==ND_THROW){s.reachable=0;
+        }else if (n->kind == ND_IF) {
             InitState a = init_state_copy(s), b = init_state_copy(s); int i;
             init_expression(n->cond, s, 0);
             if (is_const_expr(n->cond)) { if (eval_const(n->cond).i) b.reachable = 0; else a.reachable = 0; }

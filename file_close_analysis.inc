@@ -12,22 +12,34 @@ typedef struct FcEnv FcEnv;
 typedef struct FcState FcState;
 typedef struct FcFlow FcFlow;
 typedef struct FcInfo FcInfo;
+typedef struct FcPredicate FcPredicate;
+struct FcPredicate {FcPredicate *next;Node *site;int success_id;};
 typedef struct FcContext FcContext;
 struct FcEntry { FcEntry *next; char *path; int id; };
-struct FcMap { FcEntry *entries; int origin; char *prefix; long long length; };
+struct FcMap { int success_id; FcEntry *entries; int origin; char *prefix; long long length; };
 struct FcEnv { FcEnv *next; Var *var; FcMap *value; Var *alias; };
-struct FcState { unsigned char live[FC_MAX_RESOURCES], known[FC_MAX_RESOURCES]; FcEnv *env; };
-struct FcFlow { FcFlow *next; FcState *state; int kind; int truth; FcMap *value; };
+struct FcState { unsigned char live[FC_MAX_RESOURCES], known[FC_MAX_RESOURCES]; FcEnv *env; FcPredicate *predicates; };
+struct FcFlow { FcFlow *next; FcState *state; int kind; int truth; unsigned error_codes; FcMap *value; };
 typedef struct { Node *site; int parameter; char *path; } FcResource;
-struct FcContext { FcInfo *info; int count; FcResource resources[FC_MAX_RESOURCES]; };
+struct FcContext { FcInfo *info; int count; unsigned caught_codes; FcFlow *errors; FcResource resources[FC_MAX_RESOURCES]; };
 struct FcInfo {
     FcInfo *next; Function *fn; int relevant, status; FcContext *context;
-    FcFlow *exits;
+    FcFlow *exits, *errors;
 };
 static FcInfo *fc_infos;
 static FcMap *fc_eval(FcContext *ctx, FcState *s, Node *n);
 static FcFlow *fc_run(FcContext *ctx, FcState *s, Node *n);
 static void fc_analyze(FcInfo *info);
+static FcFlow *fc_flow(FcState *s,int kind,FcMap *value);
+static FcFlow *fc_append(FcFlow *a,FcFlow *b,Token *site);
+static FcState *fc_clone(FcState *s);
+static void fc_error(FcContext *ctx,FcState *s,Node *site,unsigned codes)
+{
+    FcFlow *f;
+    if(!io_has_recovery)return;
+    f=fc_flow(fc_clone(s),4,NULL);f->error_codes=codes;
+    ctx->errors=fc_append(ctx->errors,f,site->tok);
+}
 
 static void *fc_new(size_t size)
 {
@@ -200,6 +212,11 @@ static int fc_truth(FcContext *ctx, FcState *s, Node *n)
 }
 static void fc_assume(FcContext *ctx, FcState *s, Node *condition, int truth)
 {
+    {int id=0;FcPredicate *predicate;
+     for(predicate=s->predicates;predicate;predicate=predicate->next)if(predicate->site==condition){id=predicate->success_id;break;}
+     if(condition->kind==ND_VAR&&condition->ty==TY_BOOL)id=fc_value(s,condition->var)->success_id;
+     if(condition->kind==ND_BUILTIN&&condition->val==BI_FILE_TRY_OPEN)id=fc_get(ctx,fc_place(ctx,s,condition->lhs->next->lhs),"");
+     if(id>0){s->known[id]=1;s->live[id]=(unsigned char)truth;}}
     if (condition->kind == ND_NOT) { fc_assume(ctx, s, condition->lhs, !truth); return; }
     if (condition->kind == ND_BUILTIN && condition->val == BI_FILE_IS_OPEN &&
         (condition->lhs->kind == ND_VAR || condition->lhs->kind == ND_INDEX)) {
@@ -277,6 +294,22 @@ static FcMap *fc_call(FcContext *ctx, FcState *s, Node *n)
     if (!callee->relevant) return fc_empty();
     if (callee->status == 1) error_tok(n->tok, "再帰する file 関数の close を証明できません。ファイル操作を再帰の外へ分離してください");
     fc_analyze(callee);
+    for(f=callee->errors;f;f=f->next){
+        FcState *failed=fc_clone(s);FcFlow *saved_exits=callee->exits,*saved_next=f->next;FcMap *moved=fc_empty();
+        for(id=1;id<callee->context->count;id++){
+            FcResource *res=&callee->context->resources[id];
+            if(res->parameter>0&&!fc_alive(callee->context,f->state,id)){
+                int actual=fc_get(ctx,args[res->parameter-1],res->path);
+                if(actual>0){failed->known[actual]=1;failed->live[actual]=0;}
+            }
+        }
+        callee->exits=f;f->next=NULL;
+        i=1;p=callee->fn->params;
+        for(arg=n->lhs;arg;arg=arg->next,p=p->next,i++)if(p->is_ref&&fc_file_type(p->ty))
+            fc_store(ctx,failed,arg->lhs,fc_transfer(ctx,failed,callee,args,i,n,moved));
+        f->next=saved_next;callee->exits=saved_exits;
+        fc_error(ctx,failed,n,f->error_codes);
+    }
     for (id = 1; id < callee->context->count; id++) {
         FcResource *res = &callee->context->resources[id]; int closed = 1;
         if (res->parameter <= 0) continue;
@@ -289,7 +322,18 @@ static FcMap *fc_call(FcContext *ctx, FcState *s, Node *n)
     i = 1; p = callee->fn->params;
     for (arg = n->lhs; arg; arg = arg->next, p = p->next, i++)
         if (p->is_ref && fc_file_type(p->ty)) fc_store(ctx, s, arg->lhs, fc_transfer(ctx, s, callee, args, i, n, owned));
-    return fc_transfer(ctx, s, callee, args, 0, n, owned);
+    {FcMap *result=fc_transfer(ctx,s,callee,args,0,n,owned);
+     if(n->ty==TY_BOOL){FcEntry *e;for(e=owned->entries;e;e=e->next){int matches=1,has_true=0,has_false=0;
+       for(f=callee->exits;f;f=f->next){int live=0;Var *q;
+         for(q=callee->fn->params;q;q=q->next)if(q->is_ref){FcEntry *entry;for(entry=fc_value(f->state,q)->entries;entry;entry=entry->next)
+           if(entry->id>0&&callee->context->resources[entry->id].parameter==0&&fc_alive(callee->context,f->state,entry->id))live=1;}
+         if(f->truth==1)has_true=1;else if(f->truth==0)has_false=1;else matches=0;
+         if(f->truth!=live)matches=0;
+       }
+       if(matches&&has_true&&has_false&&owned->entries->next==NULL)result->success_id=e->id;
+     }}
+     if(result->success_id){FcPredicate *predicate=fc_new(sizeof(*predicate));predicate->site=n;predicate->success_id=result->success_id;predicate->next=s->predicates;s->predicates=predicate;}
+     return result;}
 }
 static Node *fc_array_recipe(Node *site, long long index, Type ty, ArrayDim *dims)
 {
@@ -394,8 +438,14 @@ static FcMap *fc_eval(FcContext *ctx, FcState *s, Node *n)
     if (n->kind == ND_BUILTIN) {
         m = fc_empty(); i = 0;
         for (p = n->lhs; p; p = p->next, i++) { FcMap *v = fc_eval(ctx, s, p->kind == ND_REFARG ? p->lhs : p); if (i == 0) m = v; }
+        if(n->val==BI_FILE_TRY_OPEN){
+            int id=fc_id(ctx,n,0,"");FcMap *result=fc_empty();
+            s->known[id]=s->live[id]=1;fc_store(ctx,s,n->lhs->next->lhs,fc_scalar(id));result->success_id=id;return result;
+        }
+        if(n->val>=BI_FILE_OPEN&&n->val!=BI_FILE_CLOSE&&n->val!=BI_FILE_IS_OPEN)fc_error(ctx,s,n,0xFFEu);
         if (n->val == BI_FILE_OPEN) { int id = fc_id(ctx, n, 0, ""); s->known[id] = s->live[id] = 1; return fc_scalar(id); }
         if (n->val == BI_FILE_CLOSE) { int id = fc_get(ctx, m, ""); if (id > 0) { s->known[id] = 1; s->live[id] = 0; } }
+        if(n->val==BI_FILE_CLOSE)fc_error(ctx,s,n,0xFFEu);
         return fc_empty();
     }
     if (n->kind == ND_METHOD) {
@@ -448,7 +498,7 @@ static FcFlow *fc_flow(FcState *s, int kind, FcMap *value)
 }
 static FcFlow *fc_copy_flow(FcFlow *f)
 {
-    FcFlow *copy = fc_flow(f->state, f->kind, f->value); copy->truth = f->truth; return copy;
+    FcFlow *copy = fc_flow(f->state, f->kind, f->value); copy->truth = f->truth; copy->error_codes=f->error_codes;return copy;
 }
 static FcFlow *fc_append(FcFlow *a, FcFlow *b, Token *site)
 {
@@ -460,8 +510,37 @@ static FcFlow *fc_append(FcFlow *a, FcFlow *b, Token *site)
     if (count >= FC_MAX_PATHS) error_tok(site, "close の解析経路が多すぎます。関数を分割してください");
     return a;
 }
+static FcFlow *fc_try(FcContext *ctx,FcState *s,Node *n)
+{
+    FcFlow *head=fc_run(ctx,s,n->lhs),*f,*flows=NULL,*out=NULL;
+    for(f=head;f;f=f->next)flows=fc_append(flows,f->kind?fc_copy_flow(f):fc_run(ctx,f->state,n->then),n->tok);
+    for(f=flows;f;f=f->next){
+        FcFlow *handled=NULL,*h;Node *arm;
+        if(f->kind==4){
+            unsigned rest=f->error_codes,saved=ctx->caught_codes;
+            for(arm=n->els;arm;arm=arm->next){
+                Node *p;unsigned codes=arm->lhs?0:rest;
+                for(p=arm->lhs;p;p=p->next)codes|=1u<<p->val;
+                codes&=rest;if(!codes)continue;rest&=~codes;ctx->caught_codes=codes;
+                handled=fc_append(handled,fc_run(ctx,fc_clone(f->state),arm->then),n->tok);
+            }
+            ctx->caught_codes=saved;
+            if(rest){FcFlow *copy=fc_copy_flow(f);copy->error_codes=rest;handled=fc_append(handled,copy,n->tok);}
+        }else handled=fc_copy_flow(f);
+        for(h=handled;h;h=h->next){
+            FcFlow *cleanup=fc_run(ctx,h->state,n->rhs),*c;
+            for(c=cleanup;c;c=c->next){
+                if(!c->kind){c->kind=h->kind;c->truth=h->truth;c->value=h->value;c->error_codes=h->error_codes;}
+                out=fc_append(out,fc_copy_flow(c),n->tok);
+            }
+        }
+    }
+    return out;
+}
 static FcFlow *fc_step(FcContext *ctx, FcState *s, Node *n)
 {
+    if(n->kind==ND_TRY)return fc_try(ctx,s,n);
+    if(n->kind==ND_THROW){FcFlow *f=fc_flow(s,4,NULL);f->error_codes=ctx->caught_codes?ctx->caught_codes:0xFFEu;return f;}
     if (n->kind == ND_BUILD_REJECT) return NULL;
     if (n->kind == ND_IF) {
         int truth; FcFlow *a = NULL, *b = NULL;
@@ -484,7 +563,7 @@ static FcFlow *fc_step(FcContext *ctx, FcState *s, Node *n)
             if (f->kind == 1 || f->kind == 2) has_exit = 1;
         for (f = body; f; f = f->next) {
             int id;
-            if (f->kind == 1) { out = fc_append(out, fc_copy_flow(f), n->tok); continue; }
+            if (f->kind == 1 || f->kind==4) { out = fc_append(out, fc_copy_flow(f), n->tok); continue; }
             if (f->kind == 2) { out = fc_append(out, fc_flow(f->state, 0, NULL), n->tok); continue; }
             for (id = before; id < ctx->count; id++)
                 if (ctx->resources[id].parameter == 0 && fc_alive(ctx, f->state, id))
@@ -508,14 +587,18 @@ static FcFlow *fc_step(FcContext *ctx, FcState *s, Node *n)
     }
     if (n->kind == ND_RETURN) {
         FcFlow *f = fc_flow(s, 1, fc_eval(ctx, s, n->lhs));
-        if (n->lhs && n->lhs->ty == TY_BOOL) f->truth = fc_truth(ctx, s, n->lhs);
+        if(n->lhs&&n->lhs->ty==TY_BOOL){
+            int id=f->value->success_id;
+            f->truth=fc_truth(ctx,s,n->lhs);
+            if(id>0&&f->truth<0){FcFlow *failed=fc_copy_flow(f);failed->state=fc_clone(s);failed->state->known[id]=1;failed->state->live[id]=0;failed->truth=0;f->truth=1;f->next=failed;}
+        }
         return f;
     }
     if (n->kind == ND_BREAK || n->kind == ND_CONTINUE) return fc_flow(s, n->kind == ND_BREAK ? 2 : 3, NULL);
     if (n->kind == ND_DECL) {
         if (n->var->is_ref && n->lhs && n->lhs->kind == ND_ADDR) fc_env(s, n->var)->alias = fc_reference_target(s, n->lhs->lhs->var);
-        else { FcMap *m = fc_eval(ctx, s, n->lhs); if (fc_file_type(n->var->ty)) fc_set(s, n->var, m); }
-    } else if (n->kind == ND_ASSIGN) { FcMap *m = fc_eval(ctx, s, n->lhs); if (fc_file_type(n->var->ty)) fc_set(s, n->var, m); }
+        else { FcMap *m = fc_eval(ctx, s, n->lhs); if (fc_file_type(n->var->ty)||n->var->ty==TY_BOOL) fc_set(s, n->var, m); }
+    } else if (n->kind == ND_ASSIGN) { FcMap *m = fc_eval(ctx, s, n->lhs); if (fc_file_type(n->var->ty)||n->var->ty==TY_BOOL) fc_set(s, n->var, m); }
     else if (n->kind == ND_STORE) {
         fc_eval(ctx, s, n->lhs); { FcMap *m = fc_eval(ctx, s, n->rhs); if (fc_file_type(n->lhs->ty)) fc_store(ctx, s, n->lhs, m); }
     } else if (n->kind == ND_ADDR_ASSIGN) {
@@ -529,8 +612,13 @@ static FcFlow *fc_run(FcContext *ctx, FcState *s, Node *n)
     FcFlow *flows = fc_flow(s, 0, NULL);
     for (; n; n = n->next) {
         FcFlow *f, *next = NULL;
-        for (f = flows; f; f = f->next)
-            next = fc_append(next, f->kind ? fc_copy_flow(f) : fc_step(ctx, f->state, n), n->tok);
+        for (f = flows; f; f = f->next) {
+            FcFlow *saved=ctx->errors,*step;
+            ctx->errors=NULL;
+            step=f->kind?fc_copy_flow(f):fc_step(ctx,f->state,n);
+            step=fc_append(step,ctx->errors,n->tok);ctx->errors=saved;
+            next=fc_append(next,step,n->tok);
+        }
         flows = next;
     }
     return flows;
@@ -553,6 +641,10 @@ static void fc_analyze(FcInfo *info)
     if (info->fn->is_initializer)
         fc_set(s, info->fn->params, fc_eval(ctx, s, info->fn->model->default_value));
     info->exits = fc_run(ctx, s, info->fn->body);
+    {FcFlow **end=&info->exits;while(*end){FcFlow *flow=*end;if(flow->kind==4){*end=flow->next;flow->next=info->errors;info->errors=flow;}else end=&flow->next;}}
+    if(info->fn->io_caught)for(f=info->errors;f;f=f->next){int id;for(id=1;id<ctx->count;id++)
+        if(ctx->resources[id].parameter==0&&fc_alive(ctx,f->state,id))
+            error_tok(ctx->resources[id].site->tok,"回復するエラー経路で file の close を確認できません（関数 %.*s）。finally または case で close してください",info->fn->name_len,info->fn->name);}
     for (f = info->exits; f; f = f->next) {
         int id;
         for (id = 1; id < ctx->count; id++) if (ctx->resources[id].parameter == 0 && fc_alive(ctx, f->state, id)) {

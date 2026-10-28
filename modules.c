@@ -237,11 +237,26 @@ Ast *load_program(const char *path, const char **roots, int root_count)
             modules = standard;
         }
     }
+    {
+        Module *io = standard_module("io");
+        static const char declarations[] =
+            "enum ErrorCode;\n\tno_error\n\tnot_found\n\tpermission_denied\n\talready_exists\n"
+            "\tinvalid_path\n\tnot_regular_file\n\ttoo_many_open_files\n\tno_space\n"
+            "\tread_only\n\tbroken_pipe\n\tresource_busy\n\tio_error\n"
+            "model Error;\n\tErrorCode code\n\tstr message\n\tstr operation\n\tstr path\n"
+            "\tint_64 os_code\n\tstr source\n\tint line\n\tint column\n";
+        io->source = allocate(sizeof(*io->source));
+        io->source->module = io; io->source->filename = "<standard:io>";
+        io->source->canonical_path = "<standard:io>";
+        io->source->input = io->source->text = copy_name(declarations, strlen(declarations));
+        select_source(io->source);
+        io->ast = parse(tokenize(io->source->input));
+    }
     program->entry = load_module("", path, canonical, NULL);
     program->modules = modules;
     /* 所有モジュールは Token.source に残す。リストだけを出力単位へ連結する。 */
     for (module = modules; module != NULL; module = module->next) {
-        if (module->builtin) continue;
+        if (!module->ast) continue;
         *enum_tail=module->ast->enums;while(*enum_tail)enum_tail=&(*enum_tail)->next;
         *interface_tail = module->ast->interfaces;
         while (*interface_tail) interface_tail = &(*interface_tail)->next;
@@ -283,6 +298,10 @@ static Symbol exported_symbol(Module *module, const char *name)
             Symbol parent = exported_symbol(module, prefix);
             free(prefix);
             if (parent.kind == SYM_MODULE) return exported_symbol(parent.module, dot + 1);
+            if (parent.kind == SYM_ENUM) {
+                EnumMember *m = enum_find(parent.enumeration, dot + 1);
+                if (m) { symbol.kind = SYM_CONSTANT; symbol.constant = m->symbol; }
+            }
             return symbol;
         }
         Token ns = {0};
@@ -297,7 +316,7 @@ static Symbol exported_symbol(Module *module, const char *name)
             symbol.kind = SYM_BUILTIN;
             symbol.builtin = builtin;
         }
-        return symbol;
+        if (symbol.kind != SYM_NONE || !module->ast) return symbol;
     }
     { EnumDef *e;
       for(e=module->ast->enums;e;e=e->next)if(e->tok->source->module==module){
@@ -569,6 +588,15 @@ static void validate_using(Using *u)
         name = name != NULL ? name + 1 : u->path;
         introduced_name(u, name, using_symbol(u, name));
     } else if (target->builtin) {
+        if (target->ast) {
+            EnumDef *e; Model *m;
+            for (e=target->ast->enums;e;e=e->next) if(e->tok->source->module==target) {
+                symbol.kind=SYM_ENUM; symbol.enumeration=e; introduced_name(u,e->name,symbol);
+            }
+            for (m=target->ast->models;m;m=m->next) if(m->tok->source->module==target) {
+                symbol.kind=SYM_MODEL; symbol.model=m; introduced_name(u,m->name,symbol);
+            }
+        }
         Module *child;
         size_t n = strlen(target->name);
         int b;
