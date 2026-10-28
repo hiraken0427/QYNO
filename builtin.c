@@ -43,7 +43,8 @@ static const BuiltinInfo builtins[BI_COUNT] = {
     { "io.file", "read" },
     { "io.file", "readline" },
     { "io.file", "write" },
-    { "io.file", "exists" }
+    { "io.file", "exists" },
+    { "io.file", "read_bytes" }, { "io.file", "write_bytes" }
 };
 
 static int token_is(Token *t, const char *s)

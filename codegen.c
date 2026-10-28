@@ -74,7 +74,8 @@ static void gen_print_value(Node *expr);
 #define EX_IOERR    74      /* sysexits.h：入出力の失敗 */
 
 #define OUTPUT_SINK 288
-static int file_labels[7];
+static int file_labels[BI_COUNT - BI_FILE_OPEN];
+static int file_write_all_label;
 static int file_error_label, file_validate_label, file_path_label, file_raw_close_label;
 static int file_finalize_label, file_cleanup_label, file_kind_label, file_raw_open_label;
 static int file_check_label, file_append_label, file_string_label, file_capture_label;
@@ -6109,6 +6110,7 @@ void codegen(Ast *ast, Program *out_prog, FILE *out_text, Target out_target)
             file_labels[b - BI_FILE_OPEN] = x64_new_label(label_name);
         }
     }
+    file_write_all_label = x64_new_label(".L.qy_file_write_all");
     file_error_label = x64_new_label(".L.qy_file_error");
     file_validate_label = x64_new_label(".L.qy_file_validate");
     file_path_label = x64_new_label(".L.qy_file_path");

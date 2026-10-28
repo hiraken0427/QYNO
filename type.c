@@ -437,10 +437,12 @@ static void check_file_builtin(Node *node)
     Builtin b = (Builtin)node->val;
     Node *first = node->lhs;
     Node *second = first != NULL ? first->next : NULL;
-    int expected = b == BI_FILE_READLINE || b == BI_FILE_WRITE ? 2 : 1;
+    int expected = b == BI_FILE_READLINE || b == BI_FILE_WRITE || b == BI_FILE_READ_BYTES || b == BI_FILE_WRITE_BYTES ? 2 : 1;
     allow_void = 0;
     if (node->nargs != expected && !(b == BI_FILE_OPEN && node->nargs == 2))
         error_tok(node->tok, "io.file.%s の引数の数が不正です（%d 個）", builtin_name(b), node->nargs);
+    if ((b == BI_FILE_READ_BYTES || b == BI_FILE_WRITE_BYTES) && first->kind == ND_REFARG)
+        error_tok(first->tok, "バイナリI/Oの呼び出しに ref は付けません");
     check_expr(first);
     if (b == BI_FILE_OPEN || b == BI_FILE_EXISTS) {
         if (!type_is_text(first->ty)) error_tok(first->tok, "ファイルのパスは str・char にしてください");
@@ -460,10 +462,23 @@ static void check_file_builtin(Node *node)
         if (!type_is_text(second->ty)) error_tok(second->tok, "ファイルのモードは str・char にしてください");
         if (is_const_expr(second)) {
             Value mode = eval_const(second);
-            if (mode.len != 1 || (mode.s[0] != 'r' && mode.s[0] != 'w' && mode.s[0] != 'a'))
-                error_tok(second->tok, "ファイルのモードは r・w・a のいずれかです");
+            if ((mode.len != 1 && (mode.len != 2 || mode.s[1] != 'b')) || (mode.s[0] != 'r' && mode.s[0] != 'w' && mode.s[0] != 'a'))
+                error_tok(second->tok, "ファイルのモードは r・w・a・rb・wb・ab のいずれかです");
         }
         node->ty = TY_FILE;
+    } else if (b == BI_FILE_READ_BYTES || b == BI_FILE_WRITE_BYTES) {
+        if (second->kind == ND_REFARG) error_tok(second->tok, "バイナリI/Oの呼び出しに ref は付けません");
+        if (b == BI_FILE_READ_BYTES) {
+            check_expected(second, TY_I64);
+            if (!type_is_integer(second->ty)) error_tok(second->tok, "read_bytes の count は非負の int_64 にしてください");
+            second = coerce(second, TY_I64, second->tok, "read_bytes の count"); first->next = second;
+            if (is_const_expr(second) && eval_const(second).i < 0) error_tok(second->tok, "read_bytes の count は非負にしてください");
+            node->ty = array_type(TY_U8);
+        } else {
+            check_expected(second, array_type(TY_U8));
+            if (second->ty != array_type(TY_U8)) error_tok(second->tok, "write_bytes の data は unsigned int_8 の1次元配列にしてください");
+            node->ty = TY_I64;
+        }
     } else if (b == BI_FILE_READLINE) {
         Var target = {0};
         target.ty = TY_STR;

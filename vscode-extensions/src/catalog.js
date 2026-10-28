@@ -1,5 +1,5 @@
 'use strict';
-// Reference: QYNO 0.27.0. No runtime dependency on a compiler installation.
+// Reference: QYNO 0.27.1. No runtime dependency on a compiler installation.
 const callable = (path, type, params, documentation) => ({
     kind: 'function', name: path.split('.').at(-1), path, type, rank: 0,
     params: params.map(p => typeof p === 'string' ? { name: p, type: 'value', rank: 0 } : { rank: 0, ...p }),
@@ -26,12 +26,14 @@ const STANDARD = [
     ...['join','basename','dirname','extension','stem','is_absolute','is_relative','normalize','with_extension'].map(name=>callable('io.path.'+name, ['is_absolute','is_relative'].includes(name)?'bool':'str',
         name==='join'?[{name:'base',type:'str'},{name:'child',type:'str'}]:name==='with_extension'?[{name:'path',type:'str'},{name:'extension',type:'str'}]:[{name:'path',type:'str'}],
         ({join:'パス2個を結合します。',basename:'末尾の名前を取得します。',dirname:'親パスを取得します。',extension:'最後の拡張子をドット付きで返します。',stem:'拡張子を除いた末尾の名前を返します。',is_absolute:'完全な絶対パスか判定します。',is_relative:'完全な絶対パスでないか判定します。',normalize:'区切りと余分な . を整理します。.. は保持します。',with_extension:'拡張子を変更します。空文字なら削除します。'})[name]+' 生成先OSの規則で処理し、ファイルへはアクセスしません。')),
-    callable('io.file.open', 'file', [{ name: 'path', type: 'str', placeholder: '"path.txt"' }, { name: 'mode', type: 'str', optional: true, default: '"r"' }], 'UTF-8ファイルを開きます。r は読み取り、w は切り詰め、a は追記。正常終了の全経路で明示的な close が必要です。'),
+    callable('io.file.open', 'file', [{ name: 'path', type: 'str', placeholder: '"path.txt"' }, { name: 'mode', type: 'str', optional: true, default: '"r"' }], '通常ファイルを開きます。r/w/a はUTF-8、rb/wb/ab はバイナリ。w/wb は切り詰め、a/ab は追記。正常終了の全経路で明示的な close が必要です。'),
     callable('io.file.close', 'void', [{ name: 'source', type: 'file' }], '共有ハンドルを閉じます。二重 close と未オープンの close は許可されます。'),
     callable('io.file.is_open', 'bool', [{ name: 'source', type: 'file' }], 'ハンドルが開いているかを返します。'),
     callable('io.file.read', 'str', [{ name: 'source', type: 'file' }], '現在位置から EOF まで UTF-8 で読みます。改行・BOM・NUL を保持します。'),
     callable('io.file.readline', 'bool', [{ name: 'source', type: 'file' }, { name: 'line', type: 'str', ref: true }], '改行を除いた1行を読みます。空行は true と空文字列、EOF は false で出力先を保持します。LF / CRLF / CR に対応します。'),
     callable('io.file.write', 'int_64', [{ name: 'destination', type: 'file' }, { name: 'value', type: 'value', placeholder: '"text"' }], 'print と同じ書式で書き込み、UTF-8のバイト数をint_64で返します。改行は自動追加しません。'),
+    {...callable('io.file.read_bytes', 'unsigned int_8', [{name:'source',type:'file'},{name:'count',type:'int_64'}], 'rbから最大countバイトを読み、実際に読んだ要素数の配列を返します。countは非負で必須。EOFは空配列。不足分を補完しないよう受け取り先はdata[]を推奨。'),rank:1},
+    callable('io.file.write_bytes', 'int_64', [{name:'destination',type:'file'},{name:'data',type:'unsigned int_8',rank:1}], 'wb/abへ全要素を1バイトずつ書き、バイト数を返します。dataは読み取り専用で観測しref不要。UTF-8・改行変換は行いません。'),
     callable('io.file.exists', 'bool', [{ name: 'path', type: 'str', placeholder: '"path.txt"' }], '通常ファイルの存在を確認します。相対パスは実行時の作業ディレクトリが基準です。')
 ];
 const KEYWORD_COMPLETIONS = ['complex', 'complex_64', 'complex_128', 'int', 'int_8', 'int_16', 'int_32', 'int_64', 'int_128', 'half', 'quadruple', 'unsigned', 'float', 'double', 'bool', 'str', 'char', 'file', 'void', 'Void', 'auto', 'const', 'ref', 'val', 'return', 'if', 'else', 'for', 'while', 'break', 'continue', 'and', 'or', 'xor', 'bnot', 'not', 'true', 'false', 'none', 'import', 'using', 'as', 'model', 'interface', 'implements', 'public', 'private', 'readonly'];

@@ -225,7 +225,7 @@ class FileTests(QynoTestCase):
                        '\t\tfs.close(f)'], files={'in': ''})
 
     def test_static_argument_and_output_errors(self):
-        for statement, error in [('fs.open(1)', 'パス'), ('fs.open("in", "rb")', 'モード'),
+        for statement, error in [('fs.open(1)', 'パス'), ('fs.open("in", "br")', 'モード'),
                                  ('fs.read(1)', 'file'), ('fs.readline(f, line)', 'ref str'),
                                  ('fs.readline(f, ref n)', '型'), ('fs.write(f, [1])', 'write'),
                                  ('fs.write(f, "{items}")', 'write'), ('io.print(f)', 'file'),

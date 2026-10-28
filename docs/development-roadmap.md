@@ -8,6 +8,8 @@
 | --- | --- | --- | --- |
 | 7 | 0.26.16 | モジュールのpublic / private、公開APIの型検査、エディター対応 | 実装済み |
 | 8 | 0.27.0 | 標準関数のusing統一、lib.size / lib.length、io.path基本9関数 | 実装済み |
+| 9 | 0.27.1 | バイナリモードrb/wb/ab、read_bytes / write_bytes | 実装済み |
 
-仕様: [モジュールの公開制御](module-visibility.md)、[標準ライブラリ0.27.0仕様](standard-library-0270-design.md)。
-新段階9以降は、バイナリI/O・回復可能I/O・ファイル位置操作などを候補とし、実装指示で確定する。
+仕様: [モジュールの公開制御](module-visibility.md)、[標準ライブラリ0.27.0仕様](standard-library-0270-design.md)、
+[バイナリファイル操作0.27.1仕様](binary-file-design.md)。
+新段階10以降は、回復可能I/O・ファイル位置操作などを候補とし、実装指示で確定する。

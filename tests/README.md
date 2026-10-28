@@ -244,3 +244,10 @@ auto・ジェネリック・モデル・interface・定数・file.write・明示
 整数128bit・全小数型・Unicode書記素・多次元/不規則配列・model・定数評価・副作用・不正引数を含む。
 全体テストにも含む。Windows向け実行時は `QYNO_TEST_WINDOWS=1` を設定して同じケースを確認する。
 既存ケースの裸のprint/inputは修飾名、using、別名による記述へ移行した。
+
+## バイナリファイル（0.27.1）
+
+`make test-binary-file` は37メソッドで、全256値・分割転送・巨大な上限/空ファイル・共有位置・返却配列の独立性、
+モード表・型/次元/readonly・close・評価順・Unicodeパス・OSの短い転送/中断/失敗・確保失敗を検証する。
+Windowsは `QYNO_FILE_TARGET=windows QYNO_FILE_WINE=/path/to/wine python3 tests/binary_file_test.py ./qyc`。
+Linux専用の失敗注入・資源制限の8件はWindowsではスキップする。

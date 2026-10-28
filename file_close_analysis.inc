@@ -471,13 +471,17 @@ static FcFlow *fc_step(FcContext *ctx, FcState *s, Node *n)
         return fc_append(a, b, n->tok);
     }
     if (n->kind == ND_FOR || n->kind == ND_WHILE) {
-        FcFlow *body, *f, *out = NULL; FcState *baseline; int before, truth;
+        FcFlow *body, *f, *out = NULL; FcState *baseline; int before, truth, has_exit = 0;
         if (n->init) fc_eval(ctx, s, n->init->lhs);
         baseline = fc_clone(s); before = ctx->count;
         fc_eval(ctx, s, n->cond); truth = n->kind == ND_WHILE ? fc_truth(ctx, s, n->cond) : -1;
         if (truth != 1) { FcState *empty = fc_clone(s); fc_assume(ctx, empty, n->cond, 0); out = fc_flow(empty, 0, NULL); }
         if (truth == 0) return out;
         { FcState *iteration = fc_clone(s); fc_assume(ctx, iteration, n->cond, 1); body = fc_run(ctx, iteration, n->then); }
+        /* A reachable break/return supplies a normal exit, just as a dynamic
+         * while condition does. Keep per-iteration resource/alias checks below. */
+        for (f = body; f; f = f->next)
+            if (f->kind == 1 || f->kind == 2) has_exit = 1;
         for (f = body; f; f = f->next) {
             int id;
             if (f->kind == 1) { out = fc_append(out, fc_copy_flow(f), n->tok); continue; }
@@ -496,7 +500,7 @@ static FcFlow *fc_step(FcContext *ctx, FcState *s, Node *n)
                 }
             }
             if (truth != 1) out = fc_append(out, fc_flow(f->state, 0, NULL), n->tok);
-            else for (id = 1; id < ctx->count; id++)
+            else if (!has_exit) for (id = 1; id < ctx->count; id++)
                 if (ctx->resources[id].parameter == 0 && fc_alive(ctx, f->state, id))
                     error_tok(ctx->resources[id].site->tok, "終了しないループへ入る前に file を close してください");
         }

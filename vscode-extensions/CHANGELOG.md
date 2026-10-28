@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.27.1
+
+- io.fileのrb/wb/abとread_bytes/write_bytesの補完・引数ヒントを追加。
+- 読み取り結果はunsigned int_8配列、write_bytesのdataはref不要として表示。
+- QYNO 0.27.1の診断・表示名・VSIXに更新。
+
 ## 0.27.0
 
 - 標準関数の省略名はusingで導入。usingなしの補完は修飾名を提示。

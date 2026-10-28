@@ -695,3 +695,16 @@ test('block using does not leak library short names',()=>{
     assert.ok(labels('using ¦').includes('lib'));
     assert.ok(labels('using io.¦').includes('path'));
 });
+
+test('binary file catalog exposes byte arrays and no implicit ref argument',()=>{
+    const read=STANDARD.find(s=>s.path==='io.file.read_bytes');
+    const write=STANDARD.find(s=>s.path==='io.file.write_bytes');
+    assert.equal(read.type,'unsigned int_8');assert.equal(read.rank,1);
+    assert.equal(write.params[1].type,'unsigned int_8');assert.equal(write.params[1].rank,1);
+    assert.ok(!write.params[1].ref);
+    assert.ok(labels('using io.file as fs\nint main();\n\tfs.¦').includes('read_bytes'));
+    assert.ok(!labels('int main();\n\t¦').includes('read_bytes'));
+    assert.match(hint('io.file.read_bytes(source, ¦').label,/int_64 count/);
+    assert.match(hint('io.file.read_bytes(source, ¦').label,/\[\]$/);
+    assert.match(hint('using io.file\nint main();\n\twrite_bytes(out, ¦').label,/unsigned int_8 data\[\]/);
+});

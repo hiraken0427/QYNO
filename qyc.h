@@ -7,7 +7,7 @@
 #include "grapheme_runtime.h"
 #include <stdio.h>
 
-#define QYC_VERSION "0.27.0"
+#define QYC_VERSION "0.27.1"
 
 typedef struct SourceFile SourceFile;
 typedef struct Module Module;
@@ -193,6 +193,7 @@ typedef enum {
     BI_FILE_READLINE,
     BI_FILE_WRITE,
     BI_FILE_EXISTS,
+    BI_FILE_READ_BYTES, BI_FILE_WRITE_BYTES,
     BI_COUNT
 } Builtin;
 

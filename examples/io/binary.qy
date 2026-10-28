@@ -1,0 +1,21 @@
+using io.file as fs
+
+int main();
+	unsigned int_8 header[] = [0x51, 0x59, 0x4e, 0x4f, 0x00, 0xff]
+	file writer = fs.open("sample.bin", "wb")
+	int_64 written = fs.write_bytes(writer, header)
+	fs.close(writer)
+	io.print("{written} bytes / {lib.size(header)} bits")
+
+	file source = fs.open("sample.bin", "rb")
+	file destination = fs.open("copy.bin", "wb")
+	int_64 copied
+	while(true);
+		unsigned int_8 block[] = fs.read_bytes(source, 3)
+		if(block.length == 0);
+			break
+		copied += fs.write_bytes(destination, block)
+	fs.close(destination)
+	fs.close(source)
+	io.print("copied {copied} bytes")
+	return 0
