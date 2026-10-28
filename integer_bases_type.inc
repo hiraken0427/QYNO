@@ -20,7 +20,7 @@ static int check_integer_conversion(Node *n)
         } else if (slot == 2 && arg->ty != TY_BOOL) error_tok(arg->tok, "prefix は bool にしてください");
         if (arg->kind == ND_REFARG) error_tok(arg->tok, "整数の変換に ref は使えません");
     }
-    if (base && is_const_expr(base) && !integer_base_valid(eval_const(base).i, !formatting))
+    if (base && is_const_expr(base) && !integer_base_valid((type_is_wide(base->ty)?wide_calculate(base,W_CONVERT,eval_const(base),(Value){0},TY_I64,0):eval_const(base)).i, !formatting))
         error_tok(base->tok, "base は %s2 / 8 / 10 / 16 にしてください", formatting ? "" : "0 / ");
     n->kind = formatting ? ND_INT_FORMAT : ND_INT_PARSE; n->ty = formatting ? TY_STR : n->cmp_ty ? n->cmp_ty : TY_INT;
     n->nargs = count;
@@ -31,9 +31,11 @@ static Value eval_integer_conversion(Node *n)
 {
     Node *arg; Value v = {0}, slots[3] = {{0}}; int base, prefix;
     slots[1].i = n->kind == ND_INT_FORMAT ? 10 : 0;
-    for (arg = n->lhs; arg; arg = arg->next) slots[arg->option_index] = eval_const(arg);
+    for (arg = n->lhs; arg; arg = arg->next) { slots[arg->option_index] = eval_const(arg);if(arg->option_index==1&&type_is_wide(arg->ty))slots[1]=wide_calculate(arg,W_CONVERT,slots[1],(Value){0},TY_I64,0); }
     base = (int)slots[1].i; prefix = slots[2].i != 0; v.ty = n->ty;
     if (!integer_base_valid(slots[1].i, n->kind == ND_INT_PARSE)) const_error(n, "整数変換の base が不正です");
+    if(n->kind==ND_INT_PARSE&&type_is_wide(n->ty))return wide_read_value(n,slots[0],n->ty,base);
+    if(n->kind==ND_INT_FORMAT&&type_is_wide(n->lhs->ty)) { WideRequest r={0};r.op=W_FORMAT;r.ty=wide_tag(n->lhs->ty);r.a=value_bits(slots[0]);r.base=base;r.aux=prefix;v.s=malloc(256);if(!v.s)fatal("数値文字列を確保できません");r.buffer=v.s;wide_execute(&r);if(r.status)const_error(n,"数値書式が不正です");v.len=(int)r.out.lo;return v; }
     if (n->kind == ND_INT_FORMAT) v.s = integer_format_typed(slots[0].i, base, prefix, n->lhs->ty, &v.len);
     else if (integer_read_typed(slots[0].s, (size_t)slots[0].len, base, n->ty, &v.i)) const_error(n, "文字列を指定された基数の int として読み取れません");
     return v;

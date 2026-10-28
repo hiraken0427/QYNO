@@ -281,7 +281,7 @@ test('signature help handles qualified aliases, ref arguments, nested calls and 
     assert.equal(hint('void f(int a[], int b);\n\treturn\nint main();\n\tf([1, 2], ¦').activeParameter,1);
 });
 test('stdlib catalog includes fixed-width conversions and close requirements', () => {
-    assert.equal(STANDARD.length,31);
+    assert.equal(STANDARD.length,35);
     assert.ok(!STANDARD.some(s=>s.path==='bool'));
     assert.match(STANDARD.find(s=>s.path==='io.file.open').documentation,/close/);
     assert.equal(STANDARD.find(s=>s.path==='io.file.readline').params[1].ref,true);
@@ -607,7 +607,7 @@ test('integer widths and unsigned declarations keep full type labels and paramet
     assert.equal(result.find(i=>i.label==='count').detail,'unsigned int_64 count(ref unsigned int_8 value)');
     assert.equal(result.find(i=>i.label==='bytes').detail,'unsigned int_16 bytes[]');
     assert.equal(at('void f(unsigned int_8 value);\n\tprint(val¦ue)').start,22);
-    assert.equal(hint('int main();\n\tunsigned int_64(¦').label,'unsigned int_64 unsigned int_64(integer / float / double / str value, int base=0)');
+    assert.equal(hint('int main();\n\tunsigned int_64(¦').label,'unsigned int_64 unsigned int_64(integer / half / float / double / quadruple / str value, int base=0)');
 });
 test('unsigned for counters and integer keyword completions remain scoped', () => {
     const result = items('int main();\n\tfor(0 <= unsigned int_8 i < 3,i++);\n\t\t¦');

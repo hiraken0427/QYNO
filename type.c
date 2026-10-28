@@ -37,6 +37,10 @@ const char *type_name(Type ty)
     if (type_is_model(ty)) return type_model(ty)->name;
     if (type_is_interface(ty)) return type_interface(ty)->name;
     switch (ty) {
+    case TY_I128: return "int_128";
+    case TY_U128: return "unsigned int_128";
+    case TY_HALF: return "half";
+    case TY_QUAD: return "quadruple";
     case TY_I64: return "int_64";
     case TY_I8: return "int_8";
     case TY_I16: return "int_16";
@@ -75,7 +79,7 @@ int type_is_text(Type ty)
 
 static int is_numeric(Type ty)
 {
-    return type_is_integer(ty) || ty == TY_FLOAT || ty == TY_DOUBLE;
+    return type_is_integer(ty) || type_is_real(ty);
 }
 
 static int is_number(Type ty) { return is_numeric(ty) || type_is_complex(ty); }
@@ -89,6 +93,7 @@ static int function_check_depth;
 /* const の計算に使う値 */
 typedef struct {
     Type ty;
+    WideBits wide;
     long long i;        /* all integer types and bool; unsigned uses the same bits */
     double imag;
     double d;           /* float・double（float は float に丸めた値） */
@@ -128,6 +133,7 @@ static int is_float_literal(Node *node)
     Node *arg;
 
     switch (node->kind) {
+    case ND_WIDE:
     case ND_COMPLEX:
     case ND_FNUM:
     case ND_NUM:
@@ -200,9 +206,12 @@ static Node *new_cast(Node *expr, Type ty)
     return node;
 }
 
+#include "wide_type.inc"
+
 static int integer_literal(Node *n)
 {
     if (!type_is_integer(n->ty)) return 0;
+    if (n->kind == ND_WIDE && n->raw_numeric) return 1;
     if (n->kind == ND_NUM || (n->kind == ND_VAR && n->var->is_const && n->ty == TY_INT)) return 1;
     if (n->kind == ND_NEG) return integer_literal(n->lhs);
     if (n->kind == ND_ADD || n->kind == ND_SUB || n->kind == ND_MUL || n->kind == ND_DIV || n->kind == ND_MOD || n->kind == ND_POW)
@@ -211,7 +220,7 @@ static int integer_literal(Node *n)
 }
 static int integer_constant_fits(Node *expr, Type to)
 {
-    return type_is_integer(expr->ty) && is_const_expr(expr) && integer_fits(eval_const(expr).i, expr->ty, to);
+    return type_is_integer(expr->ty) && is_const_expr(expr) && ((type_is_wide(expr->ty) || type_is_wide(to)) ? wide_fits(eval_const(expr), to) : integer_fits(eval_const(expr).i, expr->ty, to));
 }
 static int integer_widens(Type from, Type to)
 {
@@ -233,6 +242,7 @@ static Node *convert(Node *expr, Type to)
         return expr;
     }
     if (type_is_complex(to) && is_number(from)) {
+        if (from == TY_QUAD) return NULL;
         if ((from != TY_C128 && from != TY_DOUBLE) || to == TY_C128 || is_float_literal(expr)) return new_cast(expr, to);
         return NULL;
     }
@@ -245,7 +255,7 @@ static Node *convert(Node *expr, Type to)
     }
     /* 値の形の input は、代入先の型で読む */
     if (expr->kind == ND_INPUT && !expr->input_pattern && from == TY_STR &&
-        (type_is_integer(to) || to == TY_FLOAT || to == TY_DOUBLE || to == TY_BOOL || type_is_complex(to))) {
+        (type_is_integer(to) || type_is_real(to) || to == TY_BOOL || type_is_complex(to))) {
         expr->ty = to;
         return expr;
     }
@@ -253,9 +263,10 @@ static Node *convert(Node *expr, Type to)
         if (integer_widens(from, to) || integer_constant_fits(expr, to)) return new_cast(expr, to);
         return NULL;
     }
-    if (type_is_integer(from) && (to == TY_FLOAT || to == TY_DOUBLE)) {
+    if (type_is_integer(from) && type_is_real(to)) {
         return new_cast(expr, to);
     }
+    if (type_is_real(from) && type_is_real(to) && (real_common(from,to)==to || is_float_literal(expr))) return new_cast(expr,to);
     if (from == TY_FLOAT && to == TY_DOUBLE) {
         return new_cast(expr, to);
     }
@@ -293,6 +304,7 @@ static Type binary_type(Node *lhs, Node *rhs)
         return l;
     }
     if (type_is_complex(l) || type_is_complex(r)) {
+        if(l==TY_QUAD||r==TY_QUAD)error_tok(lhs->tok,"quadruple と複素数を混ぜる場合は成分の型を明示して変換してください");
         if (l == TY_C64 && is_float_literal(rhs)) return TY_C64;
         if (r == TY_C64 && is_float_literal(lhs)) return TY_C64;
         return complex_common(l, r);
@@ -307,6 +319,9 @@ static Type binary_type(Node *lhs, Node *rhs)
     }
     if (type_is_integer(l)) return r;
     if (type_is_integer(r)) return l;
+    if (l==TY_QUAD || r==TY_QUAD) return TY_QUAD;
+    if (l==TY_HALF && is_float_literal(rhs)) return TY_HALF;
+    if (r==TY_HALF && is_float_literal(lhs)) return TY_HALF;
     /* float と double の組み合わせ */
     if (l == TY_FLOAT && is_float_literal(rhs)) {
         return TY_FLOAT;
@@ -314,7 +329,7 @@ static Type binary_type(Node *lhs, Node *rhs)
     if (r == TY_FLOAT && is_float_literal(lhs)) {
         return TY_FLOAT;
     }
-    return TY_DOUBLE;
+    return real_common(l,r);
 }
 
 static const char *cmp_name(CmpKind kind)
@@ -495,6 +510,7 @@ static void check_builtin(Node *node)
     b = (Builtin)node->val;
     if (b >= BI_FILE_OPEN) { check_file_builtin(node); return; }
     if (b == BI_COMPLEX) { check_complex_constructor(node); return; }
+    if ((b==BI_HALF || b==BI_QUAD) && node->lhs) check_expected(node->lhs,b==BI_HALF?TY_HALF:TY_QUAD);
     if (b == BI_INT && node->lhs && integer_unsigned(node->cmp_ty)) check_expected(node->lhs, node->cmp_ty);
     if ((b == BI_INT || b == BI_STR) && check_integer_conversion(node)) return;
     min_args = 1;
@@ -510,6 +526,8 @@ static void check_builtin(Node *node)
     if (x->arg_name) error_tok(x->arg_name, "変換する値を位置引数で指定してください");
     digits = x->next;
     check_expr(x);
+    if ((b==BI_HALF || b==BI_QUAD) && type_is_text(x->ty)) { node->ty=b==BI_HALF?TY_HALF:TY_QUAD;if(is_const_expr(x))(void)wide_read_value(node,eval_const(x),node->ty,0);return; }
+    if(b==BI_STR&&type_is_wide(x->ty)&&type_is_real(x->ty)){node->kind=ND_INT_FORMAT;node->ty=TY_STR;x->option_index=0;return;}
     if (b == BI_CHAR || b == BI_STR) {
         if (!type_is_text(x->ty)) {
             error_tok(x->tok, "%s() に渡せるのは str・char です", builtin_name(b));
@@ -538,7 +556,7 @@ static void check_builtin(Node *node)
     switch (b) {
     case BI_SQRT:
         if (type_is_integer(x->ty)) {
-            node->lhs = new_cast(x, TY_DOUBLE);
+            node->lhs = new_cast(x, type_is_wide(x->ty)?TY_QUAD:TY_DOUBLE);
         }
         node->ty = node->lhs->ty;
         return;
@@ -547,11 +565,13 @@ static void check_builtin(Node *node)
         /* 値がコンパイル時に分かるなら、範囲外や NaN はここでエラーにする */
         if (is_const_expr(x)) {
             v = eval_const(x);
-            if (type_is_integer(x->ty) ? !integer_fits(v.i, x->ty, node->ty) : !real_fits_integer(v.d, node->ty)) {
+            if ((type_is_wide(x->ty)||type_is_wide(node->ty)) ? !wide_fits(v,node->ty) : type_is_integer(x->ty) ? !integer_fits(v.i, x->ty, node->ty) : !real_fits_integer(v.d, node->ty)) {
                 error_tok(node->tok, "int() に int の範囲外の値（または NaN）が渡されています");
             }
         }
         return;
+    case BI_HALF: case BI_QUAD:
+        node->ty=b==BI_HALF?TY_HALF:TY_QUAD; return;
     case BI_FLOAT:
         node->ty = TY_FLOAT;
         return;
@@ -562,7 +582,7 @@ static void check_builtin(Node *node)
     case BI_ROUNDUP:
     case BI_ROUNDDOWN:
         node->ty = x->ty;
-        if (type_is_integer(x->ty) && is_const_expr(x) &&
+        if (type_is_integer(x->ty) && !type_is_wide(x->ty) && is_const_expr(x) &&
             (digits == NULL || is_const_expr(digits))) {
             v = eval_const(x);
             round_integer(node, v.i, digits != NULL ? eval_const(digits).i : 0, b);
@@ -773,6 +793,7 @@ static void check_expr(Node *node)
 
     if (node->kind == ND_VAR && node->var == NULL) resolve_module_name(node);
     switch (node->kind) {
+    case ND_WIDE: return;
     case ND_NUM:
         node->ty = node->val >= INT32_MIN && node->val <= INT32_MAX ? TY_INT : TY_I64;
         return;
@@ -910,6 +931,7 @@ static void check_expr(Node *node)
         check_expr(node->lhs); check_expr(node->rhs);
         if (!type_is_integer(node->lhs->ty) || !type_is_integer(node->rhs->ty)) error_tok(node->tok, "シフトの値と量は int にしてください");
         node->ty = node->lhs->ty;
+        node->rhs = new_cast(node->rhs,TY_I64);
         if (is_const_expr(node->rhs)) {
             long long amount = eval_const(node->rhs).i;
             if ((uint64_t)amount >= (unsigned)integer_width(node->ty)) error_tok(node->tok, "シフト量は0以上%d以下にしてください", integer_width(node->ty) - 1);
@@ -1026,6 +1048,7 @@ static Value convert_value(Node *node, Value v, Type to)
     if (v.ty == to) {
         return v;
     }
+    if ((type_is_wide(v.ty)||type_is_wide(to)) && is_numeric(v.ty) && is_numeric(to)) return wide_calculate(node,W_CONVERT,v,(Value){0},to,0);
     if (type_is_complex(to)) {
         if (!type_is_complex(v.ty)) { v = convert_value(node, v, complex_component(to)); v.imag = 0; }
         v.ty = to; return complex_rounded(v);
@@ -1060,6 +1083,7 @@ static int compare_values(Value l, Value r, CmpKind kind)
     Node *a;
     Node *b;
 
+    if(type_is_wide(l.ty)) { WideRequest request={0};request.op=W_CMP;request.ty=wide_tag(l.ty);request.a=value_bits(l);request.b=value_bits(r);request.aux=kind;wide_execute(&request);return (int)request.out.lo; }
     if (type_is_complex(l.ty)) {
         eq = l.d == r.d && l.imag == r.imag;
         return kind == CMP_EQ ? eq : !eq;
@@ -1116,6 +1140,7 @@ static int compare_values(Value l, Value r, CmpKind kind)
 /* 累乗の定義域。0^0 は 1、0 の負の累乗と int で非整数になる結果はエラー。 */
 static void validate_pow(Node *node, Value base, long long exponent)
 {
+    if(type_is_wide(base.ty)) { Value b={0};b.ty=TY_I64;b.i=exponent;(void)wide_calculate(node,W_POW,base,b,base.ty,0);return; }
     if (exponent >= 0) {
         return;
     }
@@ -1162,6 +1187,7 @@ static Value eval_pow(Node *node, Value base, long long e)
     float fr;
     float fb;
 
+    if(type_is_wide(base.ty)) { Value b={0};b.ty=TY_I64;b.i=e;return wide_calculate(node,W_POW,base,b,base.ty,0); }
     v = base;
     validate_pow(node, base, e);
     n = e < 0 ? 0ULL - (unsigned long long)e : (unsigned long long)e;
@@ -1230,6 +1256,7 @@ static Value eval_binary(Node *node, Value l, Value r)
     float fl;
     float fr;
 
+    if(type_is_wide(node->ty)) return wide_calculate(node,wide_operation(node->kind),l,r,node->ty,0);
     v = l;
     v.ty = node->ty;
     if (type_is_complex(node->ty)) return complex_calculate(node, l, r, node->kind);
@@ -1446,6 +1473,8 @@ static Value eval_builtin(Node *node)
         return result;
     }
     x = eval_const(node->lhs);
+    if(b==BI_HALF||b==BI_QUAD) return type_is_text(x.ty)?wide_read_value(node,x,node->ty,0):wide_calculate(node,W_CONVERT,x,(Value){0},node->ty,0);
+    if(type_is_wide(x.ty) && b<=BI_ROUNDDOWN) { Value amount={0};amount.ty=TY_I64;amount.i=node->lhs->next?eval_const(node->lhs->next).i:0;return wide_calculate(node,b==BI_SQRT?W_SQRT:b==BI_ABS?W_ABS:W_ROUND,x,amount,node->ty,b-BI_ROUND); }
     v = x;
     v.ty = node->ty;
     digits = node->lhs->next != NULL ? eval_const(node->lhs->next).i : 0;
@@ -1500,6 +1529,7 @@ static Value eval_const_inner(Node *node)
     memset(&v, 0, sizeof(v));
     v.ty = node->ty;
     switch (node->kind) {
+    case ND_WIDE: v.wide=node->wide;return v;
     case ND_COMPLEX: v.d = node->fval; v.imag = node->imag; return v;
     case ND_CREAL: case ND_CIMAG:
         l = eval_const(node->lhs); v.d = node->kind == ND_CREAL ? l.d : l.imag; return v;
@@ -1507,6 +1537,7 @@ static Value eval_const_inner(Node *node)
     case ND_INT_FORMAT:
         return eval_integer_conversion(node);
     case ND_BIT_NOT:
+        if(type_is_wide(node->ty)) return wide_calculate(node,W_NOT,eval_const(node->lhs),(Value){0},node->ty,0);
         v.i = integer_bits(~(uint64_t)eval_const(node->lhs).i); return v;
     case ND_BIT_AND:
     case ND_BIT_OR:
@@ -1515,6 +1546,7 @@ static Value eval_const_inner(Node *node)
     case ND_SHL:
     case ND_SHR:
         l = eval_const(node->lhs); r = eval_const(node->rhs);
+        if(type_is_wide(node->ty))return wide_calculate(node,wide_operation(node->kind),l,r,node->ty,0);
         if (node->kind == ND_BIT_AND) v.i = integer_bits((uint64_t)l.i & (uint64_t)r.i);
         else if (node->kind == ND_BIT_OR) v.i = integer_bits((uint64_t)l.i | (uint64_t)r.i);
         else if (node->kind == ND_BIT_XOR || node->kind == ND_XOR) v.i = integer_bits((uint64_t)l.i ^ (uint64_t)r.i);
@@ -1596,6 +1628,7 @@ static Value eval_const_inner(Node *node)
         return v;
     case ND_NEG:
         v = eval_const(node->lhs);
+        if(type_is_wide(v.ty))return wide_calculate(node,W_NEG,v,(Value){0},v.ty,0);
         if (type_is_integer(v.ty)) {
             v.i = (long long)(0ULL - (unsigned long long)v.i);
         } else {
@@ -1618,6 +1651,7 @@ static Value eval_const_inner(Node *node)
         return eval_builtin(node);
     case ND_ABS:
         l = eval_const(node->lhs);
+        if(type_is_wide(l.ty))return wide_calculate(node,W_ABS,l,(Value){0},l.ty,0);
         if (type_is_complex(l.ty)) { v.d = complex_magnitude(l.d, l.imag); if (v.ty == TY_FLOAT) v.d = (float)v.d; return v; }
         if (type_is_integer(l.ty)) {
             l.i = !integer_unsigned(l.ty) && l.i < 0 ? (long long)(0ULL - (unsigned long long)l.i) : l.i;
@@ -1676,6 +1710,7 @@ static int is_const_expr(Node *node)
         return 1;
     case ND_ARRAY_COPY:
         return is_const_expr(node->lhs);
+    case ND_WIDE:
     case ND_COMPLEX:
     case ND_NUM:
     case ND_FNUM:
@@ -1752,6 +1787,7 @@ static Node *value_node(Value v, Token *tok)
         node->nargs = v.len;
         return node;
     }
+    if(type_is_wide(v.ty)){node->kind=ND_WIDE;node->wide=v.wide;return node;}
     if (type_is_complex(v.ty)) { node->kind = ND_COMPLEX; node->fval = v.d; node->imag = v.imag; return node; }
     if (type_is_integer(v.ty)) { node->kind = ND_NUM; node->val = v.i; return node; }
     switch (v.ty) {
@@ -1788,7 +1824,7 @@ static void check_for_finite_constant(Node *expr, Type ty, const char *part)
     Value v;
     if (type_is_integer(ty) || !is_const_expr(expr)) return;
     v = convert_value(expr, eval_const(expr), ty);
-    if (!isfinite(v.d)) error_tok(expr->tok, "for の%sは有限の数値にしてください", part);
+    if (type_is_wide(ty)?!wide_finite(v):!isfinite(v.d)) error_tok(expr->tok, "for の%sは有限の数値にしてください", part);
 }
 
 /* 増分はループ変数の型でも有限・非0の定数で、方向が一致すること。 */
@@ -1803,6 +1839,13 @@ static void check_for_step(Node *node)
                  "for の増分の量は定数（リテラルや const）にしてください（向きと 0 をコンパイル時に確かめるため）");
     }
     v = convert_value(node->inc, eval_const(node->inc), ty);
+    if (type_is_wide(ty)) {
+        int sign=wide_sign(v);
+        if(!wide_finite(v))error_tok(node->inc->tok,"for の増分は有限の数値にしてください");
+        if(!sign)error_tok(node->inc->tok,"for の増分が 0 です");
+        if(sign*node->inc_sign!=node->val)error_tok(node->inc->tok,"増分の向きが範囲の向きと逆です");
+        node->for_amount=value_node(v,node->inc->tok);return;
+    }
     if (!type_is_integer(ty) && !isfinite(v.d)) {
         error_tok(node->inc->tok, "for の増分は有限の数値にしてください");
     }
@@ -1830,6 +1873,10 @@ static void check_for_header(Node *node)
         Value start = eval_const(node->init->lhs);
         Value amount = eval_const(node->for_amount);
         double next;
+        if(type_is_wide(ty)){Value candidate=wide_calculate(node,node->inc_sign>0?W_ADD:W_SUB,start,amount,ty,0);
+            if(!wide_finite(candidate))error_tok(node->inc->tok,"for の初回の更新結果が有限ではありません");
+            if(!compare_values(candidate,start,node->val>0?CMP_GT:CMP_LT))error_tok(node->inc->tok,"for の増分では値が前進しません");
+            return;}
         if (ty == TY_FLOAT) {
             next = node->inc_sign > 0 ? (float)((float)start.d + (float)amount.d) :
                                         (float)((float)start.d - (float)amount.d);

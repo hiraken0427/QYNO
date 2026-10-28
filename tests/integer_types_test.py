@@ -108,7 +108,8 @@ class IntegerTypeTests(QynoTestCase):
     def test_mixed_signed_unsigned_requires_a_safe_common_type(self):
         self.check_program(program('int main();','\tint_8 a=-1','\tunsigned int_8 b=255',
             '\tc=a+b','\tprint(c)','\tprint(a<b)'), '254\ntrue\n')
-        self.compile_source(program('int main();','\tint a=-1','\tunsigned int_64 b=1','\tprint(a+b)'),error='安全に統一')
+        self.check_program(program('int main();','\tint a=-1','\tunsigned int_64 b=1','\tprint(a+b)'),'0\n')
+        self.compile_source(program('int main();','\tint_128 a=-1','\tunsigned int_128 b=1','\tprint(a+b)'),error='安全に統一')
 
 
     def test_rounding_preserves_unsigned_magnitude_and_checks_narrow_result(self):
@@ -141,7 +142,8 @@ class IntegerTypeTests(QynoTestCase):
         self.check_program(program('int main();','\tx=18446744073709551615','\tprint(x)',
             '\tprint(0d9223372036854775808)','\tprint(+9223372036854775808)'),
             '18446744073709551615\n9223372036854775808\n9223372036854775808\n')
-        for expr in ['18446744073709551616','-9223372036854775809']:
+        self.check_program(program('int main();','\tprint(18446744073709551616)','\tprint(-9223372036854775809)'),'18446744073709551616\n-9223372036854775809\n')
+        for expr in ['340282366920938463463374607431768211456','-170141183460469231731687303715884105729']:
             self.compile_source(program('int main();',f'\tprint({expr})'),error='エラー')
 
     def test_boolean_and_integer_operands_do_not_mix(self):

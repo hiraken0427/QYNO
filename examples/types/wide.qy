@@ -1,0 +1,20 @@
+using io
+using math
+
+const int_128 LIMIT = 170141183460469231731687303715884105727
+
+increase(ref int_128 value);
+	value++
+
+int main();
+	int_128 n = 18446744073709551616
+	unsigned int_128 mask = 0xffffffffffffffffffffffffffffffff
+	half small = 1.5
+	quadruple precise = 1.0000000000000000000000000000000002
+	increase(ref n)
+	print("{n} {mask:0x}")
+	print("{small} {precise}")
+	print(sqrt(quadruple(2)))
+	for(LIMIT - 1 <= int_128 i <= LIMIT, i++);
+		print(i)
+	return 0

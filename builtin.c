@@ -27,6 +27,8 @@ static const BuiltinInfo builtins[BI_COUNT] = {
     { NULL, "char" },
     { NULL, "str" },
     { NULL, "complex" },
+    { NULL, "half" },
+    { NULL, "quadruple" },
     { "io", "print" },
     { "io", "input" },
     { "io.file", "open" },

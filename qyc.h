@@ -3,9 +3,10 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include "wide_runtime.h"
 #include <stdio.h>
 
-#define QYC_VERSION "0.26.13"
+#define QYC_VERSION "0.26.14"
 
 typedef struct SourceFile SourceFile;
 typedef struct Module Module;
@@ -110,6 +111,8 @@ struct Token {
     long long val;      /* TK_NUM のときの値 */
     int unsigned_literal; /* decimal magnitude > INT64_MAX */
     int decimal_min;    /* magnitude 2^63; signed-minimum spelling after unary minus */
+    WideBits wide;
+    int wide_ty;
     double fval;        /* TK_FNUM のときの値 */
     const char *loc;    /* ソース上の位置 */
     int len;            /* トークンの長さ */
@@ -125,6 +128,8 @@ typedef enum {
     TY_I64,     /* explicit signed 64bit */
     TY_I8, TY_I16, TY_I32,
     TY_U8, TY_U16, TY_U32, TY_U64,
+    TY_I128, TY_U128,
+    TY_HALF, TY_QUAD,
     TY_FLOAT,   /* 32ビット浮動小数点数（C の float） */
     TY_DOUBLE,  /* 64ビット浮動小数点数（C の double） */
     TY_C64, TY_C128, /* immutable complex values, float/double components */
@@ -173,7 +178,7 @@ typedef enum {
     BI_DOUBLE,      /* double(x) */
     BI_CHAR,        /* char(x)：str/char を1スカラー値に制限する */
     BI_STR,         /* str(x)：char/str を str にする */
-    BI_COMPLEX,
+    BI_COMPLEX, BI_HALF, BI_QUAD,
     BI_IO_PRINT,    /* io.print(...)：出力文として解析する */
     BI_IO_INPUT,    /* io.input(...)：入力先と形式を保持する */
     BI_FILE_OPEN,
@@ -233,6 +238,7 @@ struct Var {
 };
 
 typedef enum {
+    ND_WIDE,
     ND_ADD,     /* + （str 同士なら連結） */
     ND_SUB,     /* - */
     ND_MUL,     /* * */
@@ -312,6 +318,8 @@ struct Node {
     Type ty;            /* 式の型（型検査で決まる） */
     ArrayDim *dims;      /* 配列コピー・ref 引数の制約 */
     long long val;      /* ND_NUM・ND_BOOL の値。ND_PRINT では文字列リテラル直書きなら 1 */
+    WideBits wide;
+    int raw_numeric;
     double imag;       /* ND_COMPLEX imaginary component */
     double fval;        /* ND_FNUM の値 */
     char *str;          /* ND_STR・ND_STRLIT の内容（エスケープ処理済み） */
@@ -509,6 +517,11 @@ int type_is_complex(Type ty);
 Type complex_component(Type ty);
 Type complex_common(Type a, Type b);
 int type_is_integer(Type ty);
+int type_is_real(Type ty);
+int type_is_wide(Type ty);
+int type_is_boxed(Type ty);
+int wide_tag(Type ty);
+Type real_common(Type a, Type b);
 int integer_width(Type ty);
 int integer_unsigned(Type ty);
 Type integer_type(int bits, int unsign);
@@ -601,6 +614,7 @@ void x64_directive(const char *fmt, ...);
 void x64_comment(const char *fmt, ...);
 int x64_new_label(const char *name);
 void x64_bind(int label);
+void x64_blob(const unsigned char *bytes, size_t length);
 
 void x64_push(Reg r);
 void x64_pop(Reg r);

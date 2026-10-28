@@ -143,11 +143,12 @@ void resolve_model_types(Ast *ast)
 }
 
 /* Logical integer widths; runtime scalar slots stay eight bytes. */
-int type_is_integer(Type ty) { return ty >= TY_I64 && ty <= TY_U64; }
-int integer_unsigned(Type ty) { return ty >= TY_U8 && ty <= TY_U64; }
+int type_is_integer(Type ty) { return ty >= TY_I64 && ty <= TY_U128; }
+int integer_unsigned(Type ty) { return (ty >= TY_U8 && ty <= TY_U64) || ty == TY_U128; }
 int integer_width(Type ty)
 {
     switch (ty) {
+    case TY_I128: case TY_U128: return 128;
     case TY_I8: case TY_U8: return 8;
     case TY_I16: case TY_U16: return 16;
     case TY_I32: case TY_U32: return 32;
@@ -157,7 +158,7 @@ int integer_width(Type ty)
 Type integer_type(int bits, int u)
 {
     return bits == 8 ? (u ? TY_U8 : TY_I8) : bits == 16 ? (u ? TY_U16 : TY_I16) :
-           bits == 32 ? (u ? TY_U32 : TY_I32) : (u ? TY_U64 : TY_I64);
+           bits == 32 ? (u ? TY_U32 : TY_I32) : bits == 128 ? (u ? TY_U128 : TY_I128) : (u ? TY_U64 : TY_I64);
 }
 long long integer_normalize(long long value, Type ty)
 {
@@ -172,6 +173,7 @@ long long integer_normalize(long long value, Type ty)
 int integer_fits(long long value, Type from, Type to)
 {
     int bits = integer_width(to); uint64_t n = (uint64_t)value;
+    if (bits == 128) return !integer_unsigned(to) || integer_unsigned(from) || value >= 0;
     if (integer_unsigned(to)) {
         if (!integer_unsigned(from) && value < 0) return 0;
         return bits == 64 || n < (UINT64_C(1) << bits);
@@ -185,8 +187,8 @@ Type integer_common(Type a, Type b)
     int au = integer_unsigned(a), bu = integer_unsigned(b);
     if (au == bu) return integer_type(bits, au);
     if ((au ? aw : bw) >= (au ? bw : aw)) {
-        if (bits == 64) return TY_NONE;
-        bits = bits == 8 ? 16 : bits == 16 ? 32 : 64;
+        if (bits == 128) return TY_NONE;
+        bits = bits == 8 ? 16 : bits == 16 ? 32 : bits == 32 ? 64 : 128;
     }
     return integer_type(bits, 0);
 }
@@ -195,3 +197,17 @@ int type_is_complex(Type ty) { return ty == TY_C64 || ty == TY_C128; }
 Type complex_component(Type ty) { return ty == TY_C64 ? TY_FLOAT : TY_DOUBLE; }
 Type complex_common(Type a, Type b)
 { return a == TY_C128 || b == TY_C128 || a == TY_DOUBLE || b == TY_DOUBLE ? TY_C128 : TY_C64; }
+
+int type_is_real(Type ty) { return ty == TY_HALF || ty == TY_FLOAT || ty == TY_DOUBLE || ty == TY_QUAD; }
+int type_is_boxed(Type ty) { return ty == TY_I128 || ty == TY_U128 || ty == TY_QUAD; }
+int type_is_wide(Type ty) { return type_is_boxed(ty) || ty == TY_HALF; }
+int wide_tag(Type ty) {
+    if (type_is_integer(ty)) return integer_unsigned(ty) ? integer_width(ty) : -integer_width(ty);
+    return ty == TY_HALF ? W_HALF : ty == TY_FLOAT ? W_FLOAT : ty == TY_DOUBLE ? W_DOUBLE : W_QUAD;
+}
+Type real_common(Type a, Type b) {
+    if (a == TY_QUAD || b == TY_QUAD) return TY_QUAD;
+    if (a == TY_DOUBLE || b == TY_DOUBLE) return TY_DOUBLE;
+    if (a == TY_FLOAT || b == TY_FLOAT) return TY_FLOAT;
+    return TY_HALF;
+}

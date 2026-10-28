@@ -1,6 +1,6 @@
-# QYNO 0.26.13
+# QYNO 0.26.14
 
-C99 で実装した、Linux x64 / Windows x64 向けのコンパイラ。
+C99とGCCの128bit数値拡張で実装した、Linux x64 / Windows x64 向けのコンパイラ。
 UTF-8 の `.qy` ソースから実行ファイルを直接生成する。
 
 ## ビルドとテスト
@@ -35,11 +35,28 @@ int main();
 
 ## VS Code 拡張
 
-[QYNO 0.26.13](vscode-extensions/README.md) はハイライト、ユーザー定義の関数名・変数名の補完、
+[QYNO 0.26.14](vscode-extensions/README.md) はハイライト、ユーザー定義の関数名・変数名の補完、
 定義への移動、引数ヒント、セミコロン後の自動インデント、qyc連携の構文・型エラーの赤線表示に対応する。
-[vscode-extensions/0.26.13_VSCode_option.vsix](vscode-extensions/0.26.13_VSCode_option.vsix) を
+[vscode-extensions/0.26.14_VSCode_option.vsix](vscode-extensions/0.26.14_VSCode_option.vsix) を
 VS Code の「VSIX からのインストール…」で指定する。
 診断には別途qycが必要。PATHにない場合は拡張設定の `qyno.compilerPath` に実行ファイルを指定する。
+
+## 128bit整数・half・quadruple（新段階5）
+
+int_128 / unsigned int_128、half（binary16）、quadruple（binary128）に対応する。
+配列・ref・定数・入出力・forで使用でき、広い小数をdoubleへ一度丸めず解析する。
+
+```text
+int main();
+	int_128 n = 18446744073709551616
+	half small = 1.5
+	quadruple precise = 1.0000000000000000000000000000000002
+	io.print("{n} {small} {precise}")
+	return 0
+```
+
+詳細: [128bit整数・half・quadruple](docs/wide-types.md)。
+検証: `make test-wide-types`。
 
 ## 複素数（新段階4）
 

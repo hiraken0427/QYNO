@@ -283,7 +283,15 @@ async function run() {
     assert.equal(complexHint.activeParameter,1); checks++;
     const complexHover=await vscode.commands.executeCommand('vscode.executeHoverProvider',complexDoc.uri,new vscode.Position(6,11));
     assert.ok(complexHover.some(h=>h.contents.some(c=>c.value?.includes('float real')))); checks++;
-    assert.equal(extension.packageJSON.displayName, 'QYNO 0.26.13'); checks++;
+    const wideDoc=await vscode.workspace.openTextDocument({language:'qyno',content:'unsigned int_128 echo(ref int_128 n) = unsigned int_128(n)\nint main();\n\thalf small=1.5\n\tquadruple precise=1e4000\n\tprec\n\techo(ref \n\tquadruple(\n'});
+    await vscode.window.showTextDocument(wideDoc);
+    const wideItems=await vscode.commands.executeCommand('vscode.executeCompletionItemProvider',wideDoc.uri,new vscode.Position(4,5));
+    assert.ok(wideItems.items.some(i=>i.label==='precise'&&i.detail==='quadruple precise'));checks++;
+    const wideHint=await vscode.commands.executeCommand('vscode.executeSignatureHelpProvider',wideDoc.uri,new vscode.Position(5,10));
+    assert.equal(wideHint.signatures[0].label,'unsigned int_128 echo(ref int_128 n)');checks++;
+    const quadHint=await vscode.commands.executeCommand('vscode.executeSignatureHelpProvider',wideDoc.uri,new vscode.Position(6,11));
+    assert.ok(quadHint.signatures[0].label.startsWith('quadruple quadruple('));checks++;
+    assert.equal(extension.packageJSON.displayName, 'QYNO 0.26.14'); checks++;
     const config = vscode.workspace.getConfiguration('qyno');
     const settings = ['compilerPath', 'diagnostics.enabled', 'diagnostics.delay', 'entryFile', 'moduleRoots'];
     const original = settings.map(name => config.inspect(name).globalValue);

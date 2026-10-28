@@ -1,15 +1,15 @@
 CC = gcc
 CFLAGS = -std=c99 -g -Wall -Wextra -pedantic
 PYTHON ?= python3
-SRCS = main.c modules.c tokenize.c parse.c type.c codegen.c x64.c buffer.c program.c builtin.c pe.c elf.c unicode.c types.c integer_bases.c
+SRCS = main.c modules.c tokenize.c parse.c type.c codegen.c x64.c buffer.c program.c builtin.c pe.c elf.c unicode.c types.c integer_bases.c wide_runtime.c
 OBJS = $(SRCS:.c=.o)
 
 qyc: $(OBJS)
 	$(CC) -o $@ $(OBJS) -lm
 
-$(OBJS): qyc.h
-codegen.o: complex_input.inc complex_codegen.inc collections_codegen.inc memory_codegen.inc places_codegen.inc models_codegen.inc file_runtime.inc integer_bases_codegen.inc
-type.o: complex_type.inc arrays_type.inc models_type.inc readonly_type.inc const_models.inc initialization_type.inc initialization_flow.inc interfaces_type.inc interfaces_specialize.inc integer_bases_type.inc file_close_analysis.inc inference_warnings.inc return_inference.inc generic_functions.inc
+$(OBJS): qyc.h wide_runtime.h
+codegen.o: wide_codegen.inc wide_blob.h complex_input.inc complex_codegen.inc collections_codegen.inc memory_codegen.inc places_codegen.inc models_codegen.inc file_runtime.inc integer_bases_codegen.inc
+type.o: wide_type.inc complex_type.inc arrays_type.inc models_type.inc readonly_type.inc const_models.inc initialization_type.inc initialization_flow.inc interfaces_type.inc interfaces_specialize.inc integer_bases_type.inc file_close_analysis.inc inference_warnings.inc return_inference.inc generic_functions.inc
 
 test: qyc
 	PYTHON="$(PYTHON)" bash ./test.sh
@@ -37,6 +37,10 @@ test: qyc
 	$(PYTHON) tests/integer_types_test.py ./qyc
 	$(PYTHON) tests/default_integer_test.py ./qyc
 	$(PYTHON) tests/complex_test.py ./qyc
+	$(PYTHON) tests/wide_types_test.py ./qyc
+
+test-wide-types: qyc
+	$(PYTHON) tests/wide_types_test.py ./qyc
 
 test-complex: qyc
 	$(PYTHON) tests/complex_test.py ./qyc
@@ -116,4 +120,4 @@ test-arrays: qyc
 clean:
 	rm -f qyc qyc.exe *.o tmp tmp.exe tmp.qy tmp.s
 
-.PHONY: test test-complex test-default-integer test-integer-types test-auto test-implicit-declarations test-global-const-inference test-return-inference test-generic-functions test-bitwise test-integer-bases test-interfaces test-initialization test-readonly test-visibility test-model test-file test-input-refs test-for test-io test-modules test-lineedit test-rounding test-semantics test-text test-arrays clean
+.PHONY: test test-wide-types test-complex test-default-integer test-integer-types test-auto test-implicit-declarations test-global-const-inference test-return-inference test-generic-functions test-bitwise test-integer-bases test-interfaces test-initialization test-readonly test-visibility test-model test-file test-input-refs test-for test-io test-modules test-lineedit test-rounding test-semantics test-text test-arrays clean

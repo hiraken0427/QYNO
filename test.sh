@@ -164,7 +164,7 @@ printf 'int main();\n\tint a = 3\n\ta = a * 5\n\treturn a\n' > tmp.qy
 ./qyc tmp.qy && ./tmp
 if [ "$?" = "15" ]; then echo "OK  代入と return"; pass=$((pass + 1)); else echo "NG  代入と return"; exit 1; fi
 
-expected_version=$'QYNO version 0.26.13 (PROTOTYPE)\nPlease note that this product is a prototype. No warranties of any kind exist,\nincluding implied warranties of merchantability or fitness for a particular purpose.'
+expected_version=$'QYNO version 0.26.14 (PROTOTYPE)\nPlease note that this product is a prototype. No warranties of any kind exist,\nincluding implied warranties of merchantability or fitness for a particular purpose.'
 if [ "$(./qyc --version)" = "$expected_version" ]; then echo "OK  --version"; pass=$((pass + 1)); else echo "NG  --version"; exit 1; fi
 
 echo "--- 比較・論理演算・if・const ---"
@@ -219,7 +219,7 @@ assert_output $'3628800\n6765\n' 'ブロック形式と再帰' 'int fact(int n);
 assert_output $'9\n' 'main より後ろの関数' 'int main();\n\tprint(max3(3, 9, 5))\nint max3(int a, int b, int c);\n\tint m = a\n\tif(b > m);\n\t\tm = b\n\tif(c > m);\n\t\tm = c\n\treturn m\n'
 assert_output $'hi QYNO\nend\n' 'void の関数と値のない return' 'void greet(str name);\n\tprint("hi {name}")\n\tif(name == "QYNO");\n\t\treturn\n\tprint("not reached")\nint main();\n\tgreet("QYNO")\n\tprint("end")\n'
 assert_output $'314.1592\n' '関数から const を参照' 'float area(int r) = r * r * PI\nconst float PI = 3.141592\nint main();\n\tprint(area(10))\n'
-assert_output $'2.5\n' '引数の型変換（int から double）' 'double half(double x) = x / 2\nint main();\n\tprint(half(5))\n'
+assert_output $'2.5\n' '引数の型変換（int から double）' 'double halve(double x) = x / 2\nint main();\n\tprint(halve(5))\n'
 assert_output $'abab\n' 'str を返す関数' 'str twice(str s) = s + s\nint main();\n\tprint(twice("ab"))\n'
 assert_output $'7\n' '引数への代入は呼び出し側に影響しない' 'int inc(int x);\n\tx += 1\n\treturn x\nint main();\n\tint a = 6\n\tprint(inc(a))\n\ta = a\n'
 assert_output $'inside\n' 'while(true) の中の return' 'int f();\n\twhile(true);\n\t\treturn 1\nint main();\n\tif(f() == 1);\n\t\tprint("inside")\n'
@@ -430,7 +430,7 @@ assert_error '未宣言の変数の複合代入' 'int main();\n\tb += 1\n'
 assert_error '予約語を変数名に' 'int main();\n\tint int = 1\n'
 assert_error '式の中の埋め込み' 'int main();\n\tstr s = "x{1}"\n'
 assert_error '初期値での自己参照' 'int main();\n\tint a = a\n'
-assert_error '小数の後に英字' 'int main();\n\tdouble d = 1.5e3\n'
+assert_error '小数の後に英字' 'int main();\n\tdouble d = 1.5e3x\n'
 
 assert_error 'if の条件が int' 'int main();\n\tif(1);\n\t\tprint("x")\n'
 assert_error 'int と str の比較' 'int main();\n\tint a = 1\n\tstr s = "a"\n\tbool b = a < s\n'

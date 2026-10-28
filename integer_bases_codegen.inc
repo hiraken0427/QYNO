@@ -107,7 +107,7 @@ static void gen_integer_conversion(Node *node)
     x64_sub_imm(RSP, 32); depth += 4; base = emitting_function->stack_size + depth * 8;
     x64_store_imm(RBP, -base, 0); x64_store_imm(RBP, -base + 8, is_format ? 10 : 0); x64_store_imm(RBP, -base + 16, 0);
     x64_store_imm(RBP, -base + 24, 0);
-    for (arg = node->lhs; arg; arg = arg->next) { gen_expr(arg); x64_store(RBP, -base + arg->option_index * 8, RAX); }
+    for (arg = node->lhs; arg; arg = arg->next) { gen_expr(arg); if(arg->option_index==1 && type_is_wide(arg->ty))gen_convert(arg->ty,TY_I64); x64_store(RBP, -base + arg->option_index * 8, RAX); }
     x64_load(RDI, RBP, -base + 8);
     if (!is_format) { rt_cmp(RDI, 0); x64_jcc(CC_Z, ok); }
     rt_cmp(RDI, 2); x64_jcc(CC_Z, ok); rt_cmp(RDI, 8); x64_jcc(CC_Z, ok);

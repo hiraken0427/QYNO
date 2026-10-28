@@ -1,12 +1,14 @@
-# QYNO 0.26.13
+# QYNO 0.26.14
 
-QYNO **0.26.13** 用の VS Code 拡張です。配布ファイルは同じフォルダの
-[`0.26.13_VSCode_option.vsix`](0.26.13_VSCode_option.vsix) です。
+QYNO **0.26.14** 用の VS Code 拡張です。配布ファイルは同じフォルダの
+[`0.26.14_VSCode_option.vsix`](0.26.14_VSCode_option.vsix) です。
 VS Code 1.85 以降に対応します。
 
-int / unsigned intは32bitの別名です。int_8 / int_16 / int_32 / int_64とunsigned整数型の
+int / unsigned intは32bitの別名です。int_8 / int_16 / int_32 / int_64 / int_128とunsigned整数型の
 ハイライト・宣言解析・補完・引数ヒントに対応します。lengthとfile.writeの戻り値はint_64、
 型を省略したforカウンターはautoと表示します。
+
+half / quadrupleの型名・変換、実数のe / E指数表記にも対応します。
 
 complex / complex_64 / complex_128と虚数リテラル、型付き変数・配列要素のreal / imag補完、
 成分のホバー、名前付き構築の補完・引数ヒントに対応します。
@@ -14,16 +16,16 @@ complex / complex_64 / complex_128と虚数リテラル、型付き変数・配�
 ## インストール
 
 VS Code の拡張機能画面右上の「…」から **VSIX からのインストール…** を選び、
-`0.26.13_VSCode_option.vsix` を指定してください。CLI でもインストールできます。
+`0.26.14_VSCode_option.vsix` を指定してください。CLI でもインストールできます。
 
 ```sh
-code --install-extension vscode-extensions/0.26.13_VSCode_option.vsix --force
+code --install-extension vscode-extensions/0.26.14_VSCode_option.vsix --force
 ```
 
 `.qy` ファイルを開くと有効になります。別の拡張が `.qy` を担当している場合は、
 画面右下の言語モードを「QYNO」に変更してください。手動の補完表示は Ctrl+Space です。
 Marketplace への公開やコンパイラのインストールは行いません。
-拡張機能の表示名は **QYNO 0.26.13** です。同じバージョンをインストール済みの場合も、上のコマンドで更新できます。
+拡張機能の表示名は **QYNO 0.26.14** です。同じバージョンをインストール済みの場合も、上のコマンドで更新できます。
 
 ## 機能
 
@@ -102,7 +104,7 @@ int main();
 
 ## 検証と制約
 
-診断には別途 **QYNO 0.26.13 の `qyc`** が必要です。PATH 上の `qyc` を既定で使用します。
+診断には別途 **QYNO 0.26.14 の `qyc`** が必要です。PATH 上の `qyc` を既定で使用します。
 Windows などで PATH にない場合は、設定の `Qyno: Compiler Path` に `qyc.exe` のフルパスを指定してください。
 
 ```json
@@ -148,8 +150,8 @@ npm run package
 コンパイラ連携のテストには、リポジトリのルートで事前に `make` してください。
 Linux の GUI のない環境では Xvfb などが必要です。
 取得済みの VS Code を使う場合は `QYNO_VSCODE_EXECUTABLE` に実行ファイルのパスを設定できます。
-`npm run package` はこのフォルダに VSIX を出力します。内部の拡張バージョンは SemVer の `0.26.13`、
-配布ファイル名は `0.26.13_VSCode_option.vsix` です。
+`npm run package` はこのフォルダに VSIX を出力します。内部の拡張バージョンは SemVer の `0.26.14`、
+配布ファイル名は `0.26.14_VSCode_option.vsix` です。
 
 ## インターフェース
 

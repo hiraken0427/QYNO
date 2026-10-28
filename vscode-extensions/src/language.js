@@ -75,7 +75,7 @@ function environment(project, line, character) {
 function snippetCall(symbol, name = symbol.name) {
     if (symbol.builtin && /^complex(?:_(?:64|128))?$/.test(symbol.path)) return `${name}(real=\${1:0.0}, imag=\${2:0.0})`;
     // QYNO declarations put dimensions after names, but call arguments use names alone.
-    const params=symbol.builtin && /^(?:(?:unsigned )?int(?:_(?:8|16|32|64))?|str|complex(?:_(?:64|128))?)$/.test(symbol.path) ? symbol.params.filter(p=>!p.optional) : symbol.params;
+    const params=symbol.builtin && /^(?:(?:unsigned )?int(?:_(?:8|16|32|64|128))?|str|complex(?:_(?:64|128))?)$/.test(symbol.path) ? symbol.params.filter(p=>!p.optional) : symbol.params;
     return `${name}(${params.map((p, i) => `${p.ref ? 'ref ' : ''}\${${i + 1}:${p.placeholder || p.default || p.name}}`).join(', ')})`;
 }
 function completion(symbol, label = symbol.name) {
@@ -167,7 +167,7 @@ function complete(project, line, character) {
         if (!items.length) items = receiverMembers(project, env, before).map(s => completion(s));
     } else {
         items = [...env.names].map(([label, s]) => completion(s, label));
-        for (const keyword of KEYWORD_COMPLETIONS) if (!env.names.has(keyword)) items.push({ label: keyword, kind: TYPES.has(keyword) ? 'type' : 'keyword', insertText: keyword, detail: 'QYNO 0.26.13' });
+        for (const keyword of KEYWORD_COMPLETIONS) if (!env.names.has(keyword)) items.push({ label: keyword, kind: TYPES.has(keyword) ? 'type' : 'keyword', insertText: keyword, detail: 'QYNO 0.26.14' });
     }
     // A completion immediately before '(' must not insert a second argument list.
     const next = project.model.lines[line].slice(character).match(/^\s*\(/);
@@ -230,7 +230,7 @@ function signature(project, line, character) {
         const candidate = properties[last];
         if (candidate?.kind === 'function' && receiverMembers(project, env, call.path.slice(0, -last.length)).some(s => s.name === last)) symbol = candidate;
     }
-    const index=symbol?.builtin && /^(?:(?:unsigned )?int(?:_(?:8|16|32|64))?|str|complex(?:_(?:64|128))?)$/.test(symbol.path) && call.argName ? symbol.params.findIndex(p=>p.name===call.argName) : call.argument;
+    const index=symbol?.builtin && /^(?:(?:unsigned )?int(?:_(?:8|16|32|64|128))?|str|complex(?:_(?:64|128))?)$/.test(symbol.path) && call.argName ? symbol.params.findIndex(p=>p.name===call.argName) : call.argument;
     return symbol?.kind === 'function' ? { symbol, label: functionLabel(symbol, call.path), activeParameter: Math.min(Math.max(0,index), Math.max(0, symbol.params.length - 1)) } : undefined;
 }
 module.exports = { environment, complete, symbolAt, callAt, signature, completion, snippetCall };
