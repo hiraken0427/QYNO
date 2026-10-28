@@ -2101,16 +2101,24 @@ Ast *parse(Token *t)
     local_usings = NULL;
     parsing_model = NULL; parsing_interface = NULL;
     while (tok->kind != TK_EOF) {
+        int is_private=0;Token *visibility=NULL;
+        if(equal(tok,"public")||equal(tok,"private")){
+            visibility=tok;is_private=equal(tok,"private");tok=tok->next;
+            if(equal(tok,"public")||equal(tok,"private"))error_tok(tok,"公開指定 public / private は1つだけ書いてください");
+            if(equal(tok,"import")||equal(tok,"using"))error_tok(visibility,"import / using に公開指定は付けられません");
+        }
         if (tok->kind == TK_INDENT) {
             error_tok(tok, "余分なインデントがあります");
         }
         if (equal(tok, "interface")) {
             Interface *in = interface_def(), **end = &ast->interfaces;
+            in->is_private=is_private;
             while (*end) end = &(*end)->next;
             *end = in; continue;
         }
         if (equal(tok, "model")) {
             Model *m = model_def(&fcur); Model **end = &ast->models;
+            m->is_private=is_private;
             while (*end) end = &(*end)->next;
             *end = m; continue;
         }
@@ -2124,6 +2132,7 @@ Ast *parse(Token *t)
             start = tok;
             tok = tok->next;
             cur = cur->next = declaration(start, 1);
+            cur->var->is_private=is_private;
             continue;
         }
         if (equal(tok, "using")) {
@@ -2136,6 +2145,7 @@ Ast *parse(Token *t)
             continue;
         }
         fcur = fcur->next = function_def(0);
+        fcur->is_private=is_private;
     }
     ast->globals = head.next;
     ast->funcs = fhead.next;

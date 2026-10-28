@@ -126,7 +126,7 @@ function closing(tokens, begin) {
     return -1;
 }
 function rankOf(tokens) { return tokens.filter(t => t.value === '[').length; }
-function visibilityLabel(symbol) { return symbol.declaringModelId ? `${symbol.visibility || 'public'} ` : ''; }
+function visibilityLabel(symbol) { return symbol.declaringModelId ? `${symbol.visibility || 'public'} ` : symbol.moduleVisibility ? `${symbol.moduleVisibility} ` : ''; }
 function typeLabel(symbol) { return `${visibilityLabel(symbol)}${symbol.kind === 'constant' ? 'const ' : ''}${symbol.ref ? `ref ${symbol.readonly ? 'readonly ' : ''}` : ''}${symbol.type} ${symbol.name}${'[]'.repeat(symbol.rank || 0)}${symbol.kind === 'field' && symbol.readonly ? ' (readonly)' : ''}${symbol.defaultText !== undefined ? `=${symbol.defaultText}` : ''}`; }
 function functionLabel(symbol, name = symbol.name) {
     return `${visibilityLabel(symbol)}${symbol.readonly ? 'readonly ' : ''}${symbol.type} ${name}(${symbol.params.map(typeLabel).join(', ')})${'[]'.repeat(symbol.rank || 0)}`;
@@ -178,21 +178,22 @@ function analyze(text, uri = '') {
             }
             continue;
         }
-        if (['model', 'interface'].includes(ts[0].value) && ts[1]?.kind === 'id') {
-            const body = newScope(line, indent + 1, ts[0].value, scope, true);
-            const model = declare(ts[1], { kind: ts[0].value, type: ts[1].value, scopeId: scope.id, bodyScopeId: body.id, members: [], visibleAfter: 0 });
+        const visibilityOffset=['public','private'].includes(ts[0]?.value)?1:0;
+        if (['model', 'interface'].includes(ts[visibilityOffset]?.value) && ts[visibilityOffset+1]?.kind === 'id') {
+            const body = newScope(line, indent + 1, ts[visibilityOffset].value, scope, true);
+            const model = declare(ts[visibilityOffset+1], { visibility:visibilityOffset?ts[0].value:'public', moduleVisibility:visibilityOffset?ts[0].value:undefined, kind: ts[visibilityOffset].value, type: ts[visibilityOffset+1].value, scopeId: scope.id, bodyScopeId: body.id, members: [], visibleAfter: 0 });
             if (model) model.modelId = `${uri}:${model.line}:${model.start}`;
             body.owner = model; stack.push(body); continue;
         }
         let index = 0;
         const visibility = ['public', 'private'].includes(ts[index]?.value) ? ts[index++].value : 'public';
         const readonly = ts[index]?.value === 'readonly'; if (readonly) index++;
-        const member = ['model', 'interface'].includes(scope.kind) ? { visibility, declaringModelId: scope.owner?.modelId } : {};
+        const member = ['model', 'interface'].includes(scope.kind) ? { visibility, declaringModelId: scope.owner?.modelId } : scope.id===0 ? { visibility,moduleVisibility:visibilityOffset?visibility:undefined } : {};
         const constant = ts[index]?.value === 'const'; if (constant) index++;
         const modifier = ['ref', 'val'].includes(ts[index]?.value) ? ts[index++].value : null;
         if (constant && !['model', 'interface'].includes(scope.kind) && ts[index]?.kind === 'id' &&
             !KEYWORDS.has(ts[index].value) && ts[index + 1]?.value === '=') {
-            declare(ts[index], { kind: 'constant', type: 'auto', readonly: true, scopeId: scope.id });
+            declare(ts[index], { ...member, kind: 'constant', type: 'auto', readonly: true, scopeId: scope.id });
             continue;
         }
         const omittedReturn = (indent === 0 || ['model', 'interface'].includes(scope.kind)) &&

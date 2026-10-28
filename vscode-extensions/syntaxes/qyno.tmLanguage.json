@@ -6,12 +6,15 @@
   ],
   "patterns": [
     {
-      "match": "^\\s*(model|interface)\\s+([A-Za-z_]\\w*)",
+      "match": "^\\s*(?:(public|private)\\s+)?(model|interface)\\s+([A-Za-z_]\\w*)",
       "captures": {
         "1": {
-          "name": "storage.type.qyno"
+          "name": "storage.modifier.qyno"
         },
         "2": {
+          "name": "storage.type.qyno"
+        },
+        "3": {
           "name": "entity.name.type.qyno"
         }
       }

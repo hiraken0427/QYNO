@@ -10,7 +10,7 @@ qyc: $(OBJS)
 $(OBJS): qyc.h wide_runtime.h grapheme_runtime.h
 grapheme_runtime.o: grapheme_data.h
 codegen.o: wide_codegen.inc wide_blob.h complex_input.inc complex_codegen.inc collections_codegen.inc memory_codegen.inc places_codegen.inc models_codegen.inc file_runtime.inc integer_bases_codegen.inc
-type.o: wide_type.inc complex_type.inc arrays_type.inc models_type.inc readonly_type.inc const_models.inc initialization_type.inc initialization_flow.inc interfaces_type.inc interfaces_specialize.inc integer_bases_type.inc file_close_analysis.inc inference_warnings.inc return_inference.inc generic_functions.inc
+type.o: module_visibility_type.inc wide_type.inc complex_type.inc arrays_type.inc models_type.inc readonly_type.inc const_models.inc initialization_type.inc initialization_flow.inc interfaces_type.inc interfaces_specialize.inc integer_bases_type.inc file_close_analysis.inc inference_warnings.inc return_inference.inc generic_functions.inc
 
 test: qyc
 	PYTHON="$(PYTHON)" bash ./test.sh
@@ -40,6 +40,10 @@ test: qyc
 	$(PYTHON) tests/complex_test.py ./qyc
 	$(PYTHON) tests/wide_types_test.py ./qyc
 	$(PYTHON) tests/grapheme_unit_test.py ./qyc
+	$(PYTHON) tests/module_visibility_test.py ./qyc
+
+test-module-visibility: qyc
+	$(PYTHON) tests/module_visibility_test.py ./qyc
 
 test-grapheme-unit: qyc
 	$(PYTHON) tests/grapheme_unit_test.py ./qyc
@@ -125,4 +129,4 @@ test-arrays: qyc
 clean:
 	rm -f qyc qyc.exe *.o tmp tmp.exe tmp.qy tmp.s
 
-.PHONY: test test-grapheme-unit test-wide-types test-complex test-default-integer test-integer-types test-auto test-implicit-declarations test-global-const-inference test-return-inference test-generic-functions test-bitwise test-integer-bases test-interfaces test-initialization test-readonly test-visibility test-model test-file test-input-refs test-for test-io test-modules test-lineedit test-rounding test-semantics test-text test-arrays clean
+.PHONY: test test-module-visibility test-grapheme-unit test-wide-types test-complex test-default-integer test-integer-types test-auto test-implicit-declarations test-global-const-inference test-return-inference test-generic-functions test-bitwise test-integer-bases test-interfaces test-initialization test-readonly test-visibility test-model test-file test-input-refs test-for test-io test-modules test-lineedit test-rounding test-semantics test-text test-arrays clean

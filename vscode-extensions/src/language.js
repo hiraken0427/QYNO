@@ -18,7 +18,7 @@ function environment(project, line, character) {
         if (modulePath) {
             if (path === modulePath) return namespace(path);
             const name = path.slice(modulePath.length + 1);
-            return project.modules.get(modulePath)?.symbols.find(s => s.scopeId === 0 && s.name === name);
+            return project.modules.get(modulePath)?.symbols.find(s => s.scopeId === 0 && s.name === name && (s.visibility!=='private'||s.uri===model.uri));
         }
         if (imports.some(p => p.startsWith(path + '.'))) return { ...namespace(path), implicit: true };
         return undefined;
@@ -42,7 +42,7 @@ function environment(project, line, character) {
             const child = imported.slice(full.length + 1).split('.')[0];
             result.set(child, namespace(full + '.' + child));
         }
-        for (const symbol of project.modules.get(full)?.symbols || []) if (symbol.scopeId === 0) result.set(symbol.name, symbol);
+        for (const symbol of project.modules.get(full)?.symbols || []) if (symbol.scopeId === 0 && (symbol.visibility!=='private'||symbol.uri===model.uri)) result.set(symbol.name, symbol);
         return [...result.values()];
     };
     for (const symbol of STANDARD) if (!symbol.path.includes('.') || ['io.print', 'io.input'].includes(symbol.path)) names.set(symbol.name, symbol);
@@ -167,7 +167,7 @@ function complete(project, line, character) {
         if (!items.length) items = receiverMembers(project, env, before).map(s => completion(s));
     } else {
         items = [...env.names].map(([label, s]) => completion(s, label));
-        for (const keyword of KEYWORD_COMPLETIONS) if (!env.names.has(keyword)) items.push({ label: keyword, kind: TYPES.has(keyword) ? 'type' : 'keyword', insertText: keyword, detail: 'QYNO 0.26.15' });
+        for (const keyword of KEYWORD_COMPLETIONS) if (!env.names.has(keyword)) items.push({ label: keyword, kind: TYPES.has(keyword) ? 'type' : 'keyword', insertText: keyword, detail: 'QYNO 0.26.16' });
     }
     // A completion immediately before '(' must not insert a second argument list.
     const next = project.model.lines[line].slice(character).match(/^\s*\(/);

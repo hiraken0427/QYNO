@@ -49,6 +49,7 @@ static void ensure_function(Function *fn, Token *site)
     int saved_allow;
     Var *p;
     if (fn->check_state == 2 || fn->is_internal) return;
+    check_export_function(fn);
     if (fn->check_state == 1)
         error_tok(site, "関数 %.*s の戻り値型の推論が循環しています。再帰する関数の戻り値型を明示してください",
             fn->name_len, fn->name);
@@ -78,5 +79,6 @@ static void ensure_function(Function *fn, Token *site)
         error_tok(fn->tok, "関数 %.*s には、最後まで進んだときの return がありません（すべての道筋で値を返してください）",
             fn->name_len, fn->name);
     fn->check_state = 2;
+    check_export_function(fn);
     cur_func = saved_func; allow_void = saved_allow; allowed_interface_use = saved_interface; function_check_depth--;
 }

@@ -185,13 +185,14 @@ class VisibilityTests(QynoTestCase):
         self.compile_source(prefix + body, error="close")
         self.check_program(prefix + body + "\tr.close()\n", "Resource{}\n")
 
-    def test_modifiers_only_on_members_and_reserved_everywhere(self):
+    def test_modifier_positions_and_reserved_names(self):
         for modifiers in ["public public", "private private", "public private", "private public"]:
             for declaration in ["int n", "int get() = 1"]:
                 with self.subTest(modifiers=modifiers, declaration=declaration):
                     self.compile_source(program("model A;", f"\t{modifiers} {declaration}", "int main();", "\treturn 0"), error="公開指定")
-        sources = ["public model A;\n\tint n", "private int f() = 0", "public const int N = 1",
-            "int f(private int n) = n", "int main();\n\tpublic int n", "model A;\n\tpublic;\n\tint n"]
+        for declaration in ["public model A;\n\tint n", "private int f() = 0", "public const int N = 1"]:
+            self.check_program(declaration+"\nint main();\n\treturn 0\n", "")
+        sources = ["int f(private int n) = n", "int main();\n\tpublic int n", "model A;\n\tpublic;\n\tint n"]
         for source in sources:
             with self.subTest(source=source):
                 self.compile_source(source + "\n", error="エラー")

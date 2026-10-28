@@ -291,7 +291,7 @@ async function run() {
     assert.equal(wideHint.signatures[0].label,'unsigned int_128 echo(ref int_128 n)');checks++;
     const quadHint=await vscode.commands.executeCommand('vscode.executeSignatureHelpProvider',wideDoc.uri,new vscode.Position(6,11));
     assert.ok(quadHint.signatures[0].label.startsWith('quadruple quadruple('));checks++;
-    assert.equal(extension.packageJSON.displayName, 'QYNO 0.26.15'); checks++;
+    assert.equal(extension.packageJSON.displayName, 'QYNO 0.26.16'); checks++;
     const unitDoc=await vscode.workspace.openTextDocument({language:'qyno',content:'Void echo(ref void value)=value\nint main();\n\tVoid units[3]\n\tuni\n\techo(ref \n'});
     await vscode.window.showTextDocument(unitDoc);
     const unitItems=await vscode.commands.executeCommand('vscode.executeCompletionItemProvider',unitDoc.uri,new vscode.Position(3,4));
@@ -371,6 +371,18 @@ async function run() {
         assert.equal(await fs.readFile(entry, 'utf8'), 'int main();\n\treturn 0\n');
         assert.equal(await fs.readFile(modulePath, 'utf8'), 'int answer() = 3\n'); checks++;
         assert.deepEqual((await fs.readdir(temporary)).sort(), ['helper.qy', 'main.qy']); checks++;
+        await replace(moduleDoc,'private const LIMIT=3\nprivate int secret()=LIMIT\npublic int answer()=secret()\n');
+        await replace(diagDoc,'import helper\nint main();\n\thelper.\n\treturn 0\n');
+        const moduleItems=await vscode.commands.executeCommand('vscode.executeCompletionItemProvider',diagDoc.uri,new vscode.Position(2,8));
+        assert.ok(moduleItems.items.some(i=>i.label==='answer'));assert.ok(!moduleItems.items.some(i=>['secret','LIMIT'].includes(i.label)));checks++;
+        await replace(diagDoc,'import helper\nint main();\n\tprint(helper.secret())\n\treturn 0\n');
+        await vscode.commands.executeCommand('qyno.checkDocument');
+        assert.ok(errors(diagDoc).some(d=>/private/.test(d.message)));checks++;
+        const hiddenDefinition=await vscode.commands.executeCommand('vscode.executeDefinitionProvider',diagDoc.uri,new vscode.Position(2,15));
+        assert.equal(hiddenDefinition.length,0);checks++;
+        await replace(diagDoc,'import helper\nint main();\n\tprint(helper.answer())\n\treturn 0\n');
+        await vscode.commands.executeCommand('qyno.checkDocument');
+        assert.equal(errors(diagDoc).length,0);checks++;
         await config.update('compilerPath', path.join(temporary, 'missing-qyc'), vscode.ConfigurationTarget.Global);
         await vscode.commands.executeCommand('qyno.checkDocument');
         assert.ok(vscode.languages.getDiagnostics(diagDoc.uri).some(d => d.severity === vscode.DiagnosticSeverity.Warning && /qyno.compilerPath/.test(d.message))); checks++;

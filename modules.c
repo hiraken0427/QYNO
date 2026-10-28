@@ -372,6 +372,7 @@ static int same_symbol(Symbol a, Symbol b)
 }
 
 static void resolve_using(Using *u);
+static int symbol_accessible(Symbol symbol,Module *owner);
 
 static Symbol using_symbol(Using *u, const char *name)
 {
@@ -386,7 +387,10 @@ static Symbol using_symbol(Using *u, const char *name)
         return exported_symbol(u->target_module, name + length + 1);
     }
     resolve_using(u);
-    if (u->target_module != NULL) return exported_symbol(u->target_module, name);
+    if (u->target_module != NULL) {
+        Symbol candidate=exported_symbol(u->target_module,name);
+        return symbol_accessible(candidate,u->tok->source->module)?candidate:symbol;
+    }
     if (strchr(name, '.') != NULL) return symbol;
     last = strrchr(u->path, '.');
     last = last != NULL ? last + 1 : u->path;
@@ -415,19 +419,44 @@ static void merge_symbol(Symbol *result, Symbol candidate, Token *site, const ch
     *result = candidate;
 }
 
+static int symbol_accessible(Symbol symbol,Module *owner)
+{
+    Token *declaration=NULL;int private=0;
+    switch(symbol.kind){
+    case SYM_MODEL:private=symbol.model->is_private;declaration=symbol.model->tok;break;
+    case SYM_INTERFACE:private=symbol.contract->is_private;declaration=symbol.contract->tok;break;
+    case SYM_FUNCTION:private=symbol.function->is_private;declaration=symbol.function->tok;break;
+    case SYM_CONSTANT:private=symbol.constant->is_private;declaration=symbol.constant->tok;break;
+    default:break;
+    }
+    return !private || declaration->source->module==owner;
+}
+static void require_symbol_access(Symbol symbol,Module *owner,Token *site,const char *name)
+{
+    if(!symbol_accessible(symbol,owner))error_tok(site,"private の定義 %s は宣言したモジュールの外から参照できません",name);
+}
+
 static Symbol scoped_symbol(Module *owner, const char *name, Using *scope, Using *skip, Token *site)
 {
     Symbol result = direct_symbol(owner, name);
     Using *u;
     /* 修飾された直接参照は using を経由しない。衝突は宣言の検証で報告する。 */
-    if (result.kind != SYM_NONE) return result;
+    if (result.kind != SYM_NONE) { require_symbol_access(result,owner,site,name);return result; }
     for (u = scope; u != NULL; u = u->vnext) {
         /* using の参照先は直接名か名前空間の別名から解決する。
          * 無関係な選択 using を再帰的に展開しない。 */
-        if (u != skip && (skip == NULL || u->alias != NULL)) merge_symbol(&result, using_symbol(u, name), site, name);
+        if (u != skip && (skip == NULL || u->alias != NULL)) {
+            Symbol candidate=using_symbol(u,name);
+            if(u->alias)require_symbol_access(candidate,owner,site,name);
+            if(symbol_accessible(candidate,owner))merge_symbol(&result,candidate,site,name);
+        }
     }
     for (u = owner->ast->usings; u != NULL; u = u->next) {
-        if (u != skip && (skip == NULL || u->alias != NULL)) merge_symbol(&result, using_symbol(u, name), site, name);
+        if (u != skip && (skip == NULL || u->alias != NULL)) {
+            Symbol candidate=using_symbol(u,name);
+            if(u->alias)require_symbol_access(candidate,owner,site,name);
+            if(symbol_accessible(candidate,owner))merge_symbol(&result,candidate,site,name);
+        }
     }
     return result;
 }
@@ -530,14 +559,14 @@ static void validate_using(Using *u)
         }
     } else {
         Model *m; Interface *in;
-        for (in = target->ast->interfaces; in; in = in->next) if (in->tok->source->module == target) {
+        for (in = target->ast->interfaces; in; in = in->next) if (in->tok->source->module == target && (!in->is_private || target==u->tok->source->module)) {
             symbol.kind = SYM_INTERFACE; symbol.contract = in; introduced_name(u, in->name, symbol);
         }
-        for (m = target->ast->models; m; m = m->next) if (m->tok->source->module == target) {
+        for (m = target->ast->models; m; m = m->next) if (m->tok->source->module == target && (!m->is_private || target==u->tok->source->module)) {
             symbol.kind = SYM_MODEL; symbol.model = m; introduced_name(u, m->name, symbol);
         }
         for (fn = target->ast->funcs; fn != NULL; fn = fn->next) {
-            if (fn->model || fn->tok->source->module != target) continue;
+            if (fn->model || fn->tok->source->module != target || (fn->is_private && target!=u->tok->source->module)) continue;
             symbol.kind = SYM_FUNCTION;
             symbol.function = fn;
             {
@@ -547,7 +576,7 @@ static void validate_using(Using *u)
             }
         }
         for (v = target->ast->global_vars; v != NULL; v = v->next) {
-            if (v->tok->source->module != target) continue;
+            if (v->tok->source->module != target || (v->is_private && target!=u->tok->source->module)) continue;
             symbol.kind = SYM_CONSTANT;
             symbol.constant = v;
             {

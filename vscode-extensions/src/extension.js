@@ -67,7 +67,7 @@ class Index {
 const kinds = { interface: vscode.CompletionItemKind.Interface, model: vscode.CompletionItemKind.Class, field: vscode.CompletionItemKind.Field, function: vscode.CompletionItemKind.Function, variable: vscode.CompletionItemKind.Variable, parameter: vscode.CompletionItemKind.Variable, constant: vscode.CompletionItemKind.Constant, namespace: vscode.CompletionItemKind.Module, property: vscode.CompletionItemKind.Property, type: vscode.CompletionItemKind.TypeParameter, keyword: vscode.CompletionItemKind.Keyword };
 function markdown(symbol) {
     const result = new vscode.MarkdownString();
-    result.appendCodeblock(['model', 'interface'].includes(symbol.kind) ? `${symbol.kind} ${symbol.name}` : symbol.kind === 'function' ? functionLabel(symbol, symbol.path || symbol.name) : symbol.type ? typeLabel(symbol) : symbol.path || symbol.name, 'qyno');
+    result.appendCodeblock(['model', 'interface'].includes(symbol.kind) ? `${symbol.moduleVisibility?symbol.moduleVisibility+' ':''}${symbol.kind} ${symbol.name}` : symbol.kind === 'function' ? functionLabel(symbol, symbol.path || symbol.name) : symbol.type ? typeLabel(symbol) : symbol.path || symbol.name, 'qyno');
     if (symbol.documentation) result.appendText('\n' + symbol.documentation);
     return result;
 }

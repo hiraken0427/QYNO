@@ -14,6 +14,32 @@ function labels(text, modules) { return items(text, modules).map(i => i.label); 
 function at(text, modules) { const f = fixture(text, modules); return symbolAt(f.project, f.line, f.character); }
 function hint(text, modules) { const f = fixture(text, modules); return signature(f.project, f.line, f.character); }
 
+test('module exports exclude private functions constants models and interfaces', () => {
+    const modules={lib:'private const LIMIT=3\nprivate helper(x)=x*2\nprivate model Hidden;\n\tint n\nprivate interface Internal;\n\tint get();\npublic int read()=helper(LIMIT)\nconst LABEL="ok"\npublic model Point;\n\tint x'};
+    const result=labels('import lib\nint main();\n\tlib.¦',modules);
+    assert.ok(result.includes('read'));assert.ok(result.includes('LABEL'));assert.ok(result.includes('Point'));
+    for(const hidden of ['LIMIT','helper','Hidden','Internal'])assert.ok(!result.includes(hidden));
+    assert.equal(at('import lib\nint main();\n\tlib.hel¦per(1)',modules),undefined);
+    assert.equal(hint('import lib\nint main();\n\tlib.helper(¦',modules),undefined);
+    assert.equal(hint('import lib\nint main();\n\tlib.read(¦',modules).label,'public int lib.read()');
+});
+
+test('module aliases and using-all preserve module privacy', () => {
+    const modules={lib:'private const LIMIT=3\nprivate helper(x)=x\npublic read()=helper(LIMIT)'};
+    const imported=labels('import lib\nusing lib\nint main();\n\t¦',modules);
+    assert.ok(imported.includes('read'));assert.ok(!imported.includes('LIMIT'));assert.ok(!imported.includes('helper'));
+    assert.ok(!labels('import lib\nusing lib as m\nint main();\n\tm.¦',modules).includes('helper'));
+});
+
+test('private definitions keep local navigation completion and explicit visibility', () => {
+    const source='private const LIMIT=3\nprivate helper(x)=x+LIMIT\nprivate model Hidden;\n\tint n\npublic read()=helper(LIMIT)\nint main();\n\t¦';
+    const result=items(source);
+    assert.ok(result.some(i=>i.label==='LIMIT'&&i.detail==='private const auto LIMIT'));
+    assert.ok(result.some(i=>i.label==='helper'&&i.detail==='private auto helper(auto x)'));
+    assert.ok(result.some(i=>i.label==='Hidden'));
+    assert.equal(at('private helper(x)=x\npublic read()=hel¦per(1)').line,0);
+});
+
 test('omitted and auto argument types are preserved in generic signatures', () => {
     const source = 'square(x) = x^2\nauto add(auto x, double y) = x + y\nint main();\n\t¦';
     const result = items(source);
