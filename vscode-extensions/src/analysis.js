@@ -1,6 +1,6 @@
 'use strict';
 
-const TYPES = new Set(['complex', 'complex_64', 'complex_128', 'int', 'int_8', 'int_16', 'int_32', 'int_64', 'unsigned', 'float', 'double', 'bool', 'str', 'char', 'file', 'void', 'auto']);
+const TYPES = new Set(['complex', 'complex_64', 'complex_128', 'int', 'int_8', 'int_16', 'int_32', 'int_64', 'int_128', 'half', 'quadruple', 'unsigned', 'float', 'double', 'bool', 'str', 'char', 'file', 'void', 'Void', 'auto']);
 const KEYWORDS = new Set([...TYPES, 'const', 'ref', 'val', 'return', 'if', 'else', 'for', 'while', 'break', 'continue', 'and', 'or', 'xor', 'bnot', 'not', 'true', 'false', 'none', 'import', 'using', 'as', 'print', 'input', 'struct', 'enum', 'of', 'model', 'interface', 'implements', 'public', 'private', 'readonly']);
 const identifierStart = c => /[A-Za-z_]/.test(c || '');
 const identifierPart = c => /[A-Za-z0-9_]/.test(c || '');
@@ -75,6 +75,8 @@ function lexLine(text, line = 0) {
                 if (text[i] === '.' && /[0-9]/.test(text[i + 1] || '')) {
                     i++; while (/[0-9]/.test(text[i] || '')) i++;
                 }
+                const exponent=/^[eE][+-]?[0-9]+/.exec(text.slice(i));
+                if(exponent)i+=exponent[0].length;
             }
             add('number', start, i);
         } else {
@@ -134,7 +136,7 @@ function readType(tokens, start) {
     let end = start;
     const unsigned = tokens[start]?.value === 'unsigned';
     if (unsigned) {
-        if (!/^int(?:_(?:8|16|32|64))?$/.test(tokens[start + 1]?.value || '')) return null;
+        if (!/^int(?:_(?:8|16|32|64|128))?$/.test(tokens[start + 1]?.value || '')) return null;
         end++;
     }
     if (tokens[end]?.kind !== 'id' || KEYWORDS.has(tokens[end].value) && !TYPES.has(tokens[end].value)) return null;

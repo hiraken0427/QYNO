@@ -21,9 +21,9 @@ class IntegerBasesTests(QynoTestCase):
         self.check_program(program('int main();',*[f'\tprint({e})' for e in expressions]),''.join(str(v)+'\n' for v in values))
 
     def test_invalid_literals_and_overflow_rejected(self):
-        for value in ['0b102','0o8','0d1A','0xGG','0b','0o','0d','0x','0x10000000000000000',
-            '18446744073709551616','0d18446744073709551616',
-            '-9223372036854775809','0b1_0','0x1.2','0o2000000000000000000000']:
+        for value in ['0b102','0o8','0d1A','0xGG','0b','0o','0d','0x',hex(1<<128),
+            str(1<<128),'0d'+str(1<<128),
+            str(-(1<<127)-1),'0b1_0','0x1.2',oct(1<<128)]:
             with self.subTest(value=value): self.compile_source(program('int main();',f'\tprint({value})'),error='エラー')
 
     def test_leading_zeroes_do_not_count_as_extra_bits(self):

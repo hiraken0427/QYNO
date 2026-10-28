@@ -146,7 +146,7 @@ class ImplicitDeclarationTests(QynoTestCase):
             '\t\tn = 1', '\t\talias.addr = n.addr', '\tprint(alias)'), error='ブロック')
 
     def test_invalid_or_contextless_initializers_are_rejected(self):
-        for value in ['[]', '{}', 'none', 'noop()']:
+        for value in ['[]', '{}', 'none']:
             self.compile_source(program('void noop();', '\treturn', 'int main();',
                 '\tn = ' + value), error='エラー')
 

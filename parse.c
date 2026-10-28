@@ -72,7 +72,7 @@ static Node *stmt(void);
 
 /* 変数名などに使えない予約語 */
 static const char *keywords[] = {
-    "complex", "complex_64", "complex_128", "int", "int_8", "int_16", "int_32", "int_64", "unsigned", "float", "double", "bool", "str", "char", "void", "file", "const", "auto",
+    "complex", "complex_64", "complex_128", "int", "int_8", "int_16", "int_32", "int_64", "int_128", "half", "quadruple", "unsigned", "float", "double", "bool", "str", "char", "void", "Void", "file", "const", "auto",
     "true", "false", "return", "print", "if", "else", "for", "while",
     "break", "continue", "and", "or", "xor", "bnot", "not", "struct", "enum", "import", "of", "using", "input",
     "ref", "val", "none", "as", "interface", "implements", "model", "public", "private", "readonly",
@@ -200,6 +200,10 @@ static Type type_keyword(Token *t)
     if (equal(t, "int_16")) return TY_I16;
     if (equal(t, "int_32")) return TY_I32;
     if (equal(t, "int_64")) return TY_I64;
+    if (equal(t, "int_128")) return TY_I128;
+    if (equal(t, "half")) return TY_HALF;
+    if (equal(t, "quadruple")) return TY_QUAD;
+    if (equal(t,"void")||equal(t,"Void"))return TY_VOID;
     if (equal(t, "file")) return TY_FILE;
     if (equal(t, "int")) {
         return TY_INT;
@@ -268,9 +272,6 @@ static ArrayDim *dimensions(Type *ty)
         tail = tail->next = dim;
         if (++rank > MAX_ARRAY_RANK) {
             error_tok(dim->tok, "配列の次元数は %d 以下にしてください", MAX_ARRAY_RANK);
-        }
-        if (*ty == TY_VOID) {
-            error_tok(dim->tok, "void の配列は作れません");
         }
         *ty = array_type(*ty);
     }
@@ -647,6 +648,7 @@ static Node *primary(void)
     const char *member;
 
     if (consume("(")) {
+        if(consume(")")){node=new_node(ND_UNIT,tok);node->ty=TY_VOID;return node;}
         node = expr();
         expect(")");
         return node;
@@ -687,6 +689,7 @@ static Node *primary(void)
         tok = tok->next; return node;
     }
     if (tok->kind == TK_NUM) {
+        if (tok->wide_ty) { node = new_node(ND_WIDE, tok); node->wide = tok->wide; node->ty = (Type)tok->wide_ty; node->raw_numeric = 1; tok = tok->next; return node; }
         node = new_num(tok->val, tok);
         if (tok->unsigned_literal) node->ty = TY_U64;
         else if (tok->val > INT32_MAX || tok->val < 0) node->ty = TY_I64;
@@ -695,7 +698,8 @@ static Node *primary(void)
     }
     if (tok->kind == TK_FNUM) {
         node = new_node(ND_FNUM, tok);
-        node->fval = tok->fval;
+        node->fval = tok->fval; node->raw_numeric = 1;
+        if (tok->wide_ty) { node->kind = ND_WIDE; node->wide = tok->wide; node->ty = (Type)tok->wide_ty; }
         tok = tok->next;
         return node;
     }
@@ -733,7 +737,7 @@ static Node *primary(void)
         node = new_node(ND_BUILTIN, tok); node->val = BI_COMPLEX; node->cmp_ty = type_keyword(tok);
         tok = tok->next->next; call_args(node); return node;
     }
-    if (((type_is_integer(type_keyword(tok)) && equal((equal(tok, "unsigned") ? tok->next : tok)->next, "(")) || equal(tok, "float") || equal(tok, "double") ||
+    if (((type_is_integer(type_keyword(tok)) && equal((equal(tok, "unsigned") ? tok->next : tok)->next, "(")) || equal(tok, "float") || equal(tok, "double") || equal(tok, "half") || equal(tok, "quadruple") ||
          equal(tok, "char") || equal(tok, "str")) && (equal(tok, "unsigned") || equal(tok->next, "("))) {
         /* 型変換 int(x)・float(x)・double(x) */
         node = new_node(ND_BUILTIN, tok);
@@ -870,11 +874,19 @@ static Node *unary(void)
     }
     if (consume("bnot")) return new_unary(ND_BIT_NOT, unary(), start);
     if (consume("-")) {
-        if (tok->kind == TK_NUM && tok->unsigned_literal && !tok->decimal_min) error_tok(tok, "負の整数リテラルが範囲外です");
-        if (tok->kind == TK_NUM && (tok->decimal_min || tok->val == INT64_C(2147483648)) && !equal(tok->next, "^")) {
+
+        if (tok->kind == TK_NUM && !tok->wide_ty && (tok->decimal_min || tok->val == INT64_C(2147483648)) && !equal(tok->next, "^")) {
             Node *minimum = new_num(tok->decimal_min ? INT64_MIN : INT32_MIN, start); tok = tok->next; return minimum;
         }
         { Node *operand = unary();
+          if ((operand->kind == ND_WIDE && operand->raw_numeric && type_is_integer(operand->ty)) ||
+              (operand->kind == ND_NUM && operand->tok->unsigned_literal && !operand->tok->decimal_min)) {
+              WideRequest r = {0}; Node *n;
+              r.a = operand->kind == ND_WIDE ? operand->wide : (WideBits){(uint64_t)operand->val, 0};
+              if (operand->ty == TY_U128 && (r.a.hi > UINT64_C(0x8000000000000000) || (r.a.hi == UINT64_C(0x8000000000000000) && r.a.lo))) error_tok(start, "負の128bit整数リテラルが範囲外です");
+              r.op=W_NEG;r.ty=-128;wide_execute(&r);
+              n=new_node(ND_WIDE,start);n->wide=r.out;n->ty=TY_I128;n->raw_numeric=1;return n;
+          }
           /* Parentheses and unary + do not change a minimum literal's type. */
           if (operand->kind == ND_NUM && operand->tok->kind == TK_NUM) {
               if (operand->tok->unsigned_literal) {
@@ -1934,9 +1946,6 @@ static Function *function_def(int is_readonly)
     start = tok;
     if (consume("=")) {
         if (fn->is_initializer) error_tok(start, "init の本体はブロック形式にしてください");
-        if (fn->ret == TY_VOID) {
-            error_tok(start, "void の関数は数式の形（= 式）では書けません");
-        }
         fn->is_math_form = 1;
         fn->body = new_node(ND_RETURN, start);
         fn->body->lhs = expr();
@@ -2021,7 +2030,6 @@ static Model *model_def(Function **tail)
             ModelField *f = calloc(1, sizeof(*f));
             if (is_readonly) error_tok(name, "readonly はメソッドと ref 引数に指定してください");
             if (!f) fatal("フィールドを確保できません");
-            if (ty == TY_VOID) error_tok(name, "フィールドに void は使えません");
             if (equal(tok, "init")) error_tok(tok, "init はモデル生成専用の名前です");
             if (equal(tok, "this") || equal(tok, "addr") || equal(tok, "value") || equal(tok, "length"))
                 error_tok(tok, "this・addr・value・length はモデルのフィールド名に使えません");

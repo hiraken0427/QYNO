@@ -153,6 +153,17 @@ void x64_bind(int label)
     }
 }
 
+void x64_blob(const unsigned char *bytes, size_t length)
+{
+    size_t i;
+    buf_add(&prog->text, bytes, length);
+    if (text) for (i=0;i<length;i++) {
+        if (i%16==0) fprintf(text,"    .byte "); else fprintf(text,",");
+        fprintf(text,"%u",(unsigned)bytes[i]);
+        if (i%16==15 || i+1==length) fprintf(text,"\n");
+    }
+}
+
 static void add_fixup(int label, size_t pos)
 {
     if (fixup_count >= fixup_cap) {

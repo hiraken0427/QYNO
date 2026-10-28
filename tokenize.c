@@ -2,6 +2,7 @@
 
 #include <ctype.h>
 #include <errno.h>
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -98,59 +99,38 @@ static const char *lex_basic(const char *p, int line, const char *line_start, To
         }
     }
 
-    /* 小数リテラル（数字 . 数字） */
-    if (isdigit((unsigned char)*p) && !(p[0] == '0' && integer_prefix((unsigned char)p[1]))) {
-        start = p;
-        q = p;
-        while (isdigit((unsigned char)*q)) {
-            q++;
-        }
-        if (q[0] == '.' && isdigit((unsigned char)q[1])) {
-            q++;
-            while (isdigit((unsigned char)*q)) {
-                q++;
-            }
-            if (is_ident_char(*q) || *q == '.') {
-                error_at(line, col_of(q, line_start), "小数の直後に英字や _ や . は書けません");
-            }
-            if ((size_t)(q - start) >= sizeof(num_buf)) {
-                error_at(line, col_of(start, line_start), "小数の桁が多すぎます");
-            }
-            memcpy(num_buf, start, (size_t)(q - start));
-            num_buf[q - start] = '\0';
-            errno = 0;
-            fval = strtod(num_buf, NULL);
-            if (errno == ERANGE) {
-                error_at(line, col_of(start, line_start), "小数が大きすぎるか小さすぎます");
-            }
-            *cur = (*cur)->next = new_token(TK_FNUM, start, (int)(q - start), line, col_of(start, line_start));
-            (*cur)->fval = fval;
+    /* Keep the original decimal spelling for contextual binary16/binary128. */
+    if (isdigit((unsigned char)*p) && !(p[0]=='0' && integer_prefix((unsigned char)p[1]))) {
+        int floating=0; q=p; while(isdigit((unsigned char)*q))q++;
+        if(q[0]=='.' && isdigit((unsigned char)q[1])) { floating=1;q++;while(isdigit((unsigned char)*q))q++; }
+        if(*q=='e'||*q=='E') { floating=1;q++;if(*q=='+'||*q=='-')q++;if(!isdigit((unsigned char)*q))error_at(line,col_of(q,line_start),"指数の数字が必要です");while(isdigit((unsigned char)*q))q++; }
+        if(floating) {
+            WideRequest r={0}; Token *t;
+            if(is_ident_char(*q)||*q=='.')error_at(line,col_of(q,line_start),"小数の直後に英字・_・.は書けません");
+            r.op=W_READ;r.ty=W_QUAD;r.input=p;r.length=(int)(q-p);wide_execute(&r);
+            if(r.status)error_at(line,col_of(p,line_start),"小数がbinary128の範囲外か桁数上限4096を超えています");
+            *cur=(*cur)->next=t=new_token(TK_FNUM,p,(int)(q-p),line,col_of(p,line_start));
+            t->wide=r.out;
+            if((size_t)(q-p)<sizeof(num_buf)) { memcpy(num_buf,p,(size_t)(q-p));num_buf[q-p]=0;errno=0;t->fval=strtod(num_buf,NULL);if(errno==ERANGE)t->wide_ty=TY_QUAD; }
+            else { r.op=W_CONVERT;r.from=W_QUAD;r.ty=W_DOUBLE;r.a=r.out;wide_execute(&r);memcpy(&t->fval,&r.out.lo,8); }
+            if(!isfinite(t->fval)||(t->fval==0&&(t->wide.lo||t->wide.hi)))t->wide_ty=TY_QUAD;
             return q;
         }
     }
-
-    /* 整数リテラル */
-    if (isdigit((unsigned char)*p)) {
-        start = p;
-        { uint64_t magnitude = 0, limit; int base = 10, digit, prefixed = 0, decimal_min;
-          if (p[0] == '0' && (base = integer_prefix((unsigned char)p[1]))) { p += 2; prefixed = 1; }
-          else base = 10;
-          limit = UINT64_MAX;
-          q = p;
-          while (is_ident_char(*p)) {
-              digit = integer_digit((unsigned char)*p);
-              if (digit < 0 || digit >= base) error_at(line, col_of(p, line_start), "整数の基数に合わない数字・文字です");
-              if (magnitude > (limit - (unsigned)digit) / (unsigned)base) error_at(line, col_of(start, line_start), "整数が大きすぎます");
-              magnitude = magnitude * (unsigned)base + (unsigned)digit; p++;
-          }
-          if (p == q) error_at(line, col_of(start, line_start), "整数の接頭辞の後に数字が必要です");
-          if (prefixed && *p == '.' && isdigit((unsigned char)p[1])) error_at(line, col_of(p, line_start), "基数指定は整数にだけ使えます");
-          decimal_min = base == 10 && magnitude == (UINT64_C(1) << 63);
-          *cur = (*cur)->next = new_token(TK_NUM, start, (int)(p - start), line, col_of(start, line_start));
-          (*cur)->val = integer_bits(magnitude); (*cur)->decimal_min = decimal_min;
-          (*cur)->unsigned_literal = base == 10 && magnitude > INT64_MAX;
-          return p;
-        }
+    if(isdigit((unsigned char)*p)) {
+        WideRequest r={0};Token *t;int base=10;
+        start=p;if(p[0]=='0'&&integer_prefix((unsigned char)p[1])){base=integer_prefix(p[1]);p+=2;}
+        q=p;while(is_ident_char(*p))p++;
+        if(p==q)error_at(line,col_of(start,line_start),"整数の接頭辞の後に数字が必要です");
+        r.op=W_READ;r.ty=128;r.input=start;r.length=(int)(p-start);wide_execute(&r);
+        if(r.status||r.used!=r.length)error_at(line,col_of(start,line_start),"整数が128bitの範囲外か基数に合わない数字です");
+        if(*p=='.'&&isdigit((unsigned char)p[1]))error_at(line,col_of(p,line_start),"基数指定は整数にだけ使えます");
+        *cur=(*cur)->next=t=new_token(TK_NUM,start,(int)(p-start),line,col_of(start,line_start));
+        t->wide=r.out;t->val=integer_bits(r.out.lo);
+        if(r.out.hi)t->wide_ty=base==10&&(r.out.hi>>63)?TY_U128:TY_I128;
+        t->decimal_min=base==10&&!r.out.hi&&r.out.lo==(UINT64_C(1)<<63);
+        t->unsigned_literal=base==10&&!r.out.hi&&r.out.lo>INT64_MAX;
+        return p;
     }
 
     /* 識別子・キーワード */

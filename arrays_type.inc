@@ -10,6 +10,7 @@ static void check_dims(ArrayDim *dims)
                 error_tok(dims->tok, "配列の上限はコンパイル時に確定する非負の int にしてください");
             }
             v = eval_const(dims->bound);
+            if(type_is_wide(v.ty))v=wide_calculate(dims->bound,W_CONVERT,v,(Value){0},TY_I64,0);
             if (v.i < 0 || v.i > (LLONG_MAX - 64) / 8) {
                 error_tok(dims->tok, "配列の上限が負か、必要な領域が int の範囲を超えます");
             }
@@ -33,8 +34,7 @@ static void check_array_literal(Node *node, Type expected)
             else if (element != item->ty) {
                 if ((type_is_complex(element) || type_is_complex(item->ty)) && is_number(element) && is_number(item->ty)) element = complex_common(element, item->ty);
                 else if (is_numeric(element) && is_numeric(item->ty)) {
-                    if (element == TY_DOUBLE || item->ty == TY_DOUBLE) element = TY_DOUBLE;
-                    else if (element == TY_FLOAT || item->ty == TY_FLOAT) element = TY_FLOAT;
+                    if(type_is_real(element)||type_is_real(item->ty))element=real_common(element,item->ty);
                     else {
                         Type common = integer_common(element, item->ty);
                         if (common == TY_NONE) error_tok(item->tok, "配列の整数要素型を安全に統一できません");
@@ -64,6 +64,8 @@ static void check_array_literal(Node *node, Type expected)
 
 static void check_expected(Node *node, Type expected)
 {
+    wide_literal_context(node,expected);
+    if(node->kind==ND_WIDE && node->raw_numeric && node->ty==TY_I128 && integer_unsigned(expected) && node->tok->kind==TK_NUM && node->tok->len>2 && node->tok->loc[0]=='0' && integer_prefix(node->tok->loc[1]) && integer_prefix(node->tok->loc[1])!=10) node->ty=TY_U128;
     if (node->kind == ND_NUM && integer_unsigned(expected) && node->val < 0 && node->tok->kind == TK_NUM &&
         node->tok->len > 2 && node->tok->loc[0] == '0' && integer_prefix(node->tok->loc[1]) && integer_prefix(node->tok->loc[1]) != 10)
         node->ty = TY_U64;
@@ -168,7 +170,6 @@ static Var *check_place(Node *place)
 
 static void check_method(Node *node)
 {
-    int allow = allow_void;
     int expected = node->val == AM_CLEAR ? 0 : 1;
     allow_void = 0;
     check_expr(node->lhs);
@@ -202,7 +203,6 @@ static void check_method(Node *node)
         node->rhs = model_default(array_element(node->lhs->ty), dims ? dims->next : NULL, node->tok);
     }
     node->ty = TY_VOID;
-    if (!allow) error_tok(node->tok, "配列の追加・削除は値を返しません");
 }
 
 static void check_store(Node *node)

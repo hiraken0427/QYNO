@@ -107,6 +107,15 @@ class LineEditTests(QynoTestCase):
     def test_unicode_backspace(self):
         self.edit("日😀".encode() + b"\x7f" + "本\n".encode(), "日本")
 
+    def test_grapheme_backspace_combining_sequence(self):
+        self.edit('éX'.encode()+b'\x1b[D\x7f\n','X')
+
+    def test_grapheme_delete_zwj_sequence(self):
+        self.edit('👩🏽‍💻X'.encode()+b'\x01\x1b[3~\n','X')
+
+    def test_grapheme_arrow_skips_regional_indicator_pair(self):
+        self.edit('🇯🇵X'.encode()+b'\x01\x1b[CY\n','🇯🇵YX')
+
     def test_unicode_cursor_and_delete(self):
         self.edit("日😀a".encode() + b"\x1b[D\x1b[D\x1b[3~" + "本\n".encode(), "日本a")
 

@@ -404,6 +404,9 @@ static void gen_array_equal_runtime(void)
       x64_bind(complex_value); x64_call(complex_equal_label); x64_test(RAX, RAX); x64_jcc(CC_Z, no); x64_jmp(next);
       x64_bind(scalar_value);
     }
+    { int ty;for(ty=TY_I64;ty<TY_BOOL;ty++)if(type_is_wide((Type)ty)){
+        int other=rt_label("equal.not.wide");rt_cmp(RCX,ty);x64_jcc(CC_NZ,other);gen_wide(W_CMP,(Type)ty,(Type)ty,CMP_EQ,NULL);x64_test(RAX,RAX);x64_jcc(CC_Z,no);x64_jmp(next);x64_bind(other);
+    } }
     rt_cmp(RCX, TY_STR); x64_jcc(CC_Z, text_value);
     rt_cmp(RCX, TY_CHAR); x64_jcc(CC_Z, text_value);
     rt_cmp(RCX, TY_FLOAT); x64_jcc(CC_Z, float_value);
@@ -570,10 +573,12 @@ static void gen_array_print_runtime(void)
           x64_bind(next_model);
       }
     }
+    {int unit=rt_label("print.not.unit");rt_cmp(RCX,TY_VOID);x64_jcc(CC_NZ,unit);gen_write_const("()");x64_jmp(next);x64_bind(unit);}
     for (i = TY_I64; i <= TY_CHAR; i++) { rt_cmp(RCX, i); x64_jcc(CC_Z, primitive[i]); }
     x64_jmp(next);
     for (i = TY_I64; i <= TY_CHAR; i++) {
         x64_bind(primitive[i]);
+        if(type_is_wide((Type)i)){x64_mov_imm(RDI,10);x64_xor(RSI,RSI);gen_wide(W_FORMAT,(Type)i,(Type)i,0,NULL);x64_call(print_str_label);x64_jmp(next);}
         if (i == TY_FLOAT) { x64_movd_to_xmm(0, RAX); x64_cvtss2sd(0, 0); x64_movq_from_xmm(RAX, 0); }
         x64_call(type_is_complex((Type)i) ? complex_print_labels[i == TY_C128] : type_is_integer((Type)i) ? (integer_unsigned((Type)i) ? print_uint_label : print_int_label) : i == TY_BOOL ? print_bool_label :
                  i == TY_FLOAT ? print_float_label : i == TY_DOUBLE ? print_double_label : quoted_string_label);

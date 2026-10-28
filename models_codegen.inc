@@ -91,6 +91,7 @@ static void gen_model_runtime(void)
             if (type_is_model(f->ty) || type_is_array(f->ty) || type_is_text(f->ty)) {
                 x64_call(type_is_model(f->ty) ? type_model(f->ty)->equal_label : type_is_array(f->ty) ? array_equal_label : str_eq_label);
                 x64_test(RAX, RAX); x64_jcc(CC_Z, unequal);
+            } else if(type_is_wide(f->ty)){gen_wide(W_CMP,f->ty,f->ty,CMP_EQ,NULL);x64_test(RAX,RAX);x64_jcc(CC_Z,unequal);
             } else if (type_is_complex(f->ty)) { x64_call(complex_equal_label); x64_test(RAX, RAX); x64_jcc(CC_Z, unequal);
             } else if (f->ty == TY_FLOAT || f->ty == TY_DOUBLE) {
                 if (f->ty == TY_FLOAT) {
@@ -111,8 +112,10 @@ static void gen_model_runtime(void)
             rt_load(RAX, 1); x64_load(RAX, RAX, 24); x64_load(RAX, RAX, f->index * 8);
             if (type_is_model(f->ty)) x64_call(type_model(f->ty)->print_label);
             else if (type_is_array(f->ty)) x64_call(array_print_label);
+            else if(type_is_wide(f->ty)){x64_mov_imm(RDI,10);x64_xor(RSI,RSI);gen_wide(W_FORMAT,f->ty,f->ty,0,NULL);x64_call(print_str_label);}
             else if (type_is_complex(f->ty)) x64_call(complex_print_labels[f->ty == TY_C128]);
             else if (type_is_text(f->ty)) x64_call(quoted_string_label);
+            else if(f->ty==TY_VOID)gen_write_const("()");
             else if (f->ty == TY_FILE) gen_write_const("<file>");
             else {
                 if (f->ty == TY_FLOAT) gen_convert(TY_FLOAT, TY_DOUBLE);

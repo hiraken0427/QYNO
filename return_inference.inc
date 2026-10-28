@@ -7,8 +7,7 @@ static Type common_return_type(Type a, Type b, Token *site)
         error_tok(site, "値を返す return と値のない return は混在できません");
     if ((type_is_complex(a) || type_is_complex(b)) && is_number(a) && is_number(b)) return complex_common(a, b);
     if (is_numeric(a) && is_numeric(b)) {
-        if (a == TY_DOUBLE || b == TY_DOUBLE) return TY_DOUBLE;
-        if (a == TY_FLOAT || b == TY_FLOAT) return TY_FLOAT;
+        if(type_is_real(a)||type_is_real(b))return real_common(a,b);
         { Type common = integer_common(a, b); if (common != TY_NONE) return common; }
     }
     if (type_is_text(a) && type_is_text(b)) return TY_STR;

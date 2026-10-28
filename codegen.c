@@ -41,6 +41,7 @@
  */
 
 #include "qyc.h"
+#include "wide_blob.h"
 #include <math.h>
 
 #include <stdlib.h>
@@ -56,6 +57,7 @@
 static Program *prog;
 static FILE *text;
 static Target target;
+static void gen_grapheme_call(void);
 static void gen_input_state_init(void);
 static void gen_lineedit_init(void);
 static void lineedit_labels(void);
@@ -799,47 +801,12 @@ static void gen_utf8_next_checked(void)
  */
 static void gen_string_scan(void)
 {
-    int loop = x64_new_label(".L.qy_string_scan.loop");
-    int next = x64_new_label(".L.qy_string_scan.next");
-    int done = x64_new_label(".L.qy_string_scan.done");
-    int finish = x64_new_label(".L.qy_string_scan.finish");
-
-    x64_bind(string_scan_label);
-    x64_push(RBP);
-    x64_mov(RBP, RSP);
-    x64_sub_imm(RSP, 32);
-    x64_store_imm(RBP, -8, 0);    /* 文字数 */
-    x64_store_imm(RBP, -16, 0);   /* 選択した文字の先頭 */
-    x64_store_imm(RBP, -24, 0);   /* 選択した文字の幅 */
-    x64_load(RDX, RAX, 0);
-    x64_lea(RSI, RAX, 8);
-    x64_bind(loop);
-    x64_test(RDX, RDX);
-    x64_jcc(CC_Z, done);
-    x64_call(utf8_next_checked_label);
-    x64_test(R8, R8);
-    x64_jcc(CC_NZ, finish);
-    x64_load(R9, RBP, -8);
-    x64_cmp(RDI, R9);
-    x64_jcc(CC_NZ, next);
-    x64_store(RBP, -16, RSI);
-    x64_store(RBP, -24, RCX);
-    x64_bind(next);
-    x64_add(RSI, RCX);
-    x64_sub(RDX, RCX);
-    x64_load(R9, RBP, -8);
-    x64_add_imm(R9, 1);
-    x64_store(RBP, -8, R9);
-    x64_jmp(loop);
-    x64_bind(done);
-    x64_load(RAX, RBP, -8);
-    x64_load(RDX, RBP, -16);
-    x64_load(RCX, RBP, -24);
-    x64_xor(R8, R8);
-    x64_bind(finish);
-    x64_mov(RSP, RBP);
-    x64_pop(RBP);
-    x64_ret();
+    int done=x64_new_label(".L.qy_string_scan.done");
+    rt_enter(string_scan_label,2);rt_save(1,RAX);
+    x64_load(RDX,RAX,0);x64_lea(RSI,RAX,8);rt_save(2,RSI);x64_add(RDX,RSI);
+    gen_grapheme_call();x64_mov(RCX,R9);x64_mov(RDI,RAX);x64_mov(RAX,R10);x64_xor(RDX,RDX);
+    x64_test(R8,R8);x64_jcc(CC_NZ,done);x64_test(RCX,RCX);x64_jcc(CC_Z,done);
+    rt_load(RDX,2);x64_add(RDX,RDI);x64_bind(done);rt_leave();
 }
 
 /*
@@ -1251,11 +1218,13 @@ static void pop(Reg r)
 static void gen_expr(Node *node);
 static void gen_input_state_init(void);
 
+#include "wide_codegen.inc"
+
 /* All integer values are canonical sign/zero extended in the scalar ABI. */
 static void gen_integer_normalize(Type ty)
 {
     int bits = integer_width(ty);
-    if (bits == 64) return;
+    if (bits >= 64) return;
     x64_mov_imm(R10, integer_bits((UINT64_C(1) << bits) - 1)); x64_and(RAX, R10);
     if (!integer_unsigned(ty)) {
         x64_mov_imm(R10, INT64_C(1) << (bits - 1)); x64_xor(RAX, R10); x64_sub(RAX, R10);
@@ -1278,6 +1247,7 @@ static void gen_integer_range(Type from, Type to, int bad)
 }
 static void gen_integer_checked(Type from, Type to, Token *tok)
 {
+    if(type_is_wide(from)||type_is_wide(to)){gen_wide(W_CONVERT,to,from,0,tok);return;}
     int bad = new_label("integer.cast.range"), done = new_label("integer.cast.done");
     gen_integer_range(from, to, bad); x64_jmp(done);
     x64_bind(bad); gen_fail(tok, "整数変換の結果が対象型の範囲外です", EX_SOFTWARE);
@@ -1285,6 +1255,7 @@ static void gen_integer_checked(Type from, Type to, Token *tok)
 }
 static void gen_format_integer(Type ty)
 {
+    if(type_is_wide(ty)){gen_wide(W_FORMAT,ty,ty,0,NULL);return;}
     if (integer_width(ty) < 64) {
         int decimal = new_label("integer.format.decimal");
         x64_mov_imm(R10, 10); x64_cmp(RDI, R10); x64_jcc(CC_Z, decimal);
@@ -1295,6 +1266,7 @@ static void gen_format_integer(Type ty)
 }
 static void gen_parse_integer(Type ty)
 {
+    if(type_is_wide(ty)){gen_wide_parse(ty);return;}
     x64_mov_imm(R11, ty); x64_call(parse_int_label);
 }
 static void gen_complex_unpack(Reg pointer, int re, int im)
@@ -1319,6 +1291,7 @@ static void gen_convert(Type from, Type to)
         }
         x64_call(complex_make_labels[to == TY_C128]); return;
     }
+    if((type_is_wide(from)||type_is_wide(to)) && !type_is_complex(from) && !type_is_text(from) && !type_is_text(to)){gen_wide(W_CONVERT,to,from,0,NULL);wide_check(NULL);return;}
     if (type_is_text(from) && type_is_text(to)) {
         return;  /* 表現は共通。char の制約検査は gen_cast で行う。 */
     }
@@ -1375,7 +1348,7 @@ static void gen_char_check(Token *tok, int code)
     x64_mov_imm(RCX, 1);
     x64_cmp(R9, RCX);
     x64_jcc(CC_Z, one);
-    gen_fail(tok, "char には Unicode スカラー値をちょうど1つ含む文字列が必要です", code);
+    gen_fail(tok, "char には 書記素クラスタをちょうど1つ含む文字列が必要です", code);
     x64_bind(one);
 }
 
@@ -1385,6 +1358,7 @@ static void gen_char_check(Token *tok, int code)
 
 static void gen_cast(Node *node)
 {
+    if((type_is_wide(node->lhs->ty)||type_is_wide(node->ty)) && !type_is_complex(node->ty)){gen_expr(node->lhs);gen_wide(W_CONVERT,node->ty,node->lhs->ty,0,node->tok);return;}
     /* 小数リテラルを float にする場合は、コンパイル時に変換する */
     if (node->lhs->kind == ND_FNUM && node->ty == TY_FLOAT) {
         x64_mov_imm(RAX, float_bits((float)node->lhs->fval));
@@ -1457,6 +1431,7 @@ static void gen_text_operation(Node *node)
 static void gen_neg(Node *node)
 {
     gen_expr(node->lhs);
+    if(type_is_wide(node->ty)){gen_wide(W_NEG,node->ty,node->ty,0,node->tok);return;}
     if (type_is_complex(node->ty)) {
         gen_complex_unpack(RAX, 0, 1); x64_movq_from_xmm(RAX, 0); x64_movq_from_xmm(RDI, 1);
         x64_btc(RAX, 63); x64_btc(RDI, 63); x64_call(complex_make_labels[node->ty == TY_C128]); return;
@@ -1557,6 +1532,7 @@ static void gen_binary(Node *node)
     x64_mov(RDI, RAX);
     pop(RAX);
 
+    if(type_is_wide(node->ty)){gen_wide(wide_codegen_op(node->kind),node->ty,node->ty,0,node->tok);return;}
     if (type_is_complex(node->ty)) {
         int op = node->kind == ND_ADD ? 0 : node->kind == ND_SUB ? 1 : node->kind == ND_MUL ? 2 : 3;
         collection_context(node->tok); x64_call(complex_op_labels[node->ty == TY_C128][op]); return;
@@ -1653,6 +1629,9 @@ static void gen_compare(Node *cmp)
         x64_load(RAX, RSP, 8); gen_convert(cmp->rhs->ty, ty); pop(RDI); x64_add_imm(RSP, 8); depth--;
         x64_call(complex_equal_label); if (kind == CMP_NE) x64_xor_imm(RAX, 1); return;
     }
+    if(type_is_wide(ty)||type_is_wide(cmp->lhs->ty)||type_is_wide(cmp->rhs->ty)){
+        push();x64_mov(RAX,RDI);gen_convert(cmp->lhs->ty,ty);push();x64_load(RAX,RSP,8);gen_convert(cmp->rhs->ty,ty);x64_mov(RDI,RAX);pop(RAX);x64_add_imm(RSP,8);depth--;gen_wide(W_CMP,ty,ty,kind,NULL);return;
+    }
     if (type_is_model(ty)) {
         x64_mov(RCX, RAX); x64_mov(RAX, RDI); x64_mov(RDI, RCX);
         x64_call(type_model(ty)->equal_label);
@@ -1684,6 +1663,7 @@ static void gen_compare(Node *cmp)
         x64_cmp(RDI, RAX); x64_setcc(cc, RAX); x64_movzx8(RAX, RAX); return;
     }
     switch (ty) {
+    case TY_VOID:x64_mov_imm(RAX,kind==CMP_EQ);return;
     case TY_BOOL:
     case TY_FILE:
     case TY_ADDR:
@@ -1848,6 +1828,19 @@ static void gen_builtin(Node *node)
     x = node->lhs;
     digits = x->next;
     ty = x->ty;
+    if((b==BI_HALF||b==BI_QUAD)&&type_is_text(ty)){
+        int bad=new_label("wide.text.bad"),done=new_label("wide.text.done");
+        gen_expr(x);x64_load(RDX,RAX,0);x64_lea(RSI,RAX,8);x64_add(RDX,RSI);x64_xor(RDI,RDI);gen_wide_parse(node->ty);
+        x64_test(RCX,RCX);x64_jcc(CC_NZ,bad);push();x64_call(skip_ws_label);x64_cmp(RSI,RDX);pop(RAX);x64_jcc(CC_Z,done);
+        x64_bind(bad);gen_fail(node->tok,"文字列を指定した小数型として読み取れません",EX_DATAERR);x64_bind(done);return;
+    }
+    if(type_is_wide(ty)||type_is_wide(node->ty)){
+        if(b==BI_INT||b==BI_FLOAT||b==BI_DOUBLE||b==BI_HALF||b==BI_QUAD){gen_expr(x);gen_wide(W_CONVERT,node->ty,ty,0,node->tok);return;}
+        if(b==BI_ABS||b==BI_SQRT||b==BI_ROUND||b==BI_ROUNDUP||b==BI_ROUNDDOWN){
+            gen_expr(x);push();if(digits)gen_expr(digits);else x64_xor(RAX,RAX);x64_mov(RDI,RAX);pop(RAX);
+            gen_wide(b==BI_ABS?W_ABS:b==BI_SQRT?W_SQRT:W_ROUND,ty,ty,b-BI_ROUND,node->tok);return;
+        }
+    }
 
     switch (b) {
     case BI_CHAR:
@@ -1857,7 +1850,7 @@ static void gen_builtin(Node *node)
         }
         return;
     case BI_STR:
-        gen_expr(x);
+        gen_expr(x);if(ty==TY_VOID)x64_lea_data(RAX,prog_add_str(prog,"()",2));
         return;
     case BI_SQRT:
         gen_expr(x);
@@ -4243,31 +4236,13 @@ static void edit_add_suffix_width(int slot)
 }
 
 /* カーソルの手前の文字の始め → [rbp+slot]（カーソルが 0 でないこと） */
-static void edit_prev_start(int slot)
+static void edit_boundary(int direction)
 {
-    int loop;
-    int done;
-
-    loop = new_label("edit.prev");
-    done = new_label("edit.prevdone");
-    x64_load(RCX, RBP, ECUR);
-    x64_load(RSI, RBP, EB);
-    x64_add_imm(RSI, 8);
-    x64_bind(loop);
-    x64_sub_imm(RCX, 1);
-    x64_test(RCX, RCX);
-    x64_jcc(CC_Z, done);
-    x64_mov(RDI, RSI);
-    x64_add(RDI, RCX);
-    x64_load8(RAX, RDI, 0);
-    x64_and_imm(RAX, 0xC0);
-    x64_mov_imm(R9, 0x80);
-    x64_cmp(RAX, R9);                   /* 続きのバイトならさらに戻る */
-    x64_jcc(CC_NZ, done);
-    x64_jmp(loop);
-    x64_bind(done);
-    x64_store(RBP, slot, RCX);
+    x64_load(RSI,RBP,EB);x64_add_imm(RSI,8);x64_load(RDX,RBP,EL);x64_add(RDX,RSI);x64_load(RDI,RBP,ECUR);
+    x64_mov_imm(R8,W_CURSOR);x64_mov_imm(R9,64);x64_xor(R10,R10);x64_mov_imm(R11,direction);x64_call(wide_call_label);
 }
+static void edit_prev_start(int slot)
+{edit_boundary(-1);x64_store(RBP,slot,RAX);}
 
 static void gen_edit_line(void)
 {
@@ -4520,14 +4495,8 @@ static void gen_edit_line(void)
     x64_load(RCX, RBP, EL);
     x64_cmp(RAX, RCX);
     x64_jcc(CC_AE, loop);
-    x64_load(RSI, RBP, EB);
-    x64_add_imm(RSI, 8);
-    x64_add(RSI, RAX);
-    x64_call(utf8_decode_label);
-    x64_store(RBP, T2, RDX);            /* 消すバイト数 */
-    x64_mov(RDI, RAX);
-    x64_call(cp_width_label);
-    x64_store(RBP, T3, RAX);            /* 消す文字の幅 */
+    edit_boundary(1);x64_store(RBP,T1,RAX);x64_load(RDX,RBP,ECUR);x64_sub(RAX,RDX);x64_store(RBP,T2,RAX);
+    edit_width_range(ECUR,T1);x64_store(RBP,T3,RAX);
     {
         int l = x64_new_label(".L.qy_edit.delmove");
         int d = x64_new_label(".L.qy_edit.deldone");
@@ -4587,13 +4556,7 @@ static void gen_edit_line(void)
     x64_load(RCX, RBP, EL);
     x64_cmp(RAX, RCX);
     x64_jcc(CC_AE, loop);
-    x64_load(RSI, RBP, EB);
-    x64_add_imm(RSI, 8);
-    x64_add(RSI, RAX);
-    x64_call(utf8_decode_label);
-    x64_load(RAX, RBP, ECUR);
-    x64_add(RAX, RDX);
-    x64_store(RBP, T1, RAX);
+    edit_boundary(1);x64_store(RBP,T1,RAX);
     edit_write_range(ECUR, T1);
     x64_load(RAX, RBP, T1);
     x64_store(RBP, ECUR, RAX);
@@ -4914,7 +4877,8 @@ static void gen_input_value(Node *node)
     x64_cmp(RSI, RDX);
     x64_jcc(CC_AE, missing);
     if (type_is_integer(ty)) x64_mov_imm(RDI, 0);
-    if (type_is_integer(ty)) gen_parse_integer(ty);
+    if (type_is_wide(ty)||ty==TY_VOID) gen_wide_parse(ty);
+    else if (type_is_integer(ty)) gen_parse_integer(ty);
     else if (type_is_complex(ty)) x64_call(complex_parse_labels[ty == TY_C128]);
     else x64_call(ty == TY_BOOL ? parse_bool_label : parse_real_label);
     x64_mov_imm(R8, 1);
@@ -5010,6 +4974,7 @@ static void gen_input_pattern(Node *node)
     int *range_err;
     int *sep_err;
     int extra;
+    int destination_err=new_label("input.destination.changed");
 
     done = new_label("input.done");
     fail = new_label("input.fail");
@@ -5123,7 +5088,8 @@ static void gen_input_pattern(Node *node)
         x64_jcc(CC_AE, missing[i]);
         x64_store(RBP, -f->temp->offset, RSI);          /* 値の先頭（float の範囲外の表示に使う） */
         if (type_is_integer(ty)) x64_mov_imm(RDI, f->base);
-        if (type_is_integer(ty)) gen_parse_integer(ty);
+        if (type_is_wide(ty)||ty==TY_VOID) gen_wide_parse(ty);
+    else if (type_is_integer(ty)) gen_parse_integer(ty);
         else if (type_is_complex(ty)) x64_call(complex_parse_labels[ty == TY_C128]);
         else x64_call(ty == TY_BOOL ? parse_bool_label : parse_real_label);
         x64_mov_imm(R8, 1);
@@ -5174,21 +5140,27 @@ static void gen_input_pattern(Node *node)
         place_read(&plans[i]);
     }
 
-    /* すべて読めたので変数に移す */
-    i = 0;
-    for (f = node->fields; f != NULL; f = f->next, i++) {
-        collection_context(f->var->tok);
-        if (plans[i].text_last) {
-            place_resolve(&plans[i], plans[i].count - 1);
-            x64_load(RAX, RAX, 0);
-            place_load(&plans[i], RDI, plans[i].count);
-            x64_load(RSI, RBP, -f->temp->offset);
-            x64_call(string_replace_label);
-            x64_store(RBP, -f->temp->offset, RAX);
-            place_resolve(&plans[i], plans[i].count - 1);
-        } else place_resolve(&plans[i], plans[i].count);
-        x64_load(RDX, RBP, -f->temp->offset);
-        x64_store(RAX, 0, RDX);
+    /* Stage all parent strings before committing any target. Replacements can
+     * merge graphemes and invalidate a later captured index in the same string. */
+    i=0;
+    for(f=node->fields;f;f=f->next,i++){
+        InputField *previous=node->fields;int j;
+        place_resolve(&plans[i],plans[i].count-plans[i].text_last);
+        place_save(&plans[i],plans[i].count+1,RAX);x64_load(RAX,RAX,0);
+        for(j=0;j<i;j++,previous=previous->next){
+            int other=new_label("input.different.owner");
+            place_load(&plans[i],RDX,plans[i].count+1);place_load(&plans[j],RCX,plans[j].count+1);
+            x64_cmp(RDX,RCX);x64_jcc(CC_NZ,other);x64_load(RAX,RBP,-previous->temp->offset);x64_bind(other);
+        }
+        if(plans[i].text_last){
+            place_save(&plans[i],plans[i].count+2,RAX);place_load(&plans[i],RDI,plans[i].count);x64_call(string_scan_label);
+            x64_test(R8,R8);x64_jcc(CC_NZ,destination_err);x64_test(RDX,RDX);x64_jcc(CC_Z,destination_err);
+            place_load(&plans[i],RAX,plans[i].count+2);place_load(&plans[i],RDI,plans[i].count);x64_load(RSI,RBP,-f->temp->offset);
+            x64_call(string_replace_label);x64_store(RBP,-f->temp->offset,RAX);
+        }
+    }
+    i=0;for(f=node->fields;f;f=f->next,i++){
+        place_load(&plans[i],RAX,plans[i].count+1);x64_load(RDX,RBP,-f->temp->offset);x64_store(RAX,0,RDX);
     }
     x64_mov_imm(RAX, 1);
     x64_jmp(done);
@@ -5197,6 +5169,7 @@ static void gen_input_pattern(Node *node)
         /* 条件として使う：失敗は false（入力の終わりも含む） */
         x64_bind(eof);
         x64_bind(extra);
+        x64_bind(destination_err);
         for (i = 0; i < n; i++) {
             x64_bind(missing[i]);
             x64_bind(type_err[i]);
@@ -5218,6 +5191,8 @@ static void gen_input_pattern(Node *node)
     head = input_head(node->tok, &head_len);
     x64_bind(eof);
     gen_fail(node->tok, "入力が終わっていて、読み込めませんでした", EX_DATAERR);
+    x64_bind(destination_err);
+    gen_input_fail(node,head,head_len,"文字の置換後に入力先の書記素境界が変わります");
     x64_bind(extra);
     gen_input_fail(node, head, head_len, "余計な文字があります");
     i = 0;
@@ -5387,6 +5362,7 @@ static void gen_expr_inner(Node *node);
 static void gen_expr(Node *node)
 {
     gen_expr_inner(node);
+    if(node->ty==TY_VOID)x64_xor(RAX,RAX);
     if (type_is_integer(node->ty)) gen_integer_normalize(node->ty);
 }
 static void gen_expr_inner(Node *node)
@@ -5428,6 +5404,8 @@ static void gen_expr_inner(Node *node)
     case ND_SAVED:
         x64_load(RAX, RBP, -(int)node->val);
         return;
+    case ND_UNIT:x64_xor(RAX,RAX);return;
+    case ND_WIDE: gen_wide_literal(node);return;
     case ND_NUM:
     case ND_BOOL:
         x64_mov_imm(RAX, node->val);
@@ -5463,6 +5441,7 @@ static void gen_expr_inner(Node *node)
         return;
     case ND_ABS:
         gen_expr(node->lhs);
+        if(type_is_wide(node->ty)){gen_wide(W_ABS,node->ty,node->ty,0,node->tok);return;}
         if (type_is_complex(node->lhs->ty)) { x64_call(complex_abs_label); gen_convert(TY_DOUBLE, node->ty); return; }
         gen_abs_rax(node->ty);
         return;
@@ -5502,7 +5481,7 @@ static void gen_expr_inner(Node *node)
     case ND_INT_FORMAT:
         gen_integer_conversion(node); return;
     case ND_BIT_NOT:
-        gen_expr(node->lhs); x64_xor_imm(RAX, -1); return;
+        gen_expr(node->lhs);if(type_is_wide(node->ty)){gen_wide(W_NOT,node->ty,node->ty,0,node->tok);return;} x64_xor_imm(RAX, -1); return;
     case ND_BIT_AND:
     case ND_BIT_OR:
     case ND_BIT_XOR:
@@ -5510,6 +5489,7 @@ static void gen_expr_inner(Node *node)
     case ND_SHL:
     case ND_SHR:
         gen_expr(node->lhs); push(); gen_expr(node->rhs); x64_mov(RCX, RAX); pop(RAX);
+        if(type_is_wide(node->ty)){x64_mov(RDI,RCX);gen_wide(wide_codegen_op(node->kind),node->ty,node->ty,0,node->tok);return;}
         if (node->kind == ND_BIT_AND) x64_and(RAX, RCX);
         else if (node->kind == ND_BIT_OR) x64_or(RAX, RCX);
         else if (node->kind == ND_BIT_XOR || node->kind == ND_XOR) x64_xor(RAX, RCX);
@@ -5551,6 +5531,7 @@ static void gen_expr_inner(Node *node)
         gen_expr(node->rhs);
         x64_mov(RDI, RAX);
         pop(RAX);
+        if(type_is_wide(node->ty)){gen_wide(W_POW,node->ty,node->ty,0,node->tok);return;}
         if (type_is_complex(node->ty)) { collection_context(node->tok); x64_call(complex_pow_labels[node->ty == TY_C128]); return; }
         gen_pow_check(node);
         if (type_is_integer(node->ty)) {
@@ -5576,11 +5557,13 @@ static void gen_print_value(Node *expr)
         x64_mov_imm(RDI, expr->format_base); x64_mov_imm(RSI, 1); gen_format_integer(expr->ty);
         x64_call(print_str_label); return;
     }
+    if(type_is_wide(expr->ty)){x64_mov_imm(RDI,10);x64_xor(RSI,RSI);gen_wide(W_FORMAT,expr->ty,expr->ty,0,NULL);x64_call(print_str_label);return;}
     if (type_is_complex(expr->ty)) { x64_call(complex_print_labels[expr->ty == TY_C128]); return; }
     if (type_is_array(expr->ty)) { x64_call(array_print_label); return; }
     if (type_is_model(expr->ty)) { x64_call(type_model(expr->ty)->print_label); return; }
     if (type_is_integer(expr->ty)) { x64_call(integer_unsigned(expr->ty) ? print_uint_label : print_int_label); return; }
     switch (expr->ty) {
+    case TY_VOID:gen_write_const("()");return;
     case TY_FLOAT:
         gen_convert(TY_FLOAT, TY_DOUBLE);
         x64_call(print_float_label);
@@ -5763,6 +5746,11 @@ static void gen_for_finite(Type ty, Token *tok, const char *message)
 {
     int ok;
     if (type_is_integer(ty)) return;
+    if(type_is_wide(ty)){
+        ok=new_label("for.wide.finite");x64_mov(RCX,RAX);
+        if(ty==TY_QUAD){x64_test(RCX,RCX);x64_jcc(CC_Z,ok);x64_load(RCX,RCX,8);}
+        x64_mov_imm(RDX,ty==TY_HALF?31744:INT64_C(0x7fff000000000000));x64_and(RCX,RDX);x64_cmp(RCX,RDX);x64_jcc(CC_NZ,ok);gen_fail(tok,message,EX_SOFTWARE);x64_bind(ok);return;
+    }
     ok = new_label("for.finite");
     x64_mov(RCX, RAX);
     x64_mov_imm(RDX, ty == TY_FLOAT ? 0x7f800000LL : 0x7ff0000000000000LL);
@@ -5779,6 +5767,10 @@ static void gen_for_update(Node *node, int end)
     Var *v = node->init->var;
     Token *tok = node->inc->tok;
     int progress;
+    if(type_is_integer(v->ty)&&type_is_wide(v->ty)){
+        gen_expr(node->for_amount);push();gen_load_var(v,tok);pop(RDI);gen_wide(W_NEXT,v->ty,v->ty,node->inc_sign,NULL);
+        x64_test(R8,R8);x64_jcc(CC_NZ,end);gen_store_var(v,tok);return;
+    }
     if (type_is_integer(v->ty)) {
         gen_expr(node->for_amount);
         x64_mov(RDI, RAX);
@@ -5796,6 +5788,9 @@ static void gen_for_update(Node *node, int end)
     gen_expr(node->step->lhs); /* 既存の型変換・演算・丸め順序を維持する */
     gen_for_finite(v->ty, tok, "for の更新結果が有限ではありません");
     pop(RDI);
+    if(type_is_wide(v->ty)){
+        push();gen_wide(W_CMP,v->ty,v->ty,node->val>0?CMP_GT:CMP_LT,NULL);x64_test(RAX,RAX);pop(RAX);progress=new_label("for.wide.progress");x64_jcc(CC_NZ,progress);gen_fail(tok,"for の増分では値が前進しません",EX_SOFTWARE);x64_bind(progress);gen_store_var(v,tok);return;
+    }
     if (v->ty == TY_FLOAT) {
         x64_movd_to_xmm(0, RDI);
         x64_cvtss2sd(0, 0);
@@ -6057,6 +6052,7 @@ void codegen(Ast *ast, Program *out_prog, FILE *out_text, Target out_target)
       }
       complex_equal_label = new_label("complex.equal"); complex_abs_label = new_label("complex.abs"); complex_real_label = new_label("complex.real.parse");
     }
+    wide_call_label=new_label("wide.call");wide_engine_label=new_label("wide.engine");
     write_label = x64_new_label(".L.qy_write");
     print_uint_label = x64_new_label(".L.qy_print_uint");
     integer_format_label = x64_new_label(".L.qy_integer_format");
@@ -6180,6 +6176,7 @@ void codegen(Ast *ast, Program *out_prog, FILE *out_text, Target out_target)
     gen_round_integer(BI_ROUNDUP, 1);
     gen_round_integer(BI_ROUNDDOWN, 0);
     gen_round_integer(BI_ROUNDDOWN, 1);
+    gen_wide_runtime();
     gen_complex_runtime();
     gen_input_routines();
     gen_file_runtime();
