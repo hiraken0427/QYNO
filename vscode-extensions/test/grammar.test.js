@@ -5,10 +5,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 const textmate = require('vscode-textmate');
 const oniguruma = require('vscode-oniguruma');
-async function grammar() {
+async function grammar(theme) {
     const wasm = fs.readFileSync(require.resolve('vscode-oniguruma/release/onig.wasm'));
     await oniguruma.loadWASM(wasm.buffer.slice(wasm.byteOffset, wasm.byteOffset + wasm.byteLength));
-    const registry = new textmate.Registry({ onigLib: Promise.resolve({ createOnigScanner: patterns => new oniguruma.OnigScanner(patterns), createOnigString: text => new oniguruma.OnigString(text) }), loadGrammar: async scope => scope === 'source.qyno' ? textmate.parseRawGrammar(fs.readFileSync(path.join(__dirname, '../syntaxes/qyno.tmLanguage.json'),'utf8'),'qyno.json') : null });
+    const registry = new textmate.Registry({ theme, onigLib: Promise.resolve({ createOnigScanner: patterns => new oniguruma.OnigScanner(patterns), createOnigString: text => new oniguruma.OnigString(text) }), loadGrammar: async scope => scope === 'source.qyno' ? textmate.parseRawGrammar(fs.readFileSync(path.join(__dirname, '../syntaxes/qyno.tmLanguage.json'),'utf8'),'qyno.json') : null });
     return registry.loadGrammar('source.qyno');
 }
 test('TextMate highlights actual QYNO 0.26.13 syntax and resets one-line strings', async () => {
@@ -78,9 +78,52 @@ test('TextMate highlights actual QYNO 0.26.13 syntax and resets one-line strings
 });
 test('manifest paths and snippets exist with QYNO indentation', () => {
     const base=path.join(__dirname,'..'), pkg=require('../package.json');
-    assert.equal(pkg.version,'0.26.13'); assert.equal(pkg.publisher,'hiraken0427');
+    assert.equal(pkg.displayName,'QYNO 0.26.13'); assert.equal(pkg.version,'0.26.13'); assert.equal(pkg.publisher,'hiraken0427');
     for (const file of [pkg.main,...pkg.contributes.grammars.map(g=>g.path),...pkg.contributes.snippets.map(s=>s.path),pkg.contributes.languages[0].configuration]) assert.ok(fs.existsSync(path.join(base,file)),file);
     const snippets=require('../snippets/qyno.json');
     assert.ok(snippets.Main.body.includes('\treturn 0'));
     for (const name of ['Read file','Write file']) assert.ok(snippets[name].body.some(l=>l.startsWith('io.file.close(')));
+});
+
+test('interpolation braces and expressions have code colors without string ancestors', async () => {
+    const g = await grammar({ settings: [
+        { settings: { foreground: '#FFFFFF', background: '#000000' } },
+        { scope: 'string', settings: { foreground: '#FF8800' } },
+        { scope: 'punctuation', settings: { foreground: '#0088FF' } },
+        { scope: 'entity.name.function', settings: { foreground: '#FFFF00' } }
+    ] });
+    const scopes = (text, word) => g.tokenizeLine(text).tokens.find(t => t.startIndex <= text.indexOf(word) && t.endIndex > text.indexOf(word)).scopes;
+    const color = (text, word) => {
+        const tokens = g.tokenizeLine2(text).tokens, offset = text.indexOf(word);
+        let index = 0;
+        while (index + 2 < tokens.length && tokens[index + 2] <= offset) index += 2;
+        return (tokens[index + 1] >>> 15) & 511;
+    };
+    for (const quote of ['"', "'"]) {
+        const text = `io.print(${quote}hello {matrix[i][j] + f(2)}!${quote})`;
+        for (const word of ['{', 'matrix', 'i]', '+', 'f(', '}']) {
+            assert.ok(!scopes(text, word).some(scope => scope.startsWith('string.')), `${word}: ${scopes(text, word)}`);
+        }
+        assert.equal(color(text, 'matrix'), color('matrix', 'matrix'));
+        assert.equal(color(text, '{'), color('{x=2}', '{'));
+        assert.equal(color(text, '}'), color('{x=2}', '}'));
+        assert.equal(color(text, 'f('), color('f(2)', 'f('));
+        assert.notEqual(color(text, 'hello'), color(text, 'matrix'));
+        assert.equal(color(text, 'hello'), color(text, '!'));
+    }
+    assert.ok(scopes('print("escaped \\{value\\}")', 'value').includes('string.quoted.double.qyno'));
+    const nested = 'print("{str(\"nested {value}\")}")';
+    assert.ok(!scopes(nested, 'value').some(scope => scope.startsWith('string.')));
+    assert.ok(scopes(nested, 'nested').includes('string.quoted.double.qyno'));
+});
+
+test('enter indents semicolons outside strings/comments for every declaration form', () => {
+    const config = require('../language-configuration.json');
+    const patterns = [config.indentationRules.increaseIndentPattern, config.onEnterRules[0].beforeText].map(p => new RegExp(p));
+    for (const regex of patterns) {
+        for (const line of ['int main();', '\tfor(0 <= i < 3, i++);', '\tif(true); // comment', 'model Point;', 'interface Shape;',
+            'square(x);', 'unsigned int_64 count();', 'Point make();', 'complex_128 value();', 'private readonly get();', '\telse;']) assert.ok(regex.test(line), line);
+        for (const line of ['\treturn 0', '\tprint(";")', "\tprint(';')", '// int main();', '\tprint(1) // ;', '\tstr text = "semi; // hi"', '\tprint("escaped \\\" ;")']) assert.ok(!regex.test(line), line);
+    }
+    assert.equal(config.onEnterRules[0].action.indent, 'indent');
 });

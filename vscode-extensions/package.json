@@ -1,7 +1,7 @@
 {
   "name": "qyno-vscode",
-  "displayName": "QYNO 0.26.13 VSCode Option",
-  "description": "QYNO 0.26.13 language support: highlighting, scope-aware completions, navigation and signatures.",
+  "displayName": "QYNO 0.26.13",
+  "description": "QYNO 0.26.13: highlighting, completions, navigation, automatic indentation and compiler diagnostics.",
   "version": "0.26.13",
   "publisher": "hiraken0427",
   "author": "hiraken0427",
@@ -97,13 +97,38 @@
           "minimum": 1,
           "maximum": 10000,
           "description": "Maximum .qy files scanned for import suggestions."
+        },
+        "qyno.diagnostics.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Check QYNO sources with qyc while editing. Requires a trusted workspace and a local compiler. Programs are never executed."
+        },
+        "qyno.compilerPath": {
+          "type": "string",
+          "default": "qyc",
+          "scope": "machine-overridable",
+          "restricted": true,
+          "description": "Path to the QYNO 0.26.13 qyc executable (qyc.exe on Windows). Relative paths use the workspace folder. No shell arguments."
+        },
+        "qyno.diagnostics.delay": {
+          "type": "integer",
+          "default": 500,
+          "minimum": 100,
+          "maximum": 10000,
+          "description": "Milliseconds to wait after edits before checking with qyc."
         }
       }
-    }
+    },
+    "commands": [
+      {
+        "command": "qyno.checkDocument",
+        "title": "QYNO: Check Current File"
+      }
+    ]
   },
   "scripts": {
     "test": "node --test test/*.test.js",
-    "check": "node --check src/extension.js && node --check src/analysis.js && node --check src/language.js && node --check src/initialization.js",
+    "check": "node --check src/extension.js && node --check src/analysis.js && node --check src/language.js && node --check src/initialization.js && node --check src/diagnostics.js",
     "test:editor": "node test/run-editor.js",
     "package": "vsce package --skip-license --baseContentUrl https://github.com/hiraken0427/QYNO/blob/dev/vscode-extensions --out 0.26.13_VSCode_option.vsix"
   },
