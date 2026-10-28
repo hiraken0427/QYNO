@@ -22,6 +22,7 @@ static void infer_returns(Node *list, Type *result)
     for (n = list; n; n = n->next) {
         if (n->kind == ND_RETURN)
             *result = common_return_type(*result, n->lhs ? n->lhs->ty : TY_VOID, n->tok);
+        else if(n->kind==ND_TRY){Node *arm;infer_returns(n->then,result);for(arm=n->els;arm;arm=arm->next)infer_returns(arm->then,result);}
         else if (n->kind == ND_IF) {
             infer_returns(n->then, result); infer_returns(n->els, result);
         } else if (n->kind == ND_FOR || n->kind == ND_WHILE) infer_returns(n->then, result);
@@ -36,6 +37,7 @@ static void convert_inferred_returns(Node *list, Function *fn)
             n->lhs = coerce(n->lhs, fn->ret, n->lhs->tok, "戻り値");
             if (type_is_array(fn->ret)) n->lhs = copy_array(n->lhs, fn->return_dims, 0);
             if (type_is_model(fn->ret)) n->lhs = copy_model(n->lhs);
+        } else if(n->kind==ND_TRY){Node *arm;convert_inferred_returns(n->then,fn);for(arm=n->els;arm;arm=arm->next)convert_inferred_returns(arm->then,fn);
         } else if (n->kind == ND_IF) {
             convert_inferred_returns(n->then, fn); convert_inferred_returns(n->els, fn);
         } else if (n->kind == ND_FOR || n->kind == ND_WHILE) convert_inferred_returns(n->then, fn);

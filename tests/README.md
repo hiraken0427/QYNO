@@ -27,6 +27,7 @@ Python を指定する場合は `make test PYTHON=/path/to/python3` とする。
 | `make test-io` | print / input の互換性、io 修飾名、using・別名、型の文脈、形式指定入力 |
 | `make test-for` | 範囲の開閉、評価回数、整数の範囲外、小数の有限性・停滞、bool の拒否 |
 | `make test-input-refs` | 全スカラー型の直接入力・要素参照、評価順、参照中の変更、引数なしの add、GC・出力形式 |
+| `make test-recoverable-io` | ErrorCode / Error / try_open、try/case/finally/throw、伝播・close・OS失敗注入・部分書き込み |
 | `make test-file` | ファイルの各モード、UTF-8・改行・EOF、共有ハンドル、書式、明示 close の関数間解析、OS失敗 |
 | `make test-lineedit` | 擬似端末でのカーソル移動・編集、Unicode、EOF・割り込み、端末設定の復元 |
 | `bash test.sh` | 既存チェック、行編集、`all_features.qy`、CLI の出力指定・アセンブリ出力 |
@@ -257,3 +258,10 @@ Linux専用の失敗注入・資源制限の8件はWindowsではスキップす�
 `make test-enums` は45メソッドで、連番・飛び番・負値・境界・重複・0欠落、期待型による名前解決、
 名義型・明示変換・表示・入力の原子性・lib・配列・model・const・ref・readonly・型推論・公開制御を検証する。
 matchの網羅性・重複・評価回数・スコープ・return・必須フィールド初期化・ループ制御・closeも含む。
+
+0.27.2の回復可能I/Oは`tests/recoverable_io_test.py`で検証する。WindowsはWineの初期化後、
+`QYNO_FILE_TARGET=windows QYNO_FILE_WINDOWS_RUNNER=/absolute/path/to/runner python3 tests/recoverable_io_test.py ./qyc`
+で実行できる。Linux固有のsyscall注入・資源上限のケースはWindowsではskipする。
+
+回復可能I/O専用スイートは53メソッド。アセンブリの実行一致・モジュール境界も検証する。
+0.27.2の最終make testはshellチェック326件とPythonテストメソッド1,074件が成功した。

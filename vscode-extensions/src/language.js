@@ -14,6 +14,8 @@ function environment(project, line, character) {
         if (['io', 'io.file', 'io.path', 'math', 'lib'].includes(path)) return namespace(path);
         const builtin = STANDARD.find(s => s.path === path);
         if (builtin) return builtin;
+        const enumeration=STANDARD.find(s=>s.kind==='enum'&&path.startsWith(s.path+'.'));
+        if(enumeration)return enumeration.members.find(m=>m.name===path.slice(enumeration.path.length+1));
         const modulePath = imports.filter(p => path === p || path.startsWith(p + '.')).sort((a, b) => b.length - a.length)[0];
         if (modulePath) {
             if (path === modulePath) return namespace(path);
@@ -135,6 +137,7 @@ function receiverMembers(project, env, text) {
 }
 function enumContext(project,env,line,character,text){
     if(/^\s*case\b/.test(text)){
+        if(/^\s*case\s*\(/.test(text)&&!project.model.scopes.some(s=>s.kind==='match'&&scopeContains(project.model,s.id,line,character)))return env.resolve('io.ErrorCode');
         const scope=project.model.scopes.filter(s=>s.kind==='match'&&scopeContains(project.model,s.id,line,character)).at(-1);
         const target=scope&&(env.resolve(scope.targetText)||receiverSymbol(env,scope.targetText));
         const type=env.modelType(target);return type?.kind==='enum'?type:undefined;

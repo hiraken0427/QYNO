@@ -7,7 +7,7 @@
 #include "grapheme_runtime.h"
 #include <stdio.h>
 
-#define QYC_VERSION "0.27.1"
+#define QYC_VERSION "0.27.2"
 
 typedef struct SourceFile SourceFile;
 typedef struct Module Module;
@@ -195,7 +195,7 @@ typedef enum {
     BI_FILE_READLINE,
     BI_FILE_WRITE,
     BI_FILE_EXISTS,
-    BI_FILE_READ_BYTES, BI_FILE_WRITE_BYTES,
+    BI_FILE_READ_BYTES, BI_FILE_WRITE_BYTES, BI_FILE_TRY_OPEN,
     BI_COUNT
 } Builtin;
 
@@ -249,7 +249,7 @@ struct Var {
 };
 
 typedef enum {
-    ND_ENUM_CONVERT, ND_MATCH, ND_CASE,
+    ND_ENUM_CONVERT, ND_MATCH, ND_CASE, ND_TRY, ND_THROW,
     ND_UNIT,
     ND_WIDE,
     ND_ADD,     /* + （str 同士なら連結） */
@@ -406,6 +406,8 @@ struct Function {
     int is_math_form;   /* double f(double x) = 式 の形で定義したら 1 */
     Node *body;         /* 文の連結リスト */
     Var *locals;        /* ローカル変数（const を含み、引数は含まない） */
+    int io_effect;     /* inferred recoverable I/O effect */
+    int io_caught;     /* reachable through a recovering handler */
     int stack_size;     /* ローカル変数の領域（16の倍数） */
     int label;          /* コード生成で使うラベル */
 };

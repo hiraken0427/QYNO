@@ -74,6 +74,16 @@ static void gen_print_value(Node *expr);
 #define EX_IOERR    74      /* sysexits.h：入出力の失敗 */
 
 #define OUTPUT_SINK 288
+#define FILE_CONTEXT 264
+#define FILE_PATH 272
+#define FILE_OS_ERROR 280
+#define IO_PENDING 304
+#define IO_SOURCE 312
+#define IO_OPERATION 320
+#define IO_LINE 328
+#define IO_COLUMN 336
+static int io_raise_label, io_empty_label, io_unhandled_label, io_report_label;
+static void gen_io_check(void);
 static int file_labels[BI_COUNT - BI_FILE_OPEN];
 static int file_write_all_label;
 static int file_error_label, file_validate_label, file_path_label, file_raw_close_label;
@@ -187,6 +197,7 @@ static void gen_entry_windows(void)
     x64_mov(R15, RSP);
     gen_input_state_init();     /* 入力の状態の領域を r14 に */
     x64_call(main_label);
+    x64_load(R11,R14,IO_PENDING);x64_test(R11,R11);x64_jcc(CC_NZ,io_unhandled_label);
 
     /* ここから終了処理（rax が終了コード。実行時エラーもここへ来る） */
     x64_bind(exit_label);
@@ -210,6 +221,7 @@ static void gen_entry_linux(void)
     x64_mov(R15, RSP);
     gen_input_state_init();
     x64_call(main_label);
+    x64_load(R11,R14,IO_PENDING);x64_test(R11,R11);x64_jcc(CC_NZ,io_unhandled_label);
     x64_bind(exit_label);
     x64_mov(RSP, R15);
     x64_mov(RBX, RAX);
@@ -1355,6 +1367,7 @@ static void gen_char_check(Token *tok, int code)
 }
 
 #include "collections_codegen.inc"
+#include "recoverable_runtime.inc"
 #include "file_runtime.inc"
 #include "complex_codegen.inc"
 
@@ -1737,14 +1750,14 @@ static void gen_chain(Node *node)
     gen_expr(node->lhs->lhs);
     if (type_is_model(node->lhs->lhs->ty)) x64_call(type_model(node->lhs->lhs->ty)->copy_label);
     if (type_is_array(node->lhs->lhs->ty)) {
-        x64_load(RDI, RAX, 16); x64_xor(RSI, RSI); x64_call(array_copy_label);
+        x64_load(RDI, RAX, 16); x64_xor(RSI, RSI); x64_call(array_copy_label);gen_io_check();
     }
     push();
     for (cmp = node->lhs; cmp != NULL; cmp = cmp->next) {
         gen_expr(cmp->rhs);
         if (cmp->next != NULL && type_is_model(cmp->rhs->ty)) x64_call(type_model(cmp->rhs->ty)->copy_label);
         if (cmp->next != NULL && type_is_array(cmp->rhs->ty)) {
-            x64_load(RDI, RAX, 16); x64_xor(RSI, RSI); x64_call(array_copy_label);
+            x64_load(RDI, RAX, 16); x64_xor(RSI, RSI); x64_call(array_copy_label);gen_io_check();
         }
         pop(RDI);
         if (cmp->next != NULL) {
@@ -1950,7 +1963,7 @@ static void gen_builtin(Node *node)
 #define ST_WWIDTH     (ST_RAW + 16)     /* 画面の幅 */
 #define ST_HOUT       (ST_RAW + 24)     /* 標準出力のハンドル */
 #define ST_WOLDEND    (ST_RAW + 32)     /* 前回描いた行の終わりの位置（行 × 幅 + 列） */
-#define STATE_SIZE    304
+#define STATE_SIZE    352
 
 #define STD_INPUT_HANDLE (-10)
 
@@ -5305,6 +5318,21 @@ static void gen_var_addr(Var *v, Token *tok, int check)
 }
 
 
+typedef struct IoScope IoScope;
+struct IoScope { IoScope *outer; Node *node; int error_label, stack_depth, loops; };
+static IoScope *io_scope;
+static int io_function_error;
+static Node *io_catch;
+static void gen_io_check(void)
+{
+    int ok=rt_label("io.call.ok");
+    if(!emitting_function)return;
+    x64_load(R11,R14,IO_PENDING);x64_test(R11,R11);x64_jcc(CC_Z,ok);
+    x64_lea(RSP,RBP,-emitting_function->stack_size-(io_scope?io_scope->stack_depth*8:0));
+    x64_jmp(io_scope?io_scope->error_label:io_function_error);
+    x64_bind(ok);
+}
+
 /* 関数呼び出し：引数を左から順に積み、呼び出した後に取り除く */
 static void gen_call(Node *node)
 {
@@ -5315,6 +5343,8 @@ static void gen_call(Node *node)
     int base;
     int slot;
     int i;
+    IoScope *outer=io_scope,argument_scope;
+    int failed=0,finished=0,baseline=depth;
     for (arg = node->lhs; arg != NULL; arg = arg->next)
         if (arg->kind == ND_REFARG)
             for (part = arg->lhs; part->kind == ND_INDEX; part = part->lhs) owners++;
@@ -5329,11 +5359,14 @@ static void gen_call(Node *node)
             x64_add_imm(RSP, 8 * node->nargs);
             depth -= node->nargs;
         }
-        return;
+        gen_io_check();return;
     }
     bytes = ((node->nargs + owners) * 8 + 15) / 16 * 16;
     base = emitting_function->stack_size + depth * 8 + bytes;
     if (bytes) { x64_sub_imm(RSP, bytes); depth += bytes / 8; }
+    failed=rt_label("io.arguments.failed");finished=rt_label("io.arguments.done");
+    argument_scope=(IoScope){outer,NULL,failed,depth,loop_depth};io_scope=&argument_scope;
+    for(i=node->nargs;i<node->nargs+owners;i++)x64_store_imm(RBP,-base+i*8,0);
     slot = node->nargs;
     i = 0;
     for (arg = node->lhs; arg != NULL; arg = arg->next, i++) {
@@ -5344,6 +5377,7 @@ static void gen_call(Node *node)
         gen_expr(arg);
         x64_store(RBP, -base + i * 8, RAX);
     }
+    io_scope=outer;
     for (i = 0; i < node->nargs; i++) {
         x64_load(RAX, RBP, -base + i * 8);
         push();
@@ -5361,13 +5395,22 @@ static void gen_call(Node *node)
         x64_store(RDX, 32, RCX);
     }
     if (bytes) { x64_add_imm(RSP, bytes); depth -= bytes / 8; }
+    gen_io_check();x64_jmp(finished);
+    x64_bind(failed);
+    for(i=node->nargs;i<node->nargs+owners;i++){
+        int unpinned=rt_label("io.argument.unpinned");
+        x64_load(RDX,RBP,-base+i*8);x64_test(RDX,RDX);x64_jcc(CC_Z,unpinned);
+        x64_load(RCX,RDX,32);x64_sub_imm(RCX,1);x64_store(RDX,32,RCX);x64_bind(unpinned);
+    }
+    x64_lea(RSP,RBP,-emitting_function->stack_size-baseline*8);gen_io_check();
+    x64_bind(finished);
 }
 
 /* 式を評価し、結果を rax に入れる */
 static void gen_expr_inner(Node *node);
 static void gen_expr(Node *node)
 {
-    gen_expr_inner(node);
+    gen_expr_inner(node);gen_io_check();
     if(node->ty==TY_VOID)x64_xor(RAX,RAX);
     if (type_is_integer(node->ty)) gen_integer_normalize(node->ty);
 }
@@ -5402,7 +5445,7 @@ static void gen_expr_inner(Node *node)
         collection_context(node->tok);
         collection_shape(node->ty, node->dims, RDI);
         x64_mov_imm(RSI, node->kind == ND_ARRAY_NEW ? 1 : node->val);
-        x64_call(array_copy_label);
+        x64_call(array_copy_label);gen_io_check();
         return;
     case ND_METHOD:
         gen_array_method(node);
@@ -5611,6 +5654,9 @@ static void gen_file_context(Node *node)
     x64_lea_data(R11, prog_add_str(prog, prefix, (size_t)n));
     x64_store(R14, FILE_CONTEXT, R11);
     x64_store_imm(R14, FILE_PATH, 0); x64_store_imm(R14, FILE_OS_ERROR, 0);
+    x64_lea_data(R11,prog_add_str(prog,node->tok->source->filename,strlen(node->tok->source->filename)));x64_store(R14,IO_SOURCE,R11);
+    x64_lea_data(R11,prog_add_str(prog,builtin_name((Builtin)node->val),strlen(builtin_name((Builtin)node->val))));x64_store(R14,IO_OPERATION,R11);
+    x64_store_imm(R14,IO_LINE,node->tok->line);x64_store_imm(R14,IO_COLUMN,node->tok->col);
 }
 
 static void gen_file_builtin(Node *node)
@@ -5637,7 +5683,7 @@ static void gen_file_builtin(Node *node)
         gen_file_context(node);
         x64_load(RAX, RSP, 8); x64_mov_imm(RDI, 2); x64_call(file_check_label);
         x64_load(RAX, RSP, 0); x64_call(file_string_label); x64_mov(RDI, RAX);
-        pop(RDX); pop(RAX); x64_call(file_labels[BI_FILE_WRITE - BI_FILE_OPEN]);
+        pop(RDX); pop(RAX); x64_call(file_labels[BI_FILE_WRITE - BI_FILE_OPEN]);gen_io_check();
     } else {
         Function function = {0};
         Node call = *node;
@@ -5683,14 +5729,16 @@ static void gen_print(Node *node)
 }
 
 static void gen_stmt(Node *node);
+static void gen_try(Node *node);
+static void gen_io_finalizers(int target_loop);
 
 static void gen_stmts(Node *list)
 {
-    Node *node;
+    Node *node;int baseline=depth;
 
     for (node = list; node != NULL; node = node->next) {
         gen_stmt(node);
-        if (depth != 0) {
+        if (depth != baseline) {
             fatal("内部エラー: スタックの深さが %d のままです", depth);
         }
     }
@@ -5869,6 +5917,9 @@ static void gen_for(Node *node)
 static void gen_stmt(Node *node)
 {
     switch (node->kind) {
+    case ND_TRY:gen_try(node);return;
+    case ND_THROW:
+        x64_load(RAX,RBP,-io_catch->var->offset);x64_store(R14,IO_PENDING,RAX);gen_io_check();return;
     case ND_BUILD_REJECT: {
         char reason[256];
         gen_creation_context(node->tok); x64_store(R14, COLLECTION_CONTEXT, RAX);
@@ -5885,9 +5936,11 @@ static void gen_stmt(Node *node)
         gen_for(node);
         return;
     case ND_BREAK:
+        gen_io_finalizers(loop_depth);
         x64_jmp(break_labels[loop_depth - 1]);
         return;
     case ND_CONTINUE:
+        gen_io_finalizers(loop_depth);
         x64_jmp(continue_labels[loop_depth - 1]);
         return;
     case ND_DECL:
@@ -5917,7 +5970,7 @@ static void gen_stmt(Node *node)
         if (type_is_model(node->var->ty)) x64_call(type_model(node->var->ty)->copy_label);
         if (type_is_array(node->var->ty)) {
             push(); gen_load_var(node->var, node->tok); x64_load(RDI, RAX, 16); pop(RAX);
-            collection_context(node->tok); x64_xor(RSI, RSI); x64_call(array_copy_label);
+            collection_context(node->tok); x64_xor(RSI, RSI); x64_call(array_copy_label);gen_io_check();
         }
         gen_store_var(node->var, node->tok);
         return;
@@ -5938,6 +5991,7 @@ static void gen_stmt(Node *node)
         } else {
             x64_mov_imm(RAX, 0);
         }
+        push();gen_io_finalizers(0);pop(RAX);
         x64_jmp(return_label);
         return;
     case ND_EXPR_STMT:
@@ -5953,11 +6007,13 @@ static void gen_stmt(Node *node)
     }
 }
 
+#include "recoverable_codegen.inc"
+
 static void gen_function(Function *fn)
 {
     char label_name[128];
     emitting_function = fn;
-    depth = 0;
+    depth = 0;io_scope=NULL;io_catch=NULL;io_function_error=rt_label("io.function.error");
 
     snprintf(label_name, sizeof(label_name), ".L.return.%d", fn->label);
     return_label = x64_new_label(label_name);
@@ -5976,6 +6032,8 @@ static void gen_function(Function *fn)
     /* return がなかったとき（main と void の関数）は 0 を返す */
     x64_mov_imm(RAX, 0);
 
+    x64_jmp(return_label);
+    x64_bind(io_function_error);x64_xor(RAX,RAX);
     /* エピローグ */
     x64_bind(return_label);
     x64_mov(RSP, RBP);
@@ -6118,6 +6176,10 @@ void codegen(Ast *ast, Program *out_prog, FILE *out_text, Target out_target)
         }
     }
     file_write_all_label = x64_new_label(".L.qy_file_write_all");
+    io_raise_label=x64_new_label(".L.qy_io_raise");
+    io_empty_label=x64_new_label(".L.qy_io_empty");
+    io_unhandled_label=x64_new_label(".L.qy_io_unhandled");
+    io_report_label=x64_new_label(".L.qy_io_report");
     file_error_label = x64_new_label(".L.qy_file_error");
     file_validate_label = x64_new_label(".L.qy_file_validate");
     file_path_label = x64_new_label(".L.qy_file_path");

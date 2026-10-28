@@ -10,8 +10,11 @@
 | 8 | 0.27.0 | 標準関数のusing統一、lib.size / lib.length、io.path基本9関数 | 実装済み |
 | 9 | 0.27.1 | バイナリモードrb/wb/ab、read_bytes / write_bytes | 実装済み |
 | 10 | 0.27.1追加改訂（指定） | 独立enum、enum用match、型推論・入出力・エディターへの統合 | 実装済み |
+| 11 | 0.27.2 | io.ErrorCode / io.Error / try_open、try/case/finallyと再送出、回復経路のclose検査 | 実装済み |
 
 仕様: [モジュールの公開制御](module-visibility.md)、[標準ライブラリ0.27.0仕様](standard-library-0270-design.md)、
 [バイナリファイル操作0.27.1仕様](binary-file-design.md)。
 [列挙型と関連機能の仕様](enums-design.md)を参照。
-新段階11以降は、enumを使った回復可能I/O、その後のファイル位置操作などを候補とし、実装指示で確定する。
+[回復可能I/Oとtry制御文の仕様](recoverable-io-design.md)を参照。
+新段階11は0.27.2で実装した。その後は部分転送を扱うtry_read / try_write、
+ファイル位置操作などを候補とする。

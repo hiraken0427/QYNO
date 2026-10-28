@@ -91,6 +91,9 @@ static Function *cur_func;
 static int allow_void;          /* 次に調べる呼び出しが文として使われるなら 1 */
 static int const_check_depth;
 static int function_check_depth;
+static int io_has_recovery;
+static Type io_standard_type(const char *name);
+static void check_try_open(Node *node);
 
 /* const の計算に使う値 */
 typedef struct {
@@ -453,6 +456,7 @@ static void check_file_builtin(Node *node)
     Node *second = first != NULL ? first->next : NULL;
     int expected = b == BI_FILE_READLINE || b == BI_FILE_WRITE || b == BI_FILE_READ_BYTES || b == BI_FILE_WRITE_BYTES ? 2 : 1;
     allow_void = 0;
+    if(b==BI_FILE_TRY_OPEN){check_try_open(node);return;}
     if (node->nargs != expected && !(b == BI_FILE_OPEN && node->nargs == 2))
         error_tok(node->tok, "io.file.%s の引数の数が不正です（%d 個）", builtin_name(b), node->nargs);
     if ((b == BI_FILE_READ_BYTES || b == BI_FILE_WRITE_BYTES) && first->kind == ND_REFARG)
@@ -1967,6 +1971,7 @@ static int has_break(Node *list)
         if (node->kind == ND_BREAK) {
             return 1;
         }
+        if(node->kind==ND_TRY){Node *arm;if(has_break(node->then)||has_break(node->rhs))return 1;for(arm=node->els;arm;arm=arm->next)if(has_break(arm->then))return 1;}
         if (node->kind == ND_IF && (has_break(node->then) || has_break(node->els))) {
             return 1;
         }
@@ -1977,6 +1982,13 @@ static int has_break(Node *list)
 static int stmt_returns(Node *node)
 {
     switch (node->kind) {
+    case ND_THROW:return 1;
+    case ND_TRY: {
+        Node *arm;
+        if(!stmts_return(node->then))return 0;
+        for(arm=node->els;arm;arm=arm->next)if(!stmts_return(arm->then))return 0;
+        return 1;
+    }
     case ND_RETURN:
         return 1;
     case ND_IF:
@@ -2002,10 +2014,13 @@ static int stmts_return(Node *list)
 }
 
 #include "match_type.inc"
+#include "recoverable_type.inc"
 
 static void check_stmt(Node *node)
 {
     switch (node->kind) {
+    case ND_TRY:check_try(node);return;
+    case ND_THROW:return;
     case ND_MATCH:check_match(node);return;
     case ND_DECL:
         if (node->var->is_const) {
@@ -2237,6 +2252,7 @@ static void check_names(Ast *ast)
 }
 
 #include "initialization_flow.inc"
+#include "recoverable_effects.inc"
 #include "file_close_analysis.inc"
 #include "interfaces_specialize.inc"
 #include "inference_warnings.inc"
@@ -2286,6 +2302,7 @@ void typecheck(Ast *ast, Target out_target)
     check_implementations(ast);
     for (fn = ast->funcs; fn; fn = fn->next) if (fn->is_initializer) check_initializer_completion(fn);
     specialize_interfaces(ast);
+    check_io_effects(ast);
     check_file_closes(ast);
     warn_unused_inferred_locals(ast);
     cur_func = NULL;

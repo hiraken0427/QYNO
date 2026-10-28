@@ -156,5 +156,19 @@
       "\t\treturn"
     ],
     "description": "enumの分岐。全件列挙またはelseが必要"
+  },
+  "Try I/O": {
+    "prefix": "try",
+    "body": [
+      "try(${1:operation}) as ${2:error};",
+      "\t${3:success}",
+      "case(io.ErrorCode.not_found);",
+      "\t${4:recovery}",
+      "case();",
+      "\tthrow;",
+      "finally;",
+      "\t${5:cleanup}"
+    ],
+    "description": "回復可能I/O、エラー処理と明示的な後処理"
   }
 }

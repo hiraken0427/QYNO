@@ -1,0 +1,13 @@
+using io
+
+int main();
+	file source
+	try(source = file.open("qyno-settings-example.txt")) as error;
+		print(file.read(source))
+	case(ErrorCode.not_found);
+		print("設定ファイルがないため、既定値を使用します")
+	case();
+		print("{error.operation}: {error.message}")
+	finally;
+		file.close(source)
+	return 0

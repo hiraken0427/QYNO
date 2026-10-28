@@ -1,3 +1,8 @@
+# 0.27.2
+
+- io.ErrorCode / io.Error / io.file.try_openの補完・型情報を追加。
+- try / case / finally / throwの色分け・スコープ・エラー変数の補完とコンパイラ診断に対応。
+
 # Changelog
 
 ## 0.27.1 追加改訂

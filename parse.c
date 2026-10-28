@@ -74,7 +74,7 @@ static Node *stmt(void);
 static const char *keywords[] = {
     "complex", "complex_64", "complex_128", "int", "int_8", "int_16", "int_32", "int_64", "int_128", "half", "quadruple", "unsigned", "float", "double", "bool", "str", "char", "void", "Void", "file", "const", "auto",
     "true", "false", "return", "print", "if", "else", "for", "while",
-    "break", "continue", "and", "or", "xor", "bnot", "not", "struct", "enum", "match", "case", "import", "of", "using", "input",
+    "break", "continue", "and", "or", "xor", "bnot", "not", "struct", "enum", "match", "case", "try", "finally", "throw", "import", "of", "using", "input",
     "ref", "val", "none", "as", "interface", "implements", "model", "public", "private", "readonly",
     NULL
 };
@@ -1695,6 +1695,46 @@ static Node *match_stmt(Token *start)
     return node;
 }
 
+static Node *try_stmt(Token *start)
+{
+    Node *n=new_node(ND_TRY,start), **tail=&n->els;
+    Var *saved, *binding=NULL;
+    if(consume("(")) {
+        Node *value;
+        if(tok->kind==TK_IDENT && is_update_op(tok->next)) {
+            Token *name=tok; tok=tok->next; n->lhs=update(name,NULL,NULL);
+        } else {
+            value=expr();
+            if(consume("=")) { n->lhs=new_node(ND_STORE,value->tok);n->lhs->lhs=value;n->lhs->rhs=expr();n->lhs->val=UPDATE_SET; }
+            else n->lhs=new_unary(ND_EXPR_STMT,value,start);
+        }
+        expect(")");
+    }
+    if(consume("as")) {
+        Token *name=tok; if(is_keyword(tok))error_tok(tok,"エラーの名前に予約語は使えません");expect_kind(TK_IDENT,"エラーの名前が必要です");
+        binding=hidden_var(named_type(name,"io.Error",local_usings),name);
+        binding->name=name->loc;binding->name_len=name->len;binding->is_readonly=1;
+    }
+    n->var=binding?binding:hidden_var(named_type(start,"io.Error",local_usings),start);
+    n->ref_temp=hidden_var(TY_ADDR,start);
+    expect(";");n->then=block("try の本体は1段インデントしてください");
+    while(consume("case")) {
+        Node *arm=new_node(ND_CASE,start), **values=&arm->lhs;
+        arm->tok=tok;expect("(");
+        if(!consume(")")) {
+            do {*values=expr();values=&(*values)->next;}while(consume(","));
+            expect(")");
+        }
+        expect(";");saved=visible;
+        if(binding){binding->vnext=visible;visible=binding;}
+        arm->then=block("case の本体は1段インデントしてください");visible=saved;
+        *tail=arm;tail=&arm->next;
+    }
+    if(consume("finally")){expect(";");n->rhs=block("finally の本体は1段インデントしてください");}
+    if(!n->els&&!n->rhs)error_tok(start,"try には case または finally が必要です");
+    return n;
+}
+
 /* stmt = return 文 | print 文 | if 文 | while 文 | for 文 | break() | continue() | const 定数 | 変数宣言 | 更新 */
 static Node *stmt(void)
 {
@@ -1726,6 +1766,12 @@ static Node *stmt(void)
         expect_kind(TK_NEWLINE, "文の終わりには改行が必要です");
         return node;
     }
+    if (consume("try")) return try_stmt(start);
+    if (consume("throw")) {
+        node=new_node(ND_THROW,start);expect(";");
+        expect_kind(TK_NEWLINE,"throw; の後は改行してください");return node;
+    }
+    if(equal(tok,"case")||equal(tok,"finally"))error_tok(tok,"対応する try がありません");
     if (consume("match")) return match_stmt(start);
     if (consume("if")) {
         return if_stmt(start);

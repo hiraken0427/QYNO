@@ -30,6 +30,12 @@ static void rt_leave(void)
     x64_ret();
 }
 
+static void io_rt_check(void)
+{
+    int ok=rt_label("io.helper.ok");
+    x64_load(R11,R14,IO_PENDING);x64_test(R11,R11);x64_jcc(CC_Z,ok);rt_leave();x64_bind(ok);
+}
+
 static void rt_load(Reg reg, int slot) { x64_load(reg, RBP, -slot * 8); }
 static void rt_save(int slot, Reg reg) { x64_store(RBP, -slot * 8, reg); }
 static void rt_set(int slot, long long value) { x64_store_imm(RBP, -slot * 8, value); }

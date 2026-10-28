@@ -741,3 +741,32 @@ test('imported enum types and selective members honor module privacy',()=>{
     assert.ok(labels('import profile\nusing profile.sex\nint main();\n\tsex.¦',files).includes('female'));
     assert.ok(labels('import profile\nusing profile.sex.female\nint main();\n\tfe¦',files).includes('female'));
 });
+
+test('recoverable I/O standard types codes and signatures require only using', () => {
+    assert.ok(labels('int main();\n\tio.¦').includes('Error'));
+    assert.ok(labels('int main();\n\tio.¦').includes('ErrorCode'));
+    assert.ok(labels('using io\nint main();\n\t¦').includes('Error'));
+    assert.ok(!labels('int main();\n\t¦').includes('Error'));
+    assert.ok(labels('int main();\n\tio.ErrorCode.¦').includes('not_found'));
+    assert.equal(at('int main();\n\tio.ErrorCode.not_fo¦und').kind,'enumMember');
+    const open=hint('using io.file as fs\nint main();\n\tfs.try_open(¦');
+    assert.ok(open.label.includes('ref file destination'));
+    assert.ok(open.label.includes('ref io.Error error'));
+});
+
+test('try error bindings are readonly and visible only in sibling case bodies', () => {
+    const text='using io\nint main();\n\ttry(io.file.open("missing")) as error;\n\t\tint local=1\n\tcase(ErrorCode.not_found);\n\t\terror.¦\n\tcase();\n\t\tio.print(error.code)\n\tfinally;\n\t\tio.print(0)';
+    const result=items(text);
+    assert.ok(result.some(i=>i.label==='code'&&i.symbol.type==='io.ErrorCode'&&i.symbol.readonly));
+    assert.ok(result.some(i=>i.label==='operation'));
+    assert.ok(!labels(text.replace('error.¦','¦')).includes('local'));
+    assert.ok(!labels('int main();\n\ttry as error;\n\t\t¦\n\tcase();\n\t\tio.print(error.code)').includes('error'));
+    assert.ok(!labels('int main();\n\ttry as error;\n\t\tio.print(0)\n\tcase();\n\t\tio.print(error.code)\n\tfinally;\n\t\t¦').includes('error'));
+    assert.equal(at('int main();\n\ttry as failure;\n\t\tio.print(0)\n\tcase();\n\t\tio.print(fail¦ure.code)').line,1);
+});
+
+test('try cases offer standard error codes and preserve ordinary match cases', () => {
+    assert.ok(labels('int main();\n\ttry;\n\t\tio.print(0)\n\tcase(not_¦').includes('not_found'));
+    assert.ok(labels('using io\nint main();\n\tError error\n\terror.code=not_¦').includes('not_found'));
+    for(const keyword of ['try','finally','throw'])assert.ok(labels('int main();\n\t¦').includes(keyword));
+});

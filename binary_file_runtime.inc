@@ -16,7 +16,7 @@ static void gen_file_binary_runtime(void)
     collection_shape(array_type(TY_U8), NULL, RDI); x64_store(RAX, 16, RDI);
     x64_store_imm(RAX, 24, 0); x64_store_imm(RAX, 32, 0);
     x64_bind(loop); rt_load(RAX, 2); x64_test(RAX, RAX); x64_jcc(CC_Z, done);
-    rt_load(RAX, 1); x64_call(file_getc_label); rt_cmp(RAX, -1); x64_jcc(CC_Z, done);
+    rt_load(RAX, 1); file_io_call(file_getc_label); rt_cmp(RAX, -1); x64_jcc(CC_Z, done);
     x64_mov(RDI, RAX); rt_load(RAX, 3); x64_call(array_add_label);
     rt_load(RAX, 2); x64_sub_imm(RAX, 1); rt_save(2, RAX); x64_jmp(loop);
     x64_bind(done); rt_load(RAX, 3); rt_leave();
@@ -38,7 +38,7 @@ static void gen_file_binary_runtime(void)
       x64_bind(pack); x64_cmp(RCX, RDX); x64_jcc(CC_AE, packed);
       x64_load(R8, RSI, 0); x64_store8(RDI, 0, R8); x64_add_imm(RSI, 8); x64_add_imm(RDI, 1);
       x64_add_imm(RCX, 1); x64_jmp(pack);
-      x64_bind(packed); rt_load(RAX, 1); rt_load(RSI, 4); rt_load(RDX, 5); x64_call(file_write_all_label);
+      x64_bind(packed); rt_load(RAX, 1); rt_load(RSI, 4); rt_load(RDX, 5); file_io_call(file_write_all_label);
       rt_load(RCX, 3); x64_add(RAX, RCX); rt_save(3, RAX); x64_jmp(loop);
       x64_bind(done); rt_load(RAX, 3); rt_leave(); }
 }
