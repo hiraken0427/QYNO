@@ -277,3 +277,18 @@ Stopwatchのスイートは通常コンパイラと同じソースからテス�
 VS Code単体テスト129件、VS Code 1.85.2の実機チェック170項目も成功した。
 新規62メソッドのWindows生成プログラムによる検証では54件が成功し、Linux専用8件をskipした。
 WindowsのAPI失敗は生成PEへの呼び出し結果注入でも確認し、LinuxのerrnoとWindowsのエラー番号を区別する。
+
+
+## 作業ディレクトリ（0.27.4）
+
+`make test-directory`は28メソッド。相対・絶対・Unicode・128バイトを超えるパス、
+currentの独立したstr、absoluteの存在しない対象・空文字・..保持、失敗時の作業位置維持、
+fileハンドルと相対open、finally、モジュール経由の伝播とclose解析を検証する。
+Linux専用4件はsyscall中断・失敗・到達不能なcwd、リンク、無効UTF-8、権限を扱う。
+Windows専用3件はAPI結果注入により、絶対パスがcwdを取得しないこと・エラー分類・厳密なUnicode変換を確認する。
+Windowsでは`QYNO_FILE_TARGET=windows QYNO_FILE_WINDOWS_RUNNER=/absolute/path/to/runner`を指定する。
+
+0.27.4の最終make testはshellチェック326件、Python 1,164メソッド（Windows専用3件skip）で失敗0。
+新規28メソッドはLinuxで25件成功・3件skip、Windows生成プログラムで24件成功・4件skip。
+UBSan・GC頻発設定でもLinuxの同じ28メソッドが通過した。
+VS Code単体130件、VS Code 1.85.2実機176項目が成功し、VSIXを作成した。

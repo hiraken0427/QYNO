@@ -1,3 +1,9 @@
+# 0.27.4
+
+- io.dir.current / change、io.path.absoluteの補完・ホバー・引数ヒントを追加。
+- io.dirのusing・別名とErrorCode.not_directoryに対応。
+- 0.27.4のqycによるディレクトリAPIの型・引数・const診断に対応。
+
 # 0.27.3
 
 - io.fileの位置・サイズ・更新日時とSeekOriginの補完を追加。

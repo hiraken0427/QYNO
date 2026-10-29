@@ -11,7 +11,7 @@ function environment(project, line, character) {
     const names = new Map();
     const namespace = path => ({ name: path.split('.').at(-1), path, kind: 'namespace', documentation: `${path} 名前空間` });
     const exported = (path) => {
-        if (['io', 'io.file', 'io.path', 'math', 'lib', 'time'].includes(path)) return namespace(path);
+        if (['io', 'io.file', 'io.path', 'io.dir', 'math', 'lib', 'time'].includes(path)) return namespace(path);
         const builtin = STANDARD.find(s => s.path === path);
         if (builtin) return builtin;
         const enumeration=STANDARD.find(s=>s.kind==='enum'&&path.startsWith(s.path+'.'));
@@ -44,7 +44,7 @@ function environment(project, line, character) {
         if (resolved?.kind !== 'namespace') return [];
         const full = resolved.path, result = new Map();
         for (const item of STANDARD) if (item.path.startsWith(full + '.') && !item.path.slice(full.length + 1).includes('.')) result.set(item.name, item);
-        if (full === 'io') for(const child of ['file','path']) result.set(child, namespace('io.'+child));
+        if (full === 'io') for(const child of ['file','path','dir']) result.set(child, namespace('io.'+child));
         for (const imported of imports) if (imported.startsWith(full + '.')) {
             const child = imported.slice(full.length + 1).split('.')[0];
             result.set(child, namespace(full + '.' + child));

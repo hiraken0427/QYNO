@@ -268,3 +268,7 @@ lib.size(file)でファイル内容のサイズを取得する仕様にはしな
 - パスはLinuxとWindowsで区切り・ルート・UNC・ドライブ相対・空文字・ドット名・拡張子・NUL・UTF-8を確認。
 - クロスコンパイルの定数評価と生成プログラムの実行がターゲットOSの規則で一致することを確認。
 - Linux / Windows出力、アセンブリ出力、VS Codeのusing有無での補完・赤線・引数表示を検証する。
+
+0.27.4では[作業ディレクトリの仕様](process-path-random-design.md)に従い、
+io.dir.current / changeと、実行時状態に依存するio.path.absoluteを追加した。
+既存の基本9関数は純粋な文字列操作のままとする。

@@ -93,6 +93,10 @@ static int file_getc_label, file_text_label;
 static int file_raw_seek_label,file_stat_label;
 static int time_labels[T_COUNT],time_clock_label,time_sleep_label,time_timespec_label,time_filetime_label;
 static int time_date_type;
+static int directory_labels[3];
+static void gen_directory_runtime(void);
+static void gen_directory_builtin(Node *node);
+static void gen_call(Node *node);
 static void gen_time_runtime(void);
 static void gen_time_builtin(Node *node);
 static void gen_file_builtin(Node *node);
@@ -4856,6 +4860,7 @@ static void gen_real_to_float(int range)
 #include "models_codegen.inc"
 #include "places_codegen.inc"
 #include "library_codegen.inc"
+#include "directory_codegen.inc"
 #include "enums_codegen.inc"
 
 /*
@@ -5359,7 +5364,7 @@ static void gen_call(Node *node)
             gen_expr(arg);
             push();
         }
-        if (node->kind == ND_BUILTIN && (node->val >= BI_FILE_OPEN||builtin_is_time((int)node->val))) gen_file_context(node);
+        if (node->kind == ND_BUILTIN && (node->val >= BI_FILE_OPEN||builtin_is_directory((int)node->val)||builtin_is_time((int)node->val))) gen_file_context(node);
         if(node->kind==ND_CALL&&node->func->model&&node->func->tok->source->module->builtin&&!strcmp(node->func->tok->source->module->name,"time")&&!node->tok->source->module->builtin){
             char operation[128];snprintf(operation,sizeof(operation),"Stopwatch.%.*s",node->func->name_len,node->func->name);gen_os_context(node->tok,"time",operation);
         }
@@ -5391,7 +5396,7 @@ static void gen_call(Node *node)
         x64_load(RAX, RBP, -base + i * 8);
         push();
     }
-    if (node->kind == ND_BUILTIN && (node->val >= BI_FILE_OPEN||builtin_is_time((int)node->val))) gen_file_context(node);
+    if (node->kind == ND_BUILTIN && (node->val >= BI_FILE_OPEN||builtin_is_directory((int)node->val)||builtin_is_time((int)node->val))) gen_file_context(node);
     if(node->kind==ND_CALL&&node->func->model&&node->func->tok->source->module->builtin&&!strcmp(node->func->tok->source->module->name,"time")&&!node->tok->source->module->builtin){
         char operation[128];snprintf(operation,sizeof(operation),"Stopwatch.%.*s",node->func->name_len,node->func->name);gen_os_context(node->tok,"time",operation);
     }
@@ -5497,7 +5502,8 @@ static void gen_expr_inner(Node *node)
         return;
     case ND_BUILTIN:
         if (node->val == BI_COMPLEX) { gen_complex_constructor(node); return; }
-        if(builtin_is_time((int)node->val))gen_time_builtin(node);
+        if(builtin_is_directory((int)node->val))gen_directory_builtin(node);
+        else if(builtin_is_time((int)node->val))gen_time_builtin(node);
         else if(node->val>=BI_LIB_SIZE && node->val<BI_FILE_OPEN) gen_library_builtin(node);
         else if (node->val >= BI_FILE_OPEN) gen_file_builtin(node);
         else gen_builtin(node);
@@ -5674,6 +5680,7 @@ static void gen_os_context(Token *tok,const char *ns,const char *operation)
 
 static void gen_file_context(Node *node)
 {
+    if(builtin_is_directory((int)node->val))collection_context(node->tok);
     if(builtin_is_time((int)node->val)&&node->tok->source->module->builtin&&!strcmp(node->tok->source->module->name,"time"))return;
     gen_os_context(node->tok,builtin_namespace((Builtin)node->val),builtin_name((Builtin)node->val));
 }
@@ -6109,6 +6116,7 @@ void codegen(Ast *ast, Program *out_prog, FILE *out_text, Target out_target)
     time_date_type=standard_type(ast,"time","DateTime");
     x64_begin(prog, text);
     path_call_label=new_label("path.call");
+    {int op;for(op=0;op<3;op++)directory_labels[op]=new_label("directory.operation");}
     {EnumDef *e;for(e=ast->enums;e;e=e->next){e->check_label=new_label("enum.check");e->name_label=new_label("enum.name");e->parse_label=new_label("enum.parse");}}
     { Model *m;
       for (m = ast->models; m; m = m->next) {
@@ -6281,6 +6289,7 @@ void codegen(Ast *ast, Program *out_prog, FILE *out_text, Target out_target)
     gen_input_routines();
     gen_file_runtime();
     gen_time_runtime();
+    gen_directory_runtime();
     gen_model_runtime();
 
     /* ユーザーのプログラム */

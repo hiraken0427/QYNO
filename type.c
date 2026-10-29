@@ -160,7 +160,7 @@ static int is_float_literal(Node *node)
     case ND_INT_PARSE:
     case ND_INT_FORMAT:
     case ND_BUILTIN:
-        if(node->kind==ND_BUILTIN&&(node->val>=BI_FILE_OPEN||(builtin_is_time((int)node->val)&&!time_pure_builtin((int)node->val))))return 0;
+        if(node->kind==ND_BUILTIN&&(node->val>=BI_FILE_OPEN||builtin_is_directory((int)node->val)||(builtin_is_time((int)node->val)&&!time_pure_builtin((int)node->val))))return 0;
         for (arg = node->lhs; arg != NULL; arg = arg->next) {
             if (!is_float_literal(arg)) {
                 return 0;
@@ -544,6 +544,7 @@ static void check_file_builtin(Node *node)
  *   math.round・roundup・rounddown(x, 桁数?)  x は数値、桁数は int。戻り値は x の型
  *   int(x)・float(x)・double(x)  x は数値
  */
+#include "directory_type.inc"
 #include "library_type.inc"
 #include "time_type.inc"
 
@@ -567,6 +568,7 @@ static void check_builtin(Node *node)
             return;
         }
     }
+    if(builtin_is_directory(b)){check_directory_builtin(node);return;}
     if(builtin_is_time(b)){check_time_builtin(node);return;}
     if (b>=BI_LIB_SIZE && b<BI_FILE_OPEN) { check_library_builtin(node); return; }
     if (b >= BI_FILE_OPEN) { check_file_builtin(node); return; }
@@ -1519,6 +1521,7 @@ static Value eval_builtin(Node *node)
     Builtin b;
 
     b = (Builtin)node->val;
+    if(builtin_is_directory(b))const_error(node,"作業ディレクトリ操作は const の初期値に使えません");
     if(builtin_is_time(b))return eval_time_builtin(node);
     if(b>=BI_LIB_SIZE&&b<BI_FILE_OPEN)return eval_library_builtin(node);
     if (b >= BI_FILE_OPEN) const_error(node, "ファイル操作は const の初期値に使えません");
@@ -1792,7 +1795,7 @@ static int is_const_expr(Node *node)
     case ND_INT_PARSE:
     case ND_INT_FORMAT:
     case ND_BUILTIN:
-        if(node->kind==ND_BUILTIN&&(node->val>=BI_FILE_OPEN||(builtin_is_time((int)node->val)&&!time_pure_builtin((int)node->val))))return 0;
+        if(node->kind==ND_BUILTIN&&(node->val>=BI_FILE_OPEN||builtin_is_directory((int)node->val)||(builtin_is_time((int)node->val)&&!time_pure_builtin((int)node->val))))return 0;
         for (cmp = node->lhs; cmp != NULL; cmp = cmp->next) {
             if (!is_const_expr(cmp)) {
                 return 0;

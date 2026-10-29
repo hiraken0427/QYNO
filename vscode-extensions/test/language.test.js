@@ -801,3 +801,18 @@ test('file position signatures and enums resolve through namespaces and aliases'
     assert.ok(labels('int main();\n\ttime.Weekday.¦').includes('thursday'));
     assert.ok(labels('int main();\n\tio.ErrorCode.¦').includes('system_error'));
 });
+
+
+test('directory APIs require using and preserve process-relative path signatures', () => {
+    assert.ok(labels('int main();\n\tio.¦').includes('dir'));
+    assert.ok(labels('int main();\n\tio.dir.¦').includes('current'));
+    assert.ok(labels('using io.dir as directory\nint main();\n\tdirectory.¦').includes('change'));
+    assert.ok(labels('using io\nint main();\n\tdir.¦').includes('current'));
+    assert.ok(!labels('using io\nint main();\n\t¦').includes('current'));
+    assert.ok(labels('using io.dir\nint main();\n\t¦').includes('current'));
+    assert.ok(labels('using io.dir.current\nint main();\n\t¦').includes('current'));
+    assert.ok(labels('using io.path as path\nint main();\n\tpath.¦').includes('absolute'));
+    assert.equal(hint('int main();\n\tio.dir.change(¦').label,'void io.dir.change(str path)');
+    assert.equal(hint('int main();\n\tio.dir.current(¦').label,'str io.dir.current()');
+    assert.ok(labels('int main();\n\tio.ErrorCode.¦').includes('not_directory'));
+});

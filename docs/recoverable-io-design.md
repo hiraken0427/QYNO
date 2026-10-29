@@ -368,3 +368,7 @@ ZIPはコミット済みソースから作成し、展開後の全体テスト�
 - VS Code: 単体125件、VS Code 1.85.2実機161項目が成功。
 - VSIX: vscode-extensions/0.27.2_VSCode_option.vsix。
 - ZIP展開後の再ビルド・全体テストは実施しない。
+
+0.27.4でio.ErrorCode.not_directory=15を末尾へ追加した。
+io.dir.changeのENOTDIR / ERROR_DIRECTORYを分類し、既存file APIの分類は変更しない。
+ディレクトリとabsoluteも既存のtry・fileのclose解析へ統合する。
