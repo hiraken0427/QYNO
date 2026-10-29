@@ -6,10 +6,11 @@
 #include "wide_runtime.h"
 #include "time_runtime.h"
 #include "random_runtime.h"
+#include "text_runtime.h"
 #include "grapheme_runtime.h"
 #include <stdio.h>
 
-#define QYC_VERSION "0.27.6"
+#define QYC_VERSION "0.27.7"
 
 typedef struct SourceFile SourceFile;
 typedef struct Module Module;
@@ -308,6 +309,7 @@ typedef enum {
     ND_CONSTRUCT, ND_MODEL_SEED, ND_BUILD_CONTEXT, ND_BUILD_REJECT,
     ND_MODEL_NEW, /* default value via the per-model runtime helper */
     ND_MODEL_METHOD,
+    ND_TEXT_METHOD,
     ND_FIELD,
     ND_ARRAY_LITERAL, /* lhs が要素の並び。nargs は要素数 */
     ND_ARRAY_NEW,     /* 宣言に基づく初期配列 */

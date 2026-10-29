@@ -325,3 +325,28 @@ PEのインポートはkernel32・bcrypt・ntdllごとに終端を持つ。既�
 0.27.6の最終make testはshell326件・Python1,227メソッド（Windows専用7件skip）、失敗0。
 新規のエンジン7件・コンパイラ32件を検証し、Windowsの生成プログラムと複数DLLのPEも確認した。
 UBSan・GC頻発設定が通過。VS Code単体133件・実機188項目が成功し、VSIXを作成した。
+
+## 文字列メソッド（0.27.7）
+
+`make test-text-methods` は共通エンジン7メソッドと言語実行29メソッドを実行する。
+Unicode 17の公式766境界例を独立した検索オラクルとして用い、KMPの一致境界、
+空文字列、NUL、全25種のWhite_Space、重なり、置換後のクラスタ結合を確認する。
+固定シードの性質検査、長い反復入力、容量・サイズ超過のガードも含む。
+constと実行時の一致、char / readonly / auto / generic / model / モジュール、
+配列の値コピー・ref、引数の評価順とスナップショット、I/O伝播・close解析、
+不正UTF-8の終了コード65、動的な空区切りの70、-S経由を確認する。
+
+```bash
+make test-text-methods
+QYNO_TEXT_CHECKED=1 python3 tests/text_engine_test.py
+QYNO_FILE_TARGET=windows QYNO_FILE_WINDOWS_RUNNER=/path/to/wine-runner python3 tests/text_methods_test.py ./qyc
+```
+
+最後のWindows実行ではLinux用GNUアセンブラーの1件をskipする。
+
+0.27.7の最終検証: make testを1回実行し、shell326件・Python1,263メソッド
+（Windows専用7件skip）、失敗0。文字列の新規検証は共通エンジン7件・言語実行29件。
+Unicode公式766境界例、UBSan付き共通エンジンとコンパイラ、GC間隔256での
+257要素のsplit / 値コピー / 更新 / replaceを検証した。
+VS Code単体138件・実機203項目が成功し、0.27.7のVSIXを作成した。
+Windows生成プログラムでも新規29件を実行し、LinuxのGNUアセンブラー専用1件をskipして成功した。

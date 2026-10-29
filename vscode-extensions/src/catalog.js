@@ -1,5 +1,5 @@
 'use strict';
-// Reference: QYNO 0.27.6. No runtime dependency on a compiler installation.
+// Reference: QYNO 0.27.7. No runtime dependency on a compiler installation.
 const callable = (path, type, params, documentation) => ({
     kind: 'function', name: path.split('.').at(-1), path, type, rank: 0,
     params: params.map(p => typeof p === 'string' ? { name: p, type: 'value', rank: 0 } : { rank: 0, ...p }),
@@ -98,6 +98,15 @@ const STANDARD = [
     callable('io.file.exists', 'bool', [{ name: 'path', type: 'str', placeholder: '"path.txt"' }], '通常ファイルの存在を確認します。相対パスは実行時の作業ディレクトリが基準です。')
 ];
 const KEYWORD_COMPLETIONS = ['complex', 'complex_64', 'complex_128', 'int', 'int_8', 'int_16', 'int_32', 'int_64', 'int_128', 'half', 'quadruple', 'unsigned', 'float', 'double', 'bool', 'str', 'char', 'file', 'void', 'Void', 'auto', 'const', 'ref', 'val', 'return', 'if', 'else', 'for', 'while', 'break', 'continue', 'and', 'or', 'xor', 'bnot', 'not', 'true', 'false', 'none', 'import', 'using', 'as', 'enum', 'match', 'case', 'try', 'finally', 'throw', 'model', 'interface', 'implements', 'public', 'private', 'readonly'];
+const TEXT_METHODS = [
+    callable('contains','bool',[{name:'value',type:'str / char'}],'書記素境界で完全一致する部分を含むか。空検索はtrue。'),
+    callable('starts_with','bool',[{name:'value',type:'str / char'}],'書記素境界で先頭から完全一致するか。'),
+    callable('ends_with','bool',[{name:'value',type:'str / char'}],'書記素境界で末尾まで完全一致するか。'),
+    callable('find','int_64',[{name:'value',type:'str / char'}],'最初の一致の書記素番号。未検出は-1、空検索は0。'),
+    callable('trim','str',[],'両端のUnicode 17 White_Spaceクラスタを除いた新しい文字列。'),
+    {...callable('split','str',[{name:'separator',type:'str / char'}],'完全一致で分割し、空要素を保持。空区切りはエラー。'),rank:1},
+    callable('replace','str',[{name:'old',type:'str / char'},{name:'new',type:'str / char'}],'元の文字列の重ならない一致を全置換。空oldはエラー。')
+].map(method=>({...method,readonly:true}));
 const properties = {
     real: { name:'real',kind:'property',type:'float',readonly:true,documentation:'複素数の実部。読み取り専用です。' },
     imag: { name:'imag',kind:'property',type:'float',readonly:true,documentation:'複素数の虚部。読み取り専用です。' },
@@ -108,4 +117,4 @@ const properties = {
     remove_at: callable('remove_at', 'void', [{ name: 'index', type: 'int' }], '指定した位置の要素を削除します。'),
     clear: callable('clear', 'void', [], '配列を空にします。')
 };
-module.exports = { STANDARD, KEYWORD_COMPLETIONS, properties };
+module.exports = { STANDARD, KEYWORD_COMPLETIONS, properties, TEXT_METHODS };

@@ -1,6 +1,6 @@
 'use strict';
-const { STANDARD, KEYWORD_COMPLETIONS, properties } = require('./catalog');
-const { TYPES, codeContext, visibleSymbols, visibleUsings, functionLabel, typeLabel, scopeContains } = require('./analysis');
+const { STANDARD, KEYWORD_COMPLETIONS, properties, TEXT_METHODS } = require('./catalog');
+const { TYPES, codeContext, visibleSymbols, visibleUsings, functionLabel, typeLabel, scopeContains, lexLine, closing } = require('./analysis');
 const { initializationContext } = require('./initialization');
 
 function environment(project, line, character) {
@@ -77,7 +77,15 @@ function environment(project, line, character) {
     };
     const owner = model.scopes.filter(s => s.kind === 'model' && scopeContains(model, s.id, line, character)).at(-1)?.owner;
     const canAccess = member => member.visibility !== 'private' || member.declaringModelId === owner?.modelId;
-    return { names, resolve, members, modelType, canAccess };
+    const env={ names, resolve, members, modelType, canAccess };
+    // Infer value-returning text chains for subsequent completion without
+    // executing user functions or requiring a compiler during indexing.
+    for(let pass=0;pass<4;pass++)for(const [name,symbol] of names){
+        if(symbol.type!=='auto' || !/\.(?:contains|starts_with|ends_with|find|trim|split|replace)\s*\(/.test(symbol.initializerText||''))continue;
+        const inferred=receiverSymbol(env,symbol.initializerText);
+        if(inferred?.type && inferred.type!=='auto')names.set(name,{...symbol,type:inferred.type,rank:inferred.rank||0});
+    }
+    return env;
 }
 
 function snippetCall(symbol, name = symbol.name) {
@@ -93,30 +101,52 @@ function completion(symbol, label = symbol.name) {
         snippet: symbol.kind === 'function', symbol };
 }
 function receiverSymbol(env, text, includePrivate = false) {
-    const match = /([A-Za-z_]\w*(?:(?:\[[^\]\n]*\])|(?:\.[A-Za-z_]\w*))*)\.?$/.exec(text);
-    if (!match) return undefined;
-    const parts = match[1].match(/[A-Za-z_]\w*|\[[^\]]*\]/g);
-    let symbol = env.names.get(parts.shift());
-    for (const part of parts) {
-        if (!symbol) return undefined;
-        if (part.startsWith('[')) {
-            if (!symbol.rank) return undefined;
-            symbol = { ...symbol, rank: symbol.rank - 1 };
-        } else if (symbol.kind === 'enum') {symbol=symbol.members.find(m=>m.name===part);}
-        else if (symbol.kind === 'namespace') { symbol = env.resolve(symbol.path + '.' + part); }
-        else if (part === 'value') { if (env.modelType(symbol)?.kind === 'interface') return undefined; }
-        else if (!symbol.rank && /^complex(?:_(?:64|128))?$/.test(symbol.type) && ['real','imag'].includes(part)) {
-            symbol={...properties[part],type:symbol.type==='complex_128'?'double':'float'};
+    const tokens=lexLine(text.replace(/\.\s*$/, ''));
+    const valueOf = symbol => ({...symbol,kind:'variable',readonly:false});
+    const memberOf = (symbol,name) => {
+        if(symbol.kind==='enum')return symbol.members.find(m=>m.name===name);
+        if(symbol.kind==='namespace')return env.resolve(symbol.path+'.'+name);
+        if(name==='value')return env.modelType(symbol)?.kind==='interface'?undefined:symbol;
+        if(!symbol.rank && ['str','char'].includes(symbol.type)) {
+            if(name==='length')return properties.length;
+            const method=TEXT_METHODS.find(m=>m.name===name);if(method)return method;
         }
-        else {
-            const receiverReadonly = symbol.readonly;
-            symbol = env.modelType(symbol)?.members.find(m => m.name === part);
-            if (symbol && !includePrivate && (!env.canAccess(symbol) || receiverReadonly && symbol.kind === 'function' && !symbol.readonly)) return undefined;
-            if (symbol?.kind === 'field' && receiverReadonly) symbol = { ...symbol, readonly: true };
+        if(symbol.rank){
+            if(name==='length')return properties.length;
         }
+        if(!symbol.rank && /^complex(?:_(?:64|128))?$/.test(symbol.type) && ['real','imag'].includes(name))
+            return {...properties[name],type:symbol.type==='complex_128'?'double':'float'};
+        const member=env.modelType(symbol)?.members.find(m=>m.name===name);
+        if(!member || !includePrivate && (!env.canAccess(member) || symbol.readonly && member.kind==='function' && !member.readonly))return undefined;
+        return member.kind==='field' && symbol.readonly?{...member,readonly:true}:member;
+    };
+    // Parse suffix expressions with balanced calls/indices. The lexer keeps dots
+    // and brackets inside string arguments out of this traversal.
+    for(let start=0;start<tokens.length;start++){
+        if(start && tokens[start-1].value==='.')continue;
+        let i=start,symbol;
+        if(tokens[i].kind==='string')symbol={kind:'variable',type:'str',rank:0};
+        else if(tokens[i].kind==='id')symbol=env.names.get(tokens[i].value);
+        else continue;
+        i++;
+        while(symbol && i<tokens.length){
+            const token=tokens[i];
+            if(token.value==='.' && tokens[i+1]?.kind==='id'){
+                symbol=memberOf(symbol,tokens[i+1].value);i+=2;
+            }else if(token.value==='['){
+                let end=-1,depth=0;for(let k=i;k<tokens.length;k++){if(tokens[k].value==='[')depth++;if(tokens[k].value===']' && --depth===0){end=k;break;}}
+                if(end<0 || !symbol.rank && !['str','char'].includes(symbol.type))break;
+                symbol={...valueOf(symbol),readonly:symbol.readonly,rank:Math.max(0,(symbol.rank||0)-1),type:symbol.rank?symbol.type:'char'};i=end+1;
+            }else if(token.value==='('){
+                const end=closing(tokens,i);if(end<0 || !['function','model','enum'].includes(symbol.kind))break;
+                symbol=valueOf(symbol);i=end+1;
+            }else break;
+        }
+        if(symbol && i===tokens.length)return {...symbol,expression:text.slice(tokens[start].start).replace(/\.\s*$/,'')};
     }
-    return symbol;
+    return undefined;
 }
+
 function receiverMembers(project, env, text) {
     const symbol = receiverSymbol(env, text.slice(0, -1));
     if (!symbol || !['variable', 'constant', 'parameter', 'field'].includes(symbol.kind)) return [];
@@ -133,6 +163,7 @@ function receiverMembers(project, env, text) {
         result.push({...properties.real,type},{...properties.imag,type});
     }
     if (rank || ['str', 'char'].includes(symbol.type)) result.push(properties.length);
+    if (!rank && ['str','char'].includes(symbol.type)) result.push(...TEXT_METHODS);
     if (rank && !symbol.readonly) result.push(properties.add, properties.remove_at, properties.clear);
     return result;
 }
@@ -216,8 +247,7 @@ function symbolAt(project, line, character) {
     const after = full.slice(before.length), stop = after.indexOf('.');
     const path = stop < 0 ? full : full.slice(0, before.length + stop);
     const env = environment(project, line, character);
-    const qualified = /((?:unsigned\s+)?[A-Za-z_]\w*(?:(?:\[[^\]\n]*\])|(?:\.[A-Za-z_]\w*))*)$/.exec(text.slice(context.start, start + path.length))?.[1] || path;
-    return env.resolve(path) || env.names.get(path) || receiverSymbol(env, qualified, true) || enumContext(project,env,line,character,context.text)?.members.find(m=>m.name===path);
+    return env.resolve(path) || env.names.get(path) || receiverSymbol(env, text.slice(context.start,start+path.length), true) || enumContext(project,env,line,character,context.text)?.members.find(m=>m.name===path);
 }
 
 /** Find the innermost unmatched call; strings, interpolations and arrays are lexical. */
@@ -232,7 +262,8 @@ function callAt(model, line, character) {
             let j = i - 1, path = '';
             while (j >= 0 && (ts[j].kind === 'id' || ts[j].value === '.')) path = ts[j--].value + path;
             const prefix = model.lines[line].slice(context.start, ts[i].start);
-            path = /((?:unsigned\s+)?[A-Za-z_]\w*(?:(?:\[[^\]\n]*\])|(?:\.[A-Za-z_]\w*))*)$/.exec(prefix)?.[1] || path;
+            const simple=/((?:unsigned\s+)?[A-Za-z_]\w*(?:(?:\[[^\]\n]*\])|(?:\.[A-Za-z_]\w*))*)$/.exec(prefix)?.[1] || path;
+            path=prefix.slice(0,prefix.length-simple.length).trimEnd().endsWith('.')?prefix.trim():simple;
             stack.push({ kind: '(', path, argument: 0 });
         } else if (value === '[' || value === '{') stack.push({ kind: value });
         else if (value === ')' || value === ']' || value === '}') stack.pop();
@@ -258,6 +289,6 @@ function signature(project, line, character) {
     }
     if(symbol?.kind==='enum')return {symbol,label:call.path+'(value: integer / str / '+symbol.name+')',activeParameter:0};
     const index=symbol?.builtin && /^(?:(?:unsigned )?int(?:_(?:8|16|32|64|128))?|str|complex(?:_(?:64|128))?)$/.test(symbol.path) && call.argName ? symbol.params.findIndex(p=>p.name===call.argName) : call.argument;
-    return symbol?.kind === 'function' ? { symbol, label: functionLabel(symbol, call.path), activeParameter: Math.min(Math.max(0,index), Math.max(0, symbol.params.length - 1)) } : undefined;
+    return symbol?.kind === 'function' ? { symbol, label: functionLabel(symbol, symbol.expression || call.path), activeParameter: Math.min(Math.max(0,index), Math.max(0, symbol.params.length - 1)) } : undefined;
 }
 module.exports = { environment, complete, symbolAt, callAt, signature, completion, snippetCall };

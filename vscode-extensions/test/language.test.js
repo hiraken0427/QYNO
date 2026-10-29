@@ -846,3 +846,39 @@ test('typed random namespace and model completions preserve ordinary type casts'
     assert.ok(hint('int main();\n\tint(¦').label.includes('int / float'));
     assert.ok(labels('using lib.random as rng\nint main();\n\trng.Random r={¦}').includes('seed'));
 });
+
+test('text methods complete on strings chars readonly values and array elements',()=>{
+    const expected=['contains','starts_with','ends_with','find','trim','split','replace'];
+    for(const receiver of ['str s="a"\n\ts.','const char c="a"\n\tc.','str xs[]=["a"]\n\txs[0].']){
+        const result=items('int main();\n\t'+receiver+'¦');
+        for(const name of expected)assert.ok(result.some(i=>i.label===name),receiver+name);
+    }
+    assert.ok(!labels('int main();\n\tint n=1\n\tn.¦').includes('trim'));
+    assert.ok(!labels('int main();\n\tstr xs[]\n\txs.¦').includes('split'));
+});
+test('literal returned and nested text chains retain fixed result types',()=>{
+    for(const receiver of ['" a ".trim().','"a,b".split(",")[0].','make().replace("a","b").'])
+        assert.ok(labels('str make()="a"\nint main();\n\t'+receiver+'¦').includes('contains'),receiver);
+    const result=labels('int main();\n\t"a,b".split(",").¦');
+    assert.ok(result.includes('add'));assert.ok(result.includes('length'));assert.ok(!result.includes('trim'));
+    assert.ok(!labels('int main();\n\t"a".contains("a").¦').includes('length'));
+});
+test('text method hints and hover include both argument types and split array return',()=>{
+    assert.equal(hint('int main();\n\tstr s="a"\n\ts.replace("a",¦').activeParameter,1);
+    assert.equal(hint('int main();\n\tstr s="a"\n\ts.replace("a",¦').label,'readonly str s.replace(str / char old, str / char new)');
+    assert.equal(hint('int main();\n\tio.print(" a ".trim().split(¦').label,'readonly str " a ".trim().split(str / char separator)[]');
+    assert.equal(at('int main();\n\t"a".fi¦nd("a")').type,'int_64');
+    assert.equal(at('int main();\n\t"a".sp¦lit(",")').rank,1);
+    assert.ok(hint('int main();\n\tauto n=unsigned int_8(¦').label.startsWith('unsigned int_8'));
+});
+test('auto text and split results offer subsequent methods',()=>{
+    for(const declaration of ['auto s=" a ".trim()','s=" a ".trim()','const s=" a ".trim()'])
+        assert.ok(labels('int main();\n\t'+declaration+'\n\ts.¦').includes('trim'));
+    assert.ok(labels('int main();\n\tparts="a,b".split(",")\n\tparts.¦').includes('add'));
+    assert.ok(labels('int main();\n\tparts="a,b".split(",")\n\tparts[0].¦').includes('trim'));
+});
+test('user model methods with text intrinsic names retain their declarations',()=>{
+    const prefix='model Box;\n\tint trim()=1\nint main();\n\tBox b\n\t';
+    assert.equal(hint(prefix+'b.trim(¦').label,'public int b.trim()');
+    assert.equal(at(prefix+'b.tr¦im()').line,1);
+});

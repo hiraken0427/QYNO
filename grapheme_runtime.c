@@ -21,41 +21,64 @@ static unsigned property(uint32_t cp)
         else if(cp>grapheme_ranges[mid].last)lo=mid+1;else return grapheme_ranges[mid].property;}
     return 0;
 }
-static int scan(const unsigned char *s,uint64_t length,int64_t index,int mode,
-                  uint64_t *offset,uint64_t *width,uint64_t *count)
+static int white_space(uint32_t cp)
 {
-    uint64_t pos=0,start=0,total=0;unsigned prev=0,ri=0,ep=0,zwj_ep=0,indic=0,linker=0;
-    *offset=UINT64_MAX;*width=0;*count=0;
-    while(pos<length){
-        uint32_t cp;unsigned bytes,flags,p,incb;int boundary=1;
-        if(!decode(s+pos,length-pos,&cp,&bytes))return 1;
+    unsigned i;
+    for(i=0;i<sizeof(white_space_ranges)/sizeof(*white_space_ranges);i++)
+        if(cp>=white_space_ranges[i].first&&cp<=white_space_ranges[i].last)return 1;
+    return 0;
+}
+void grapheme_begin(GraphemeIterator *it,const unsigned char *s,uint64_t length)
+{
+    GraphemeIterator zero={0};*it=zero;it->s=s;it->length=length;it->white=1;
+}
+int grapheme_next(GraphemeIterator *it,uint64_t *offset,uint64_t *width,int *white)
+{
+    while(it->pos<it->length){
+        uint32_t cp;unsigned bytes,flags,p,incb;int boundary=1,emit;
+        uint64_t pos=it->pos;
+        if(!decode(it->s+pos,it->length-pos,&cp,&bytes))return -1;
         flags=property(cp);p=flags&15;incb=flags>>5;
-        if(pos){
-            if(prev==1&&p==2)boundary=0;                                      /* GB3 */
-            else if(prev==1||prev==2||prev==3||p==1||p==2||p==3)boundary=1;   /* GB4/5 */
-            else if(prev==9&&(p==9||p==10||p==12||p==13))boundary=0;         /* GB6 */
-            else if((prev==12||prev==10)&&(p==10||p==11))boundary=0;         /* GB7 */
-            else if((prev==13||prev==11)&&p==11)boundary=0;                  /* GB8 */
-            else if(p==4||p==5||p==8||prev==7)boundary=0;                    /* GB9/9a/9b */
-            else if(incb==1&&indic&&linker)boundary=0;                       /* GB9c */
-            else if((flags&16)&&prev==5&&zwj_ep)boundary=0;                  /* GB11 */
-            else if(prev==6&&p==6&&ri)boundary=0;                            /* GB12/13 */
+        if(it->pos){
+            if(it->prev==1&&p==2)boundary=0;                                      /* GB3 */
+            else if(it->prev==1||it->prev==2||it->prev==3||p==1||p==2||p==3)boundary=1;   /* GB4/5 */
+            else if(it->prev==9&&(p==9||p==10||p==12||p==13))boundary=0;         /* GB6 */
+            else if((it->prev==12||it->prev==10)&&(p==10||p==11))boundary=0;         /* GB7 */
+            else if((it->prev==13||it->prev==11)&&p==11)boundary=0;                  /* GB8 */
+            else if(p==4||p==5||p==8||it->prev==7)boundary=0;                    /* GB9/9a/9b */
+            else if(incb==1&&it->indic&&it->linker)boundary=0;                       /* GB9c */
+            else if((flags&16)&&it->prev==5&&it->zwj_ep)boundary=0;                  /* GB11 */
+            else if(it->prev==6&&p==6&&it->ri)boundary=0;                            /* GB12/13 */
         }
+        emit=boundary&&it->started;
         if(boundary){
-            if(total&&(mode==0?(uint64_t)index==total-1:mode<0?(uint64_t)index>start&&(uint64_t)index<=pos:(uint64_t)index>=start&&(uint64_t)index<pos)){*offset=start;*width=pos-start;}
-            start=pos;total++;
+            *offset=it->start;*width=pos-it->start;*white=it->white;
+            it->start=pos;it->started=1;it->white=1;
         }
-        if(incb==1){indic=1;linker=0;}else if(incb==2){if(indic)linker=1;}
-        else if(incb!=3){indic=0;linker=0;}
-        zwj_ep=p==5&&ep;
-        if(flags&16)ep=1;else if(p!=4)ep=0;
-        ri=p==6?(prev==6?!ri:1):0;
-        prev=p;pos+=bytes;
+        if(!white_space(cp))it->white=0;
+        if(incb==1){it->indic=1;it->linker=0;}else if(incb==2){if(it->indic)it->linker=1;}
+        else if(incb!=3){it->indic=0;it->linker=0;}
+        it->zwj_ep=p==5&&it->ep;
+        if(flags&16)it->ep=1;else if(p!=4)it->ep=0;
+        it->ri=p==6?(it->prev==6?!it->ri:1):0;
+        it->prev=p;it->pos+=bytes;
+        if(emit)return 1;
     }
-    if(total&&(mode==0?(uint64_t)index==total-1:mode<0?(uint64_t)index>start&&(uint64_t)index<=pos:(uint64_t)index>=start&&(uint64_t)index<pos)){*offset=start;*width=pos-start;}
+    if(it->started){*offset=it->start;*width=it->length-it->start;*white=it->white;it->started=0;return 1;}
+    return 0;
+}
+static int scan(const unsigned char *s,uint64_t length,int64_t index,int mode,
+                uint64_t *offset,uint64_t *width,uint64_t *count)
+{
+    GraphemeIterator it;uint64_t start,n,total=0;int white,status;
+    *offset=UINT64_MAX;*width=0;*count=0;grapheme_begin(&it,s,length);
+    while((status=grapheme_next(&it,&start,&n,&white))>0){
+        if(mode==0?(uint64_t)index==total:mode<0?(uint64_t)index>start&&(uint64_t)index<=start+n:(uint64_t)index>=start&&(uint64_t)index<start+n){*offset=start;*width=n;}
+        total++;
+    }
+    if(status<0)return 1;
     *count=total;return 0;
 }
-
 int grapheme_scan(const unsigned char *s,uint64_t length,int64_t index,uint64_t *offset,uint64_t *width,uint64_t *count)
 {return scan(s,length,index,0,offset,width,count);}
 uint64_t grapheme_cursor(const unsigned char *s,uint64_t length,uint64_t cursor,int direction)

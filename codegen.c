@@ -94,6 +94,7 @@ static int file_raw_seek_label,file_stat_label;
 static int time_labels[T_COUNT],time_clock_label,time_sleep_label,time_timespec_label,time_filetime_label;
 static int time_date_type;
 static int random_call_label;
+static int text_method_label;
 static void gen_random_runtime(void);
 static void gen_random_builtin(Node *node);
 static int directory_labels[3];
@@ -4869,6 +4870,7 @@ static void gen_real_to_float(int range)
 #include "directory_codegen.inc"
 #include "arguments_codegen.inc"
 #include "random_codegen.inc"
+#include "text_codegen.inc"
 #include "enums_codegen.inc"
 
 /*
@@ -5376,6 +5378,7 @@ static void gen_call(Node *node)
         if(node->kind==ND_CALL&&node->func->model&&node->func->tok->source->module->builtin&&!strcmp(node->func->tok->source->module->name,"time")&&!node->tok->source->module->builtin){
             char operation[128];snprintf(operation,sizeof(operation),"Stopwatch.%.*s",node->func->name_len,node->func->name);gen_os_context(node->tok,"time",operation);
         }
+        if(node->kind==ND_TEXT_METHOD)collection_context(node->tok);
         x64_call(node->func->label);
         if (node->nargs) {
             x64_add_imm(RSP, 8 * node->nargs);
@@ -5505,6 +5508,7 @@ static void gen_expr_inner(Node *node)
             }
         } else gen_text_operation(node);
         return;
+    case ND_TEXT_METHOD:gen_text_method(node);return;
     case ND_CALL:
         gen_call(node);
         return;
@@ -6126,6 +6130,7 @@ void codegen(Ast *ast, Program *out_prog, FILE *out_text, Target out_target)
     x64_begin(prog, text);
     path_call_label=new_label("path.call");
     random_call_label=new_label("random.call");
+    text_method_label=new_label("text.method");
     {int op;for(op=0;op<3;op++)directory_labels[op]=new_label("directory.operation");}
     {EnumDef *e;for(e=ast->enums;e;e=e->next){e->check_label=new_label("enum.check");e->name_label=new_label("enum.name");e->parse_label=new_label("enum.parse");}}
     { Model *m;
@@ -6303,6 +6308,7 @@ void codegen(Ast *ast, Program *out_prog, FILE *out_text, Target out_target)
     gen_directory_runtime();
     gen_arguments_runtime();
     gen_random_runtime();
+    gen_text_method_runtime();
     gen_model_runtime();
 
     /* ユーザーのプログラム */
