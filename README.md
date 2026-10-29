@@ -1,4 +1,4 @@
-# QYNO 0.27.6
+# QYNO 0.27.7
 
 C99とGCCの128bit数値拡張で実装した、Linux x64 / Windows x64 向けのコンパイラ。
 UTF-8 の `.qy` ソースから実行ファイルを直接生成する。
@@ -35,11 +35,31 @@ int main();
 
 ## VS Code 拡張
 
-[QYNO 0.27.6](vscode-extensions/README.md) はハイライト、ユーザー定義の関数名・変数名の補完、
+[QYNO 0.27.7](vscode-extensions/README.md) はハイライト、ユーザー定義の関数名・変数名の補完、
 定義への移動、引数ヒント、セミコロン後の自動インデント、qyc連携の構文・型エラーの赤線表示に対応する。
-[vscode-extensions/0.27.6_VSCode_option.vsix](vscode-extensions/0.27.6_VSCode_option.vsix) を
+[vscode-extensions/0.27.7_VSCode_option.vsix](vscode-extensions/0.27.7_VSCode_option.vsix) を
 VS Code の「VSIX からのインストール…」で指定する。
 診断には別途qycが必要。PATHにない場合は拡張設定の `qyno.compilerPath` に実行ファイルを指定する。
+
+## 文字列の標準メソッド（0.27.7）
+
+str / charへ直接呼び出せる7メソッドを追加した。import / usingは不要。
+contains / starts_with / ends_withはbool、findは書記素番号のint_64（未検出は-1）、
+trim / replaceはstr、splitは通常のstr配列を返す。元の文字列を変更せず、constでも使用できる。
+
+```text
+int main();
+	str fields[] = "  Ken,23  ".trim().split(",")
+	io.print(fields)
+	io.print("report.txt".ends_with(".txt"))
+	io.print("Hello, guest!".replace("guest", fields[0]))
+	return 0
+```
+
+検索はUTF-8の完全一致で、元の文字列の書記素クラスタの途中には一致しない。
+trimはUnicode 17のWhite_Spaceを使い、splitは空要素も保持する。
+空の検索は許可するが、splitの空区切り・replaceの空oldはエラーになる。
+詳細は[仕様](docs/text-methods-design.md)、7メソッドを使う例は[examples/text/main.qy](examples/text/main.qy)を参照。
 
 ## モジュールの公開制御（新段階7）
 

@@ -291,7 +291,7 @@ async function run() {
     assert.equal(wideHint.signatures[0].label,'unsigned int_128 echo(ref int_128 n)');checks++;
     const quadHint=await vscode.commands.executeCommand('vscode.executeSignatureHelpProvider',wideDoc.uri,new vscode.Position(6,11));
     assert.ok(quadHint.signatures[0].label.startsWith('quadruple quadruple('));checks++;
-    assert.equal(extension.packageJSON.displayName, 'QYNO 0.27.6'); checks++;
+    assert.equal(extension.packageJSON.displayName, 'QYNO 0.27.7'); checks++;
     const unitDoc=await vscode.workspace.openTextDocument({language:'qyno',content:'Void echo(ref void value)=value\nint main();\n\tVoid units[3]\n\tuni\n\techo(ref \n'});
     await vscode.window.showTextDocument(unitDoc);
     const unitItems=await vscode.commands.executeCommand('vscode.executeCompletionItemProvider',unitDoc.uri,new vscode.Position(3,4));
@@ -524,6 +524,27 @@ async function run() {
         await replace(diagDoc,'int main();\n\tlib.random.str(4,"あ")\n\treturn 0\n');
         await vscode.commands.executeCommand('qyno.checkDocument');
         assert.ok(errors(diagDoc).some(d=>/乱数/.test(d.message)));checks++;
+        await replace(diagDoc,'int main();\n\treturn 0\n');
+        await replace(diagDoc,'const str PARTS[]=" a,b ".trim().split(",")\nstr clean(ref readonly str text)=text.trim()\nint main();\n\tstr text=" é,a "\n\tauto parts=text.trim().split(",")\n\tio.print(parts)\n\tio.print(clean(ref text))\n\treturn 0\n');
+        await vscode.commands.executeCommand('qyno.checkDocument');
+        assert.equal(errors(diagDoc).length,0,JSON.stringify(errors(diagDoc)));checks++;
+        const textItems=await vscode.commands.executeCommand('vscode.executeCompletionItemProvider',diagDoc.uri,new vscode.Position(4,17));
+        for(const name of ['contains','starts_with','ends_with','find','trim','split','replace']){
+            assert.ok(textItems.items.some(i=>i.label===name),name);checks++;
+        }
+        // Add a dedicated member position to avoid relying on word suggestions.
+        await replace(diagDoc,'int main();\n\tstr text=" a,b "\n\ttext.trim().split(",").\n\ttext.replace("a",\n');
+        const chainItems=await vscode.commands.executeCommand('vscode.executeCompletionItemProvider',diagDoc.uri,new vscode.Position(2,24));
+        assert.ok(chainItems.items.some(i=>i.label==='add'));checks++;
+        assert.ok(chainItems.items.some(i=>i.label==='length'));checks++;
+        const textHints=await vscode.commands.executeCommand('vscode.executeSignatureHelpProvider',diagDoc.uri,new vscode.Position(3,18));
+        assert.equal(textHints.activeParameter,1);checks++;
+        assert.ok(textHints.signatures[0].label.includes('str / char new'));checks++;
+        for(const invalid of ['str parts[]="a".split("")','bool ok="a".contains(1)','char c=" ".trim()']){
+            await replace(diagDoc,'int main();\n\t'+invalid+'\n\treturn 0\n');
+            await vscode.commands.executeCommand('qyno.checkDocument');
+            assert.ok(errors(diagDoc).length>0,invalid);checks++;
+        }
         await replace(diagDoc,'int main();\n\treturn 0\n');
         await config.update('compilerPath', path.join(temporary, 'missing-qyc'), vscode.ConfigurationTarget.Global);
         await vscode.commands.executeCommand('qyno.checkDocument');

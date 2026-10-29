@@ -449,6 +449,7 @@ static FcMap *fc_eval(FcContext *ctx, FcState *s, Node *n)
         if(n->val==BI_FILE_CLOSE)fc_error(ctx,s,n,0xFFFEu);
         return fc_empty();
     }
+    if(n->kind==ND_TEXT_METHOD){fc_eval(ctx,s,n->lhs);for(p=n->rhs;p;p=p->next)fc_eval(ctx,s,p);return fc_empty();}
     if (n->kind == ND_METHOD) {
         m = fc_eval(ctx, s, n->lhs);
         {

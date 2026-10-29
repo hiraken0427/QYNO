@@ -313,6 +313,7 @@ static void decimal_digits(WideRequest *r)
     }
     r->out=parts((unsigned)n);
 }
+#include "text_pure.inc"
 void wide_execute(WideRequest *r) {
     U a=0,b=0,v=0,n;Q x=0,y=0,z=0;int op=r->op,ty=r->ty,st=0,neg=0;int64_t e;
     r->status=0;r->out=parts(0);r->used=0;
@@ -322,6 +323,7 @@ void wide_execute(WideRequest *r) {
     if(op==W_ARGUMENTS){arguments_execute(r);return;}
     if(op==W_TIME){time_execute((TimeRequest *)r->input);r->status=((TimeRequest *)r->input)->status;return;}
     if(op==W_CURSOR){r->out.lo=grapheme_cursor((const unsigned char *)r->input,(uint64_t)r->length,r->b.lo,(int)r->aux);return;}
+    if(op==W_TEXT_METHOD){text_execute((TextRequest *)(uintptr_t)r->input);r->status=((TextRequest *)(uintptr_t)r->input)->status;return;}
     if(op==W_TEXT){uint64_t off,width,count;r->status=grapheme_scan((const unsigned char *)r->input,(uint64_t)r->length,(int64_t)r->b.lo,&off,&width,&count);r->out.lo=off;r->out.hi=width;r->used=(int64_t)count;return;}
     if(op==W_READ&&ty==2000){int i=0;while(i<r->length&&whitespace(r->input[i]))i++;if(i+1>=r->length||r->input[i]!='('||r->input[i+1]!=')'){r->status=1;return;}r->used=i+2;return;}
     if(op==W_READ){r->status=ty<1000?read_integer(r):read_real(r);return;}

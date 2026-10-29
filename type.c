@@ -443,6 +443,7 @@ static void require_bool(Node *node, const char *what)
 #include "readonly_type.inc"
 #include "arrays_type.inc"
 static int check_random_method(Node *node);
+#include "text_type.inc"
 #include "models_type.inc"
 #include "initialization_type.inc"
 #include "integer_bases_type.inc"
@@ -893,6 +894,7 @@ static void check_expr(Node *node)
         check_model_field(node); return;
     case ND_MODEL_METHOD:
         check_model_method(node); return;
+    case ND_TEXT_METHOD:return;
     case ND_ARRAY_LITERAL:
         check_array_literal(node, TY_NONE);
         return;
@@ -1513,6 +1515,7 @@ static long long round_integer(Node *node, long long x, long long digits, Builti
 }
 
 #include "library_const.inc"
+#include "text_const.inc"
 #include "time_const.inc"
 
 /* 組み込み関数の値をコンパイル時に計算する */
@@ -1714,6 +1717,7 @@ static Value eval_const_inner(Node *node)
         l = eval_const(node->lhs);
         r = eval_const(node->rhs);
         return eval_pow(node, l, r.i);
+    case ND_TEXT_METHOD:return eval_text_method(node);
     case ND_BUILTIN:
         return eval_builtin(node);
     case ND_ABS:
@@ -1760,6 +1764,10 @@ static int is_const_expr(Node *node)
     if (type_is_model(array_base(node->ty)) && contains_file(node->ty)) return 0;
 
     switch (node->kind) {
+    case ND_TEXT_METHOD:
+        if(!is_const_expr(node->lhs))return 0;
+        for(cmp=node->rhs;cmp;cmp=cmp->next)if(!is_const_expr(cmp))return 0;
+        return 1;
     case ND_MODEL_NEW:
         return 1;
     case ND_MODEL_INIT:

@@ -203,7 +203,7 @@ function analyze(text, uri = '') {
         const modifier = ['ref', 'val'].includes(ts[index]?.value) ? ts[index++].value : null;
         if (constant && !['model', 'interface'].includes(scope.kind) && ts[index]?.kind === 'id' &&
             !KEYWORDS.has(ts[index].value) && ts[index + 1]?.value === '=') {
-            declare(ts[index], { ...member, kind: 'constant', type: 'auto', readonly: true, scopeId: scope.id });
+            declare(ts[index], { ...member, kind: 'constant', type: 'auto', readonly: true, scopeId: scope.id, initializerText: lines[line].slice(ts[index+1].end).trim() });
             continue;
         }
         const omittedReturn = (indent === 0 || ['model', 'interface'].includes(scope.kind)) &&
@@ -249,6 +249,7 @@ function analyze(text, uri = '') {
             }
             const end = ts.findIndex((t, n) => n > index + 1 && t.value === '=');
             const variable = declare(name, { ...member, kind: scope.kind === 'model' ? 'field' : constant ? 'constant' : 'variable', type, rank: rankOf(ts.slice(index + 2, end < 0 ? ts.length : end)), ref: modifier === 'ref', readonly: constant, scopeId: scope.id });
+            if(variable && end>=0)variable.initializerText=lines[line].slice(ts[end].end).trim();
             if (scope.kind === 'model' && variable) scope.owner?.members.push(variable);
         }
         if (!declaredType && ts[0]?.kind === 'id' && !KEYWORDS.has(ts[0].value) && ts[1]?.value === '=' &&
@@ -258,7 +259,7 @@ function analyze(text, uri = '') {
                 ['variable', 'constant', 'parameter', 'function', 'model', 'interface', 'enum'].includes(s.kind));
             const namespace = ['io', 'math', 'lib', 'time', ...imports.map(i => i.path.split('.')[0]),
                 ...usings.filter(u => ancestors.has(u.scopeId)).map(u => u.alias)].includes(name);
-            if (!bound && !namespace) declare(ts[0], { kind: 'variable', type: 'auto', implicit: true, scopeId: scope.id });
+            if (!bound && !namespace) declare(ts[0], { kind: 'variable', type: 'auto', implicit: true, scopeId: scope.id, initializerText: lines[line].slice(ts[1].end).trim() });
         }
         if (ts[0].value === 'for') {
             let depth = 0, counter = -1;
