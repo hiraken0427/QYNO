@@ -1,4 +1,4 @@
-# QYNO 0.27.5
+# QYNO 0.27.6
 
 C99とGCCの128bit数値拡張で実装した、Linux x64 / Windows x64 向けのコンパイラ。
 UTF-8 の `.qy` ソースから実行ファイルを直接生成する。
@@ -35,9 +35,9 @@ int main();
 
 ## VS Code 拡張
 
-[QYNO 0.27.5](vscode-extensions/README.md) はハイライト、ユーザー定義の関数名・変数名の補完、
+[QYNO 0.27.6](vscode-extensions/README.md) はハイライト、ユーザー定義の関数名・変数名の補完、
 定義への移動、引数ヒント、セミコロン後の自動インデント、qyc連携の構文・型エラーの赤線表示に対応する。
-[vscode-extensions/0.27.5_VSCode_option.vsix](vscode-extensions/0.27.5_VSCode_option.vsix) を
+[vscode-extensions/0.27.6_VSCode_option.vsix](vscode-extensions/0.27.6_VSCode_option.vsix) を
 VS Code の「VSIX からのインストール…」で指定する。
 診断には別途qycが必要。PATHにない場合は拡張設定の `qyno.compilerPath` に実行ファイルを指定する。
 
@@ -441,7 +441,7 @@ int main();
 Windowsでは区切りを`/`で返し、ドライブ相対`C:work`・ルート相対`/work`は拒否する。
 仕様: [作業ディレクトリ](docs/process-path-random-design.md)。
 例: [取得・移動・復帰](examples/io/directories.qy)。
-main引数は0.27.5で追加した。型名と不等式による乱数APIは引き続き後続の設計とする。
+main引数は0.27.5で追加した。型名と不等式による乱数APIは0.27.6で追加した。
 
 
 ## 実行時引数と引数なしの明示（0.27.5）
@@ -469,3 +469,37 @@ Windowsの引用符・バックスラッシュはMSVC CRTの文法に従い、�
 名前付きの`void value`は値`()`を受け取る1個の引数のまま。
 仕様: [実行時引数](docs/process-path-random-design.md#5-mainの実行時引数)。
 例: [引数・パスの処理](examples/arguments/main.qy)。
+
+
+## 型名と不等式による乱数（0.27.6）
+
+lib.randomはimport不要。using libまたはモジュール別名を使い、裸の型変換と区別する。
+
+```text
+using lib.random as random
+
+int main();
+	random.seed(42)
+	int dice = random.int(1 <= i <= 6)
+	double ratio = random.double(0 < x < 1)
+	bool enabled = random.bool()
+	char letter = random.char("あいうえお😺")
+	str label = random.str(8, "ABCDEF0123456789")
+	io.print("{dice} {ratio} {enabled} {letter} {label}")
+	random.Random generator = {seed=42}
+	io.print(generator.int(1 <= i <= 6))
+	return 0
+```
+
+整数は全幅のsigned / unsignedに対応し、引数なしなら型の全域を生成する。
+unsigned int_64のAPI名はunsigned_int_64。int / int_32は同じ型と列の別名。
+half / float / double / quadrupleは有限範囲の不等式が必須で、開いた端点を返さない。
+中央のi / xは仮の名前で宣言不要。境界の式だけを左から1回ずつ評価する。
+空の範囲はエラー、候補1個や長さ0の生成では乱数を消費しない。
+
+共有生成器は最初の抽選時にOSから自動シードする。seedを指定すれば両OSで同じ列を再現する。
+Randomは既存modelと同じ値コピーで、呼び出し元の生成器を進める場合はrefで渡す。
+charはUnicode書記素クラスタ単位、strの候補は印字可能ASCIIに限定し指定長を保証する。
+アルゴリズムはxoshiro256** / SplitMix64で、暗号用途には使用しない。
+仕様: [乱数](docs/process-path-random-design.md)。
+例: [再現可能なモンテカルロ計算](examples/random/main.qy)。

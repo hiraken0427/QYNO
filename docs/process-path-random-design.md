@@ -2,8 +2,7 @@
 
 状態: 新段階13（作業ディレクトリ・絶対パス）は0.27.4で実装済み。
 新段階14（実行時引数・voidマーカー）は0.27.5で実装済み。
-新段階15（乱数）は設計案であり未実装。
-後続の実装時のバージョンは別途決定する。
+新段階15（乱数）は0.27.6で実装済み。
 パスは既存のstr、引数一覧は既存のstr配列、乱数生成器は標準modelを使う。
 新しいPath型・ポインタ・汎用例外・関数オーバーロードは追加しない。
 
@@ -190,7 +189,7 @@ mainに限らず、通常関数・メソッド・interface契約・initにも適
 - 呼び出し側は常に`show()`。`show(void)`という呼び出し構文は追加しない。
 - interfaceの実装照合では`()`と`(void)`を同じ契約とする。ABIにも追加スロットを作らない。
 
-## 7. 型名と不等式を使う乱数API（改訂案）
+## 7. 型名と不等式を使う乱数API（0.27.6）
 
 利用者の指示に従い、integer / real / real_quad / boolean / bitsという公開名は撤回する。
 戻り値を型名から判断できるようにする。以下のrandomはlib.randomの別名である。
@@ -246,7 +245,7 @@ random.int(10 > i >= 0)
 - `<` / `<=`、または逆向きの`>` / `>=`を組み合わせる。10 > i >= 0は0 <= i < 10と同じ範囲。
 - `a < i > b`のように上下限を作らない形、3個以上の比較、== / !=、and / orでつないだ条件は拒否する。
 - `bool condition = 0 < i < 10`のように通常のbool式を作って渡すことはできない。
-- 専用の範囲ASTとして解析し、既存の短絡する比較式として実行しない。一般の連鎖比較やforの意味は変更しない。
+- 呼び出し解決後に連鎖比較の構造を範囲として検査・分解し、中央の名前を型検査・評価しない。既存の短絡する比較式として実行せず、一般の連鎖比較やforの意味は変更しない。
 - min / maxを第1・第2引数で渡す旧形式は導入しない。生成される値の名前は範囲内の説明だけに使う。
 
 ### 整数の境界
@@ -289,7 +288,7 @@ random.int(10 > i >= 0)
 - 完全修飾lib.random.int、using libによるrandom.int、モジュール別名を使う。
 - 裸のint(...) / double(...) / char(...) / str(...)は既存の型変換の意味を維持する。
 - 型名であるメンバー呼び出しを、ドットと解決済みの所有者を見て解析する。予約語を一般の変数名として開放しない。
-- 型名と衝突する関数の選択usingと、別名なしusing lib.randomは診断し、モジュール別名を案内する。型変換を乱数へ上書きしない。
+- 型名APIの選択usingと、別名なしusing lib.randomは診断し、モジュール別名を案内する。seedとRandomの選択usingは許可する。型変換を乱数へ上書きしない。
 - seedやRandomのように型名と衝突しないシンボルの選択usingは従来の規則で扱う。
 
 ### 共有生成器と明示シード
@@ -337,6 +336,7 @@ OSごとにCライブラリのrandへ委譲せず、出力列を公開仕様と�
 - 符号付き全域はビットパターンを2の補数として解釈し、boolは1語の最上位bitを使う。
 - 範囲付き整数は正規化した閉区間[L,U]のspan=U-L+1を扱い、剰余バイアスを除く棄却法を使う。span=2^Nも折り返さない。
 - 各型のNbit候補rについてthreshold=2^N mod spanとし、r<thresholdなら棄却、L+(r mod span)を返す。全域の場合は引数なしのAPIと同じビットパターン対応にする。
+- Nbitの内部抽選はN<=64なら1語の上位Nbit、N>64なら第1語64bitと第2語の上位N-64bitを連結する。小数の格子の整数抽選にもこの順序を使う。
 - 小数の生成方法は第7節の型別精度と端点規則に従う。boolや整数の生成器を別に持たず、同一の状態を進める。
 - charは候補数に対する偏りのない整数抽選、strはこれを指定回数行う。
 - 不正な範囲・文字候補・出力サイズは抽選前に検査し、検査失敗で生成器を進めない。引数式自体の副作用は通常どおり残る。
@@ -353,7 +353,7 @@ OSごとにCライブラリのrandへ委譲せず、出力列を公開仕様と�
 | 実行時引数 | エントリスタックのargc / argv | GetCommandLineWとCRT互換の独自分割 |
 | 自動シード | getrandom、短い読み取りとEINTRを処理 | BCryptGenRandomのシステム優先RNG |
 
-- Windowsの自動シードはBCryptGenRandomを使い、bcrypt.dllの複数DLLインポートにPE出力を拡張する。NTSTATUSをGetLastErrorとして解釈せず、RtlNtStatusToDosErrorでWin32コードへ変換してError.os_codeへ残す。変換不能なら元のステータスをメッセージにも残す。
+- Windowsの自動シードはBCryptGenRandomを使い、bcrypt.dllの複数DLLインポートにPE出力を拡張する。NTSTATUSをGetLastErrorとして解釈せず、RtlNtStatusToDosErrorでWin32コードへ変換してError.os_codeへ残す。変換不能（ERROR_MR_MID_NOT_FOUND=317）ならos_codeへ元の32bit NTSTATUSを保持する。
 - Windowsのコマンドライン分割はShell32への追加依存を必要としない構成にする。
 - current / change / absolute、共有乱数の値生成は、回復可能な失敗の効果解析とfileのclose解析に統合する。
 - 自動シード失敗はErrorCode.system_error、OS機能自体が未対応ならunsupported_operation。pathは空文字、operationはint / double等の公開呼び出し名とし、seed内部の位置に置き換えない。
@@ -398,3 +398,13 @@ VS Codeは引数の配列補完・定義移動・voidマーカーの正規化、
 
 0.27.5の最終検証: make testはshell326件・Python1,188メソッド（Windows専用6件skip）、失敗0。
 VS Code単体132件・実機182項目、両OSの個別検証、UBSan・GC頻発設定を確認した。
+
+
+新段階15は0.27.6として実装した。実行例はexamples/random/main.qy。
+`make test-random`は純粋エンジン7メソッドとコンパイラ経由32メソッド。
+整数の独立した参照計算、4精度の有理数補間・最近接偶数丸め、全端点・サブノーマル・最大値、
+型・名前解決・受け手の借用・refとコピー・const/readonly・char/str・OS失敗・PEの3 DLLを検証する。
+明示シードのRandomメソッドはOSエラー経路を導入しないが、受け手と引数の式の副作用は通常どおり解析する。
+
+0.27.6の最終検証: make testはshell326件・Python1,227メソッド（Windows専用7件skip）、失敗0。
+VS Code単体133件・実機188項目、両OSの個別検証、UBSan・GC頻発、既存Windows引数処理を確認した。

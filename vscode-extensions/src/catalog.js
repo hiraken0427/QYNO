@@ -1,5 +1,5 @@
 'use strict';
-// Reference: QYNO 0.27.3. No runtime dependency on a compiler installation.
+// Reference: QYNO 0.27.6. No runtime dependency on a compiler installation.
 const callable = (path, type, params, documentation) => ({
     kind: 'function', name: path.split('.').at(-1), path, type, rank: 0,
     params: params.map(p => typeof p === 'string' ? { name: p, type: 'value', rank: 0 } : { rank: 0, ...p }),
@@ -14,8 +14,19 @@ const SEEK_ORIGIN=enumType('io.file.SeekOrigin',['begin','current','end']);
 const WEEKDAY=enumType('time.Weekday',['monday','tuesday','wednesday','thursday','friday','saturday','sunday']);
 const DATE_TIME={name:'DateTime',path:'time.DateTime',type:'time.DateTime',kind:'model',builtin:true,members:[['year','int','1970'],['month','int','1'],['day','int','1'],['hour','int','0'],['minute','int','0'],['second','quadruple','0.0'],['offset_minutes','int','0']].map(([name,type,defaultText])=>({name,type,defaultText,kind:'field',rank:0,visibility:'public',builtin:true}))};
 const STOPWATCH={name:'Stopwatch',path:'time.Stopwatch',type:'time.Stopwatch',kind:'model',builtin:true,members:['start','stop','elapsed','lap','reset','restart','is_running'].map(name=>({...callable(name,name==='is_running'?'bool':['stop','elapsed','lap'].includes(name)?'quadruple':'void',[],'停止期間を除く累積時間を秒数で扱います。'),readonly:['elapsed','is_running'].includes(name),visibility:'public'}))};
+const RANDOM_FUNCTIONS = [
+    ...['int_8','int_16','int','int_32','int_64','int_128','unsigned_int_8','unsigned_int_16','unsigned_int','unsigned_int_32','unsigned_int_64','unsigned_int_128'].map(name=>callable('lib.random.'+name,name.replace('unsigned_','unsigned '),[{name:'min <= i < max',type:'range',range:true,optional:true,placeholder:'0 <= i < 10'}],'不等式の整数解から一様に生成。省略時は型の全域。中央の名前は宣言不要の仮の名前です。')),
+    ...['half','float','double','quadruple'].map(name=>callable('lib.random.'+name,name,[{name:'min < x < max',type:'range',range:true,placeholder:'0 < x < 1'}],'有限の小数範囲を不等式で指定。開いた端点を返しません。範囲省略不可。')),
+    callable('lib.random.bool','bool',[],'trueとfalseを各1/2で生成します。'),
+    callable('lib.random.char','char',[{name:'candidates',type:'str',optional:true,placeholder:'"ABCDEF"'}],'候補の書記素クラスタから抽選。省略時は印字可能ASCII。'),
+    callable('lib.random.str','str',[{name:'count',type:'int_64',placeholder:'8'},{name:'candidates',type:'str',optional:true,placeholder:'"ABCDEF0123456789"'}],'指定長のASCII文字列。候補は印字可能ASCII。暗号用ではありません。'),
+    callable('lib.random.seed','void',[{name:'value',type:'unsigned int_64',placeholder:'42'}],'固定シードへ再初期化し、両OSで同じ列を再現します。')
+];
+const RANDOM_GENERATOR={name:'Random',path:'lib.random.Random',type:'lib.random.Random',kind:'model',builtin:true,
+    initializer:{...callable('init','void',[{name:'seed',type:'unsigned int_64',defaultText:'0',optional:true}],'固定シード。省略時0。'),initializer:true,visibility:'public'},
+    members:RANDOM_FUNCTIONS.map(fn=>({...fn,path:'lib.random.Random.'+fn.name,visibility:'public',readonly:false}))};
 const STANDARD = [
-    SEEK_ORIGIN, WEEKDAY, DATE_TIME, STOPWATCH,
+    SEEK_ORIGIN, WEEKDAY, DATE_TIME, STOPWATCH, RANDOM_GENERATOR, ...RANDOM_FUNCTIONS,
     callable('time.now', "quadruple", [], "UNIX時刻の秒数。日時用。OSによる時刻変更の影響を受けます。"),
     callable('time.monotonic', "quadruple", [], "後戻りしない時計の秒数。起点は非公開で、処理時間や期限の計測に使います。"),
     callable('time.cpu', "quadruple", [], "プロセスが使用したuser+kernelのCPU秒数。"),

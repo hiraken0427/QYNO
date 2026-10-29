@@ -6,7 +6,7 @@
  *   0x040  PE シグネチャ、COFF ヘッダ、オプションヘッダ、セクションヘッダ
  *   0x200  .text   機械語（エントリ処理・実行時ルーチン・main）
  *   ....   .rdata  文字列などの読み取り専用データ
- *   ....   .idata  kernel32.dll のインポート情報
+ *   ....   .idata  kernel32.dll / bcrypt.dll / ntdll.dll のインポート情報
  */
 
 #include "qyc.h"
@@ -27,7 +27,6 @@
 #define SECTION_OFFSET    (OPT_OFFSET + OPT_SIZE)
 
 #define TEXT_RVA          0x1000
-#define IMPORT_DLL        "KERNEL32.dll"
 
 /* Import の順番と合わせる */
 static const char *import_names[IMP_COUNT] = {
@@ -56,7 +55,7 @@ static const char *import_names[IMP_COUNT] = {
     "QueryPerformanceCounter", "QueryPerformanceFrequency",
     "GetCurrentProcess", "GetProcessTimes", "Sleep",
     "GetCurrentDirectoryW", "SetCurrentDirectoryW", "WideCharToMultiByte",
-    "GetCommandLineW"
+    "GetCommandLineW", "BCryptGenRandom", "RtlNtStatusToDosError"
 };
 
 const char *import_name(Import imp)
@@ -72,7 +71,7 @@ typedef struct {
     uint32_t ilt;           /* インポートルックアップテーブル */
     uint32_t iat;           /* インポートアドレステーブル（ローダが関数アドレスを書き込む） */
     uint32_t hint_name[IMP_COUNT];
-    uint32_t dll_name;
+    uint32_t dll_name[3];
     uint32_t size;
 } IdataLayout;
 
@@ -118,29 +117,31 @@ static void put_section(unsigned char *p, const char *name, uint32_t virtual_siz
 
 /*
  * .idata の配置を決める
- *   0                    インポート記述子（kernel32.dll）＋終端の空記述子（20バイト×2）
- *   ilt                  (IMP_COUNT + 1) × 8 バイト
- *   iat                  (IMP_COUNT + 1) × 8 バイト
+ *   0                    3 DLLの記述子＋終端（20バイト×4）
+ *   ilt                  (IMP_COUNT + 3) × 8 バイト（各DLLの終端を含む）
+ *   iat                  (IMP_COUNT + 3) × 8 バイト
  *   hint_name[i]         ヒント（2バイト）＋関数名＋ '\0'（偶数バイトにそろえる）
- *   dll_name             "KERNEL32.dll"
+ *   dll_name             KERNEL32.dll / bcrypt.dll / ntdll.dll
  */
+static int import_slot(int index)
+{ return index+(index>=IMP_BCRYPT_GEN_RANDOM)+(index>=IMP_RTL_NTSTATUS_TO_DOS_ERROR); }
+static const char *import_libraries[]={"KERNEL32.dll","bcrypt.dll","ntdll.dll"};
 static IdataLayout layout_idata(void)
 {
     IdataLayout l;
     uint32_t pos;
     int i;
 
-    pos = 40;
+    pos = 80;
     l.ilt = pos;
-    pos += (IMP_COUNT + 1) * 8;
+    pos += (IMP_COUNT + 3) * 8;
     l.iat = pos;
-    pos += (IMP_COUNT + 1) * 8;
+    pos += (IMP_COUNT + 3) * 8;
     for (i = 0; i < IMP_COUNT; i++) {
         l.hint_name[i] = pos;
         pos += align_up(2 + (uint32_t)strlen(import_names[i]) + 1, 2);
     }
-    l.dll_name = pos;
-    pos += (uint32_t)strlen(IMPORT_DLL) + 1;
+    for(i=0;i<3;i++){l.dll_name[i]=pos;pos+=(uint32_t)strlen(import_libraries[i])+1;}
     l.size = pos;
     return l;
 }
@@ -149,15 +150,19 @@ static void write_idata(unsigned char *idata, uint32_t idata_rva, const IdataLay
 {
     int i;
 
-    put_u32(idata + 0, idata_rva + l->ilt);         /* OriginalFirstThunk */
-    put_u32(idata + 12, idata_rva + l->dll_name);   /* Name */
-    put_u32(idata + 16, idata_rva + l->iat);        /* FirstThunk */
-    for (i = 0; i < IMP_COUNT; i++) {
-        put_u64(idata + l->ilt + 8 * (uint32_t)i, idata_rva + l->hint_name[i]);
-        put_u64(idata + l->iat + 8 * (uint32_t)i, idata_rva + l->hint_name[i]);
-        memcpy(idata + l->hint_name[i] + 2, import_names[i], strlen(import_names[i]) + 1);
+    int starts[]={0,IMP_BCRYPT_GEN_RANDOM,IMP_RTL_NTSTATUS_TO_DOS_ERROR};
+    for(i=0;i<3;i++){
+        uint32_t slot=(uint32_t)import_slot(starts[i])*8;
+        put_u32(idata+i*20,idata_rva+l->ilt+slot);
+        put_u32(idata+i*20+12,idata_rva+l->dll_name[i]);
+        put_u32(idata+i*20+16,idata_rva+l->iat+slot);
+        memcpy(idata+l->dll_name[i],import_libraries[i],strlen(import_libraries[i])+1);
     }
-    memcpy(idata + l->dll_name, IMPORT_DLL, strlen(IMPORT_DLL) + 1);
+    for(i=0;i<IMP_COUNT;i++){
+        put_u64(idata+l->ilt+8*(uint32_t)import_slot(i),idata_rva+l->hint_name[i]);
+        put_u64(idata+l->iat+8*(uint32_t)import_slot(i),idata_rva+l->hint_name[i]);
+        memcpy(idata+l->hint_name[i]+2,import_names[i],strlen(import_names[i])+1);
+    }
 }
 
 /* rip 相対の参照を埋める（disp32 = 参照先 - 次の命令の位置） */
@@ -174,7 +179,7 @@ static void apply_relocs(unsigned char *text, const Program *prog,
         if (r->kind == RELOC_DATA) {
             target = rdata_rva + (uint32_t)r->target;
         } else {
-            target = idata_rva + l->iat + 8 * (uint32_t)r->target;
+            target = idata_rva + l->iat + 8 * (uint32_t)import_slot((int)r->target);
         }
         next = TEXT_RVA + (uint32_t)r->pos + 4;
         put_u32(text + r->pos, target - next);
@@ -254,9 +259,9 @@ void write_pe(const char *path, const Program *prog)
     put_u64(opt + 96, 0x1000);                      /* SizeOfHeapCommit */
     put_u32(opt + 108, 16);                         /* NumberOfRvaAndSizes */
     put_u32(opt + 112 + 8 * 1, idata_rva);          /* インポートディレクトリ */
-    put_u32(opt + 112 + 8 * 1 + 4, 40);
+    put_u32(opt + 112 + 8 * 1 + 4, 80);
     put_u32(opt + 112 + 8 * 12, idata_rva + idl.iat);   /* IAT */
-    put_u32(opt + 112 + 8 * 12 + 4, (IMP_COUNT + 1) * 8);
+    put_u32(opt + 112 + 8 * 12 + 4, (IMP_COUNT + 3) * 8);
 
     /* セクションヘッダ */
     put_section(img + SECTION_OFFSET, ".text", text_size, TEXT_RVA,

@@ -1,0 +1,22 @@
+using io
+using lib.random as random
+
+int main(str args[]);
+	int count = 1000
+	if(args.length > 0);
+		count = int(args[0])
+	if(count <= 0);
+		print("試行回数は正の整数にしてください")
+		return 1
+
+	random.Random samples = {seed=42}
+	int inside = 0
+	for(0 <= i < count, i++);
+		double x = samples.double(-1 < point < 1)
+		double y = samples.double(-1 < point < 1)
+		if(x^2 + y^2 <= 1);
+			inside++
+
+	double estimate = 4.0 * double(inside) / double(count)
+	print("samples={count}, inside={inside}, pi≈{estimate}")
+	return 0

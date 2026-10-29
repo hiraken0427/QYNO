@@ -14,7 +14,7 @@
 | 12 | 0.27.3 | fileのtell / seek / size / modified_at、標準timeの計測・待機・単位・Stopwatch・日時処理 | 実装済み |
 | 13 | 0.27.4 | io.dir.current / change、io.path.absolute、ディレクトリのエラー分類 | 実装済み |
 | 14 | 0.27.5 | mainのstr配列引数、(void)による引数なしの明示 | 実装済み |
-| 15 | 未定 | lib.random、独立Random生成器、固定シードとOSの自動シード | 設計案 |
+| 15 | 0.27.6 | lib.randomの型名API・不等式範囲、独立Random、固定/OSシード、char/str | 実装済み |
 
 仕様: [モジュールの公開制御](module-visibility.md)、[標準ライブラリ0.27.0仕様](standard-library-0270-design.md)、
 [バイナリファイル操作0.27.1仕様](binary-file-design.md)。
@@ -22,5 +22,5 @@
 [回復可能I/Oとtry制御文の仕様](recoverable-io-design.md)を参照。
 新段階12の仕様は[ファイル位置とメタデータ](file-position-design.md)、[標準time](time-design.md)を参照。
 新段階12は0.27.3で実装した。
-新段階13・14の仕様と15の設計は[作業ディレクトリ・実行時引数・乱数](process-path-random-design.md)を参照。
+新段階13〜15の仕様は[作業ディレクトリ・実行時引数・乱数](process-path-random-design.md)を参照。
 別の後続候補としてr+bの更新モード、部分転送を扱うtry_read / try_write等がある。
