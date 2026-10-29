@@ -6,7 +6,7 @@ const callable = (path, type, params, documentation) => ({
     documentation, builtin: true
 });
 const INTEGER_TYPES = ['int_8', 'int_16', 'int_32', 'int_64', 'int_128', 'unsigned int', 'unsigned int_8', 'unsigned int_16', 'unsigned int_32', 'unsigned int_64', 'unsigned int_128'];
-const IO_CODES = ['no_error','not_found','permission_denied','already_exists','invalid_path','not_regular_file','too_many_open_files','no_space','read_only','broken_pipe','resource_busy','io_error','unsupported_operation','out_of_range','system_error'];
+const IO_CODES = ['no_error','not_found','permission_denied','already_exists','invalid_path','not_regular_file','too_many_open_files','no_space','read_only','broken_pipe','resource_busy','io_error','unsupported_operation','out_of_range','system_error','not_directory'];
 const IO_ERROR_CODE = {name:'ErrorCode',path:'io.ErrorCode',type:'io.ErrorCode',kind:'enum',builtin:true,members:IO_CODES.map((name,enumValue)=>({name,path:'io.ErrorCode.'+name,type:'io.ErrorCode',kind:'enumMember',readonly:true,builtin:true,enumValue,documentation:'回復可能なファイルI/Oエラー分類'}))};
 const IO_ERROR = {name:'Error',path:'io.Error',type:'io.Error',kind:'model',builtin:true,members:[['code','io.ErrorCode'],['message','str'],['operation','str'],['path','str'],['os_code','int_64'],['source','str'],['line','int'],['column','int']].map(([name,type])=>({name,type,kind:'field',rank:0,visibility:'public',builtin:true,documentation:'発生時点のI/Oエラー情報'}))};
 const enumType=(path,names)=>({name:path.split('.').at(-1),path,type:path,kind:'enum',builtin:true,members:names.map((name,enumValue)=>({name,path:path+'.'+name,type:path,kind:'enumMember',readonly:true,builtin:true,enumValue}))});
@@ -70,6 +70,9 @@ const STANDARD = [
     ...['join','basename','dirname','extension','stem','is_absolute','is_relative','normalize','with_extension'].map(name=>callable('io.path.'+name, ['is_absolute','is_relative'].includes(name)?'bool':'str',
         name==='join'?[{name:'base',type:'str'},{name:'child',type:'str'}]:name==='with_extension'?[{name:'path',type:'str'},{name:'extension',type:'str'}]:[{name:'path',type:'str'}],
         ({join:'パス2個を結合します。',basename:'末尾の名前を取得します。',dirname:'親パスを取得します。',extension:'最後の拡張子をドット付きで返します。',stem:'拡張子を除いた末尾の名前を返します。',is_absolute:'完全な絶対パスか判定します。',is_relative:'完全な絶対パスでないか判定します。',normalize:'区切りと余分な . を整理します。.. は保持します。',with_extension:'拡張子を変更します。空文字なら削除します。'})[name]+' 生成先OSの規則で処理し、ファイルへはアクセスしません。')),
+    callable('io.dir.current','str',[],'現在の作業ディレクトリを絶対パスで取得します。実行ファイルの場所とは異なります。'),
+    callable('io.dir.change','void',[{name:'path',type:'str'}],'既存ディレクトリへ移動します。絶対・相対パスに対応。プロセス全体の相対パスの基準を変更します。'),
+    callable('io.path.absolute','str',[{name:'path',type:'str'}],'現在の作業ディレクトリを基準に絶対パスを生成します。存在を要求せず、.. は保持します。constでは使用不可。'),
     ...['tell','size','modified_at'].map(name=>callable('io.file.'+name,name==='modified_at'?'quadruple':'int_64',[{name:'source',type:'file'}],name==='modified_at'?'最終更新日時をUNIX秒数で取得。':'論理位置または内容のバイト数を取得。位置を変更しません。')),
     callable('io.file.seek','int_64',[{name:'source',type:'file'},{name:'offset',type:'int_64'},{name:'origin',type:'io.file.SeekOrigin',optional:true,default:'io.file.SeekOrigin.begin',defaultText:'io.file.SeekOrigin.begin'}],'バイナリの先頭〜EOFへ移動し、位置を返します。currentは先読みを除いた論理位置。'),
     callable('io.file.try_open','bool',[{name:'path',type:'str'},{name:'destination',type:'file',ref:true},{name:'error',type:'io.Error',ref:true},{name:'mode',type:'str',optional:true,default:'"r"'}],'成功時trueとfile、失敗時falseとErrorを返します。出力先は未オープンが必要。falseではcaseへ移りません。'),

@@ -1,6 +1,6 @@
 /* Pure, target-specific lexical paths, shared by const evaluation and image.
  * Request: input/length=left UTF-8; b=right pointer/length; from=Windows;
- * aux=operation 0..8; buffer/base=output/capacity. status is 65 or 70.
+ * aux=operation 0..8 (9 validates directory input); buffer/base=output/capacity. status is 65 or 70.
  */
 typedef struct { uint64_t end; int absolute, drive_relative, root_relative; } PathRoot;
 static int path_sep(unsigned char c,int win) { return c=='/'||(win&&c=='\\'); }
@@ -58,6 +58,10 @@ static void path_execute(WideRequest *r)
     for(i=begin+1;i<end;i++)if(s[i]=='.')dot=i;
     if((end-begin==1&&s[begin]=='.')||(end-begin==2&&s[begin]=='.'&&s[begin+1]=='.'))dot=end;
     if(op==5||op==6){r->out.lo=(uint64_t)(op==5?root.absolute:!root.absolute);return;}
+    if(op==9){
+        if(win&&(root.drive_relative||root.root_relative)){r->status=70;return;}
+        path_copy(r,s,0,n,&pos,win);r->out.lo=pos;return;
+    }
     if(op==0){
         other=path_root(t,m,win);
         if(!n){path_copy(r,t,0,m,&pos,win);}

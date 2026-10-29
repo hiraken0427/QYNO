@@ -8,7 +8,7 @@
 #include "grapheme_runtime.h"
 #include <stdio.h>
 
-#define QYC_VERSION "0.27.3"
+#define QYC_VERSION "0.27.4"
 
 typedef struct SourceFile SourceFile;
 typedef struct Module Module;
@@ -72,6 +72,7 @@ typedef enum {
     IMP_SET_FILE_POINTER_EX, IMP_GET_SYSTEM_TIME_PRECISE_AS_FILE_TIME,
     IMP_QUERY_PERFORMANCE_COUNTER, IMP_QUERY_PERFORMANCE_FREQUENCY,
     IMP_GET_CURRENT_PROCESS, IMP_GET_PROCESS_TIMES, IMP_SLEEP,
+    IMP_GET_CURRENT_DIRECTORY_W, IMP_SET_CURRENT_DIRECTORY_W, IMP_WIDE_CHAR_TO_MULTI_BYTE,
     IMP_COUNT
 } Import;
 
@@ -195,6 +196,7 @@ typedef enum {
     BI_PATH_JOIN, BI_PATH_BASENAME, BI_PATH_DIRNAME, BI_PATH_EXTENSION,
     BI_PATH_STEM, BI_PATH_IS_ABSOLUTE, BI_PATH_IS_RELATIVE,
     BI_PATH_NORMALIZE, BI_PATH_WITH_EXTENSION,
+    BI_DIR_CURRENT, BI_DIR_CHANGE, BI_PATH_ABSOLUTE,
     BI_FILE_OPEN,
     BI_FILE_CLOSE,
     BI_FILE_IS_OPEN,
@@ -211,6 +213,7 @@ enum { TR_QUAD,TR_VOID,TR_BOOL,TR_INT,TR_DATE,TR_WEEKDAY,TR_TEXT,TR_TICKS };
 typedef struct {int min_args,max_args;const char *args;int result;} TimeSpec;
 const TimeSpec *time_spec(int op);
 int builtin_is_time(int b);
+int builtin_is_directory(int b);
 int builtin_may_raise(int b);
 Type standard_type(Ast *ast,const char *ns,const char *name);
 

@@ -1,4 +1,4 @@
-# QYNO 0.27.3
+# QYNO 0.27.4
 
 C99とGCCの128bit数値拡張で実装した、Linux x64 / Windows x64 向けのコンパイラ。
 UTF-8 の `.qy` ソースから実行ファイルを直接生成する。
@@ -35,9 +35,9 @@ int main();
 
 ## VS Code 拡張
 
-[QYNO 0.27.3](vscode-extensions/README.md) はハイライト、ユーザー定義の関数名・変数名の補完、
+[QYNO 0.27.4](vscode-extensions/README.md) はハイライト、ユーザー定義の関数名・変数名の補完、
 定義への移動、引数ヒント、セミコロン後の自動インデント、qyc連携の構文・型エラーの赤線表示に対応する。
-[vscode-extensions/0.27.3_VSCode_option.vsix](vscode-extensions/0.27.3_VSCode_option.vsix) を
+[vscode-extensions/0.27.4_VSCode_option.vsix](vscode-extensions/0.27.4_VSCode_option.vsix) を
 VS Code の「VSIX からのインストール…」で指定する。
 診断には別途qycが必要。PATHにない場合は拡張設定の `qyno.compilerPath` に実行ファイルを指定する。
 
@@ -414,3 +414,31 @@ int main();
 doubleが必要なら明示変換する。時計の実際の精度はOSとハードウェアに依存する。
 仕様: [ファイル位置](docs/file-position-design.md)、[time](docs/time-design.md)。
 例: [時間計測](examples/time/main.qy)、[ファイル位置と更新日時](examples/io/positions.qy)。
+
+
+## 作業ディレクトリと絶対パス（0.27.4）
+
+`io.dir.current()`で現在の作業ディレクトリをstrで取得し、`io.dir.change(path)`で
+既存ディレクトリへ移動する。絶対パスと通常の相対パスに対応する。
+`io.path.absolute(path)`は実在しない出力先にも使え、`..`を保持する。
+
+```text
+using io
+using io.dir as dir
+
+int main();
+	str before = dir.current()
+	try(dir.change(".."));
+		print(dir.current())
+		print(io.path.absolute("output.txt"))
+	finally;
+		dir.change(before)
+	return 0
+```
+
+変更後に開く相対パスは新しい場所が基準になる。既にopenしたfileの参照先は変わらない。
+変更失敗は既存のtryで扱い、通常ファイルへの移動はErrorCode.not_directoryになる。
+Windowsでは区切りを`/`で返し、ドライブ相対`C:work`・ルート相対`/work`は拒否する。
+仕様: [作業ディレクトリ](docs/process-path-random-design.md)。
+例: [取得・移動・復帰](examples/io/directories.qy)。
+同仕様書のmain引数・型名と不等式による乱数APIは後続の設計であり、0.27.4には含まない。

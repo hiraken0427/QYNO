@@ -1,0 +1,19 @@
+using io
+using io.dir as dir
+using io.path as path
+
+int main();
+	str before = dir.current()
+	str output = path.absolute("report.txt")
+	print("start: {before}")
+	try(dir.change("..")) as error;
+		print("current: {dir.current()}")
+		print("saved output: {output}")
+		print("new output: {path.absolute("report.txt")}")
+	case();
+		print("{error.operation}: {error.message}")
+		return 1
+	finally;
+		dir.change(before)
+	print("restored: {dir.current()}")
+	return 0

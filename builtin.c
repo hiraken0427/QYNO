@@ -40,6 +40,7 @@ static const BuiltinInfo builtins[BI_COUNT] = {
     { "io.path", "stem" }, { "io.path", "is_absolute" },
     { "io.path", "is_relative" }, { "io.path", "normalize" },
     { "io.path", "with_extension" },
+    { "io.dir", "current" }, { "io.dir", "change" }, { "io.path", "absolute" },
     { "io.file", "open" },
     { "io.file", "close" },
     { "io.file", "is_open" },
@@ -100,6 +101,7 @@ const char *builtin_namespace_of(const char *name, int len)
     return NULL;
 }
 
+int builtin_is_directory(int b){return b>=BI_DIR_CURRENT&&b<=BI_PATH_ABSOLUTE;}
 int builtin_is_time(int b){return b>=BI_TIME_NOW&&b<=BI_TIME_FREQUENCY;}
 const TimeSpec *time_spec(int op)
 {
@@ -112,7 +114,7 @@ const TimeSpec *time_spec(int op)
 }
 int builtin_may_raise(int b)
 {
-    return (b>=BI_FILE_OPEN&&b!=BI_FILE_IS_OPEN&&b!=BI_FILE_TRY_OPEN)||
+    return builtin_is_directory(b)||(b>=BI_FILE_OPEN&&b!=BI_FILE_IS_OPEN&&b!=BI_FILE_TRY_OPEN)||
         (builtin_is_time(b)&&(b<=BI_TIME_SLEEP_UNTIL||b>=BI_TIME_TICKS));
 }
 Type standard_type(Ast *ast,const char *ns,const char *name)
