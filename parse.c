@@ -1945,6 +1945,7 @@ static Function *function_def(int is_readonly)
         v = new_var(self, parsing_model ? parsing_model->ty : parsing_interface->ty); v->is_param = 1; v->is_ref = 1; v->is_readonly = is_readonly;
         cur = cur->next = v; fn->param_count++;
     }
+    if ((equal(tok,"void")||equal(tok,"Void"))&&equal(tok->next,")")) tok=tok->next;
     if (!equal(tok, ")")) {
         for (;;) {
             int param_ref = 0, param_readonly = 0, param_infer, param_omitted;

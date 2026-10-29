@@ -1,3 +1,9 @@
+# 0.27.5
+
+- main(str args[])と通常の配列引数の補完・定義移動に対応。
+- (void) / (Void)を引数なしのマーカーとして解析し、名前付きvoid引数と区別。
+- mainargs / mainvoidスニペットを追加し、0.27.5のqycによるmainシグネチャ診断に対応。
+
 # 0.27.4
 
 - io.dir.current / change、io.path.absoluteの補完・ホバー・引数ヒントを追加。

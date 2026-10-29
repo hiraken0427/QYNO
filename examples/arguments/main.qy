@@ -1,0 +1,12 @@
+using io
+using io.path as path
+
+int main(str args[]);
+	show_usage()
+	for(0 <= i < args.length, i++);
+		str target = path.absolute(args[i])
+		print("{i}: {target}")
+	return 0
+
+void show_usage(void);
+	print("各引数を起動時の作業ディレクトリから絶対パスへ変換します。")

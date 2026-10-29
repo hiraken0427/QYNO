@@ -2267,8 +2267,11 @@ static void check_names(Ast *ast)
         fatal("main 関数がありません（int main(); が必要です）");
     }
     if(main_fn->is_private)error_tok(main_fn->tok,"main 関数は private にできません");
-    if (main_fn->infer_return || main_fn->ret != TY_INT || main_fn->param_count != 0) {
-        error_tok(main_fn->tok, "main 関数は int main(); の形（戻り値 int、引数なし）で定義してください");
+    v=main_fn->params;
+    if (main_fn->infer_return || main_fn->ret != TY_INT || main_fn->is_generic ||
+        (main_fn->param_count!=0 && (main_fn->param_count!=1 || v->is_ref || v->is_readonly ||
+        v->ty!=array_type(TY_STR) || !v->dims || v->dims->bound || v->default_arg))) {
+        error_tok(main_fn->tok, "main 関数は int main();、int main(void);、int main(str args[]); の形で定義してください（引数はstrの可変長1次元配列）");
     }
 }
 

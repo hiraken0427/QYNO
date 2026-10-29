@@ -816,3 +816,19 @@ test('directory APIs require using and preserve process-relative path signatures
     assert.equal(hint('int main();\n\tio.dir.current(¦').label,'str io.dir.current()');
     assert.ok(labels('int main();\n\tio.ErrorCode.¦').includes('not_directory'));
 });
+
+
+test('main string arguments are normal array parameters with navigation and members', () => {
+    const result=items('int main(str args[]);\n\tar¦');
+    assert.ok(result.some(i=>i.label==='args'&&i.symbol.type==='str'&&i.symbol.rank===1));
+    assert.ok(labels('int main(str args[]);\n\targs.¦').includes('length'));
+    assert.ok(labels('int main(str args[]);\n\targs[0].¦').includes('length'));
+    assert.equal(at('int main(str args[]);\n\tio.print(ar¦gs[0])').line,0);
+});
+
+test('void markers normalize to zero parameters while unit values remain parameters', () => {
+    assert.equal(hint('void show(void);\n\treturn\nint main(Void);\n\tshow(¦').label,'void show()');
+    assert.equal(hint('void show(void value);\n\treturn\nint main();\n\tshow(¦').label,'void show(void value)');
+    const result=labels('void show(Void);\n\tvo¦');
+    assert.ok(!result.includes('value'));
+});

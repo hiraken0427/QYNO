@@ -8,6 +8,16 @@
     ],
     "description": "エントリ関数"
   },
+  "Main with arguments": {
+    "prefix": "mainargs",
+    "body": ["int main(str ${1:args}[]);", "\t$0", "\treturn 0"],
+    "description": "実行ファイル名を含まないstr配列を受け取るエントリ関数"
+  },
+  "Main with explicit void": {
+    "prefix": "mainvoid",
+    "body": ["int main(void);", "\t$0", "\treturn 0"],
+    "description": "引数なしを明示するエントリ関数"
+  },
   "Forward loop": {
     "prefix": "for",
     "body": [

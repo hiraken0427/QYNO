@@ -104,7 +104,10 @@ static void gen_file_context(Node *node);
 static void gen_os_context(Token *tok,const char *ns,const char *operation);
 
 static int depth;
-static int main_label;
+static int main_label,arguments_label;
+static Function *main_function;
+static void gen_entry_main(void);
+static void gen_arguments_runtime(void);
 static int write_label;
 static int print_int_label;
 static int complex_make_labels[2], complex_op_labels[2][4], complex_pow_labels[2], complex_print_labels[2];
@@ -206,7 +209,7 @@ static void gen_entry_windows(void)
     x64_xor(R14, R14);
     x64_mov(R15, RSP);
     gen_input_state_init();     /* 入力の状態の領域を r14 に */
-    x64_call(main_label);
+    gen_entry_main();
     x64_load(R11,R14,IO_PENDING);x64_test(R11,R11);x64_jcc(CC_NZ,io_unhandled_label);
 
     /* ここから終了処理（rax が終了コード。実行時エラーもここへ来る） */
@@ -230,7 +233,7 @@ static void gen_entry_linux(void)
     x64_xor(R14, R14);
     x64_mov(R15, RSP);
     gen_input_state_init();
-    x64_call(main_label);
+    gen_entry_main();
     x64_load(R11,R14,IO_PENDING);x64_test(R11,R11);x64_jcc(CC_NZ,io_unhandled_label);
     x64_bind(exit_label);
     x64_mov(RSP, R15);
@@ -4861,6 +4864,7 @@ static void gen_real_to_float(int range)
 #include "places_codegen.inc"
 #include "library_codegen.inc"
 #include "directory_codegen.inc"
+#include "arguments_codegen.inc"
 #include "enums_codegen.inc"
 
 /*
@@ -6133,13 +6137,14 @@ void codegen(Ast *ast, Program *out_prog, FILE *out_text, Target out_target)
     zero_char_offset = prog_add_str(prog, "\0", 1);
 
     /* 関数のラベルは先に作っておく（後ろで定義された関数も呼べるように） */
-    main_label = -1;
+    main_label = -1;main_function=NULL;
+    arguments_label=new_label("runtime.arguments");
     for (fn = ast->funcs; fn != NULL; fn = fn->next) {
         if (fn->is_template) continue;
         snprintf(label_name, sizeof(label_name), ".L.module.%d.function.%d.%.*s", fn->tok->source->module->id, function_index++, fn->name_len, fn->name);
         fn->label = x64_new_label(label_name);
-        if (!fn->model && fn->name_len == 4 && strncmp(fn->name, "main", 4) == 0) {
-            main_label = fn->label;
+        if (!fn->model && fn->tok->source->module==ast->entry && fn->name_len == 4 && strncmp(fn->name, "main", 4) == 0) {
+            main_label = fn->label;main_function=fn;
         }
     }
     { int mode, op;
@@ -6290,6 +6295,7 @@ void codegen(Ast *ast, Program *out_prog, FILE *out_text, Target out_target)
     gen_file_runtime();
     gen_time_runtime();
     gen_directory_runtime();
+    gen_arguments_runtime();
     gen_model_runtime();
 
     /* ユーザーのプログラム */
