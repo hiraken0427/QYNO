@@ -34,6 +34,9 @@ static const BuiltinInfo builtins[BI_COUNT] = {
 #define TIME_API(id,name,min,max,args,result) {"time",name},
 #include "time_api.def"
 #undef TIME_API
+#define RANDOM_API(id,name,ty,op) {"lib.random",name},
+#include "random_api.def"
+#undef RANDOM_API
     { "lib", "size" }, { "lib", "length" },
     { "io.path", "join" }, { "io.path", "basename" },
     { "io.path", "dirname" }, { "io.path", "extension" },
@@ -101,6 +104,18 @@ const char *builtin_namespace_of(const char *name, int len)
     return NULL;
 }
 
+int builtin_is_random(int b){return b>=BI_RANDOM_INT8&&b<=BI_RANDOM_INIT;}
+int random_builtin_find(const char *name,int length){int b;for(b=BI_RANDOM_INT8;b<=BI_RANDOM_INIT;b++)if((int)strlen(builtin_name((Builtin)b))==length&&!memcmp(name,builtin_name((Builtin)b),(size_t)length))return b;return -1;}
+Type random_return_type(int b){static const Type types[]={
+#define RANDOM_API(id,name,ty,op) ty,
+#include "random_api.def"
+#undef RANDOM_API
+};return types[b-BI_RANDOM_INT8];}
+int random_operation(int b){static const int ops[]={
+#define RANDOM_API(id,name,ty,op) op,
+#include "random_api.def"
+#undef RANDOM_API
+};return ops[b-BI_RANDOM_INT8];}
 int builtin_is_directory(int b){return b>=BI_DIR_CURRENT&&b<=BI_PATH_ABSOLUTE;}
 int builtin_is_time(int b){return b>=BI_TIME_NOW&&b<=BI_TIME_FREQUENCY;}
 const TimeSpec *time_spec(int op)
@@ -114,9 +129,11 @@ const TimeSpec *time_spec(int op)
 }
 int builtin_may_raise(int b)
 {
-    return builtin_is_directory(b)||(b>=BI_FILE_OPEN&&b!=BI_FILE_IS_OPEN&&b!=BI_FILE_TRY_OPEN)||
+    return (builtin_is_random(b)&&random_operation(b)!=0)||builtin_is_directory(b)||(b>=BI_FILE_OPEN&&b!=BI_FILE_IS_OPEN&&b!=BI_FILE_TRY_OPEN)||
         (builtin_is_time(b)&&(b<=BI_TIME_SLEEP_UNTIL||b>=BI_TIME_TICKS));
 }
+int builtin_node_may_raise(Node *n)
+{return builtin_may_raise((int)n->val)&&!(builtin_is_random((int)n->val)&&n->rhs);}
 Type standard_type(Ast *ast,const char *ns,const char *name)
 {
     Module *mod;Model *m;EnumDef *e;

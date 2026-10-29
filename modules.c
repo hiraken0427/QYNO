@@ -266,6 +266,7 @@ Ast *load_program(const char *path, const char **roots, int root_count)
     }
     standard_source("io.file","enum SeekOrigin;\n\tbegin\n\tcurrent\n\tend\n");
     standard_source("time",standard_time_source);
+    standard_source("lib.random","model Random;\n\tprivate unsigned int_64 a\n\tprivate unsigned int_64 b\n\tprivate unsigned int_64 c\n\tprivate unsigned int_64 d\n\tvoid init(unsigned int_64 seed=0);\n\t\tlib.random._seed(ref this,seed)\n");
     program->entry = load_module("", path, canonical, NULL);
     program->modules = modules;
     /* 所有モジュールは Token.source に残す。リストだけを出力単位へ連結する。 */
@@ -561,6 +562,7 @@ static int import_root(Module *owner, const char *name)
 static void introduced_name(Using *u, const char *name, Symbol symbol)
 {
     Module *owner = u->tok->source->module;
+    if(symbol.kind==SYM_BUILTIN&&builtin_is_random(symbol.builtin)&&random_operation(symbol.builtin)!=0)error_tok(u->path_tok,"乱数の型名APIはモジュール別名を使ってください（using lib.random as random）");
     Symbol direct = direct_symbol(owner, name);
     Using *other;
     Var *local;

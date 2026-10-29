@@ -1,5 +1,5 @@
 """Process arguments, the CRT grammar and explicit empty parameter lists."""
-import ctypes, os, random, struct, subprocess, tempfile, unittest
+import ctypes, os, random, re, struct, subprocess, tempfile, unittest
 from pathlib import Path
 from support import ROOT, program, run_suite
 from time_support import PlatformCase, WINDOWS, inject_windows_api_results
@@ -17,7 +17,7 @@ class CommandLineGrammarTests(unittest.TestCase):
         subprocess.run(['gcc','-std=c99','-O1','-shared','-fPIC',str(ROOT/'wide_runtime.c'),str(ROOT/'grapheme_runtime.c'),'-lm','-o',str(library)],check=True,capture_output=True)
         cls.library=ctypes.CDLL(str(library));cls.library.wide_execute.argtypes=[ctypes.POINTER(Request)]
         # The public internal enum is the single source of the request opcode.
-        cls.op=(ROOT/'wide_runtime.h').read_text().split('enum { W_CONVERT,',1)[1].split('};',1)[0].count(',')+1
+        cls.op=re.findall(r'W_[A-Z_]+', (ROOT/'wide_runtime.h').read_text().split('enum { W_CONVERT',1)[1].split('};',1)[0]).index('W_ARGUMENTS')+1
 
     def decode(self,text,*,status=0):
         raw=text.encode('utf-16-le',errors='surrogatepass');source=ctypes.create_string_buffer(raw)

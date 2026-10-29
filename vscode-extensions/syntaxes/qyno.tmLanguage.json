@@ -160,6 +160,10 @@
       "include": "#numbers"
     },
     {
+      "match": "(?<=\\.)\\b(?:int(?:_(?:8|16|32|64|128))?|unsigned_int(?:_(?:8|16|32|64|128))?|half|float|double|quadruple|bool|char|str|seed)\\b(?=\\s*\\()",
+      "name": "support.function.qyno"
+    },
+    {
       "include": "#types"
     },
     {
@@ -372,6 +376,10 @@
         },
         {
           "include": "#numbers"
+        },
+        {
+          "match": "(?<=\\.)\\b(?:int(?:_(?:8|16|32|64|128))?|unsigned_int(?:_(?:8|16|32|64|128))?|half|float|double|quadruple|bool|char|str|seed)\\b(?=\\s*\\()",
+          "name": "support.function.qyno"
         },
         {
           "include": "#types"

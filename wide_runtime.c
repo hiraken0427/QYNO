@@ -287,6 +287,7 @@ encode:
 #include "path_runtime.inc"
 #include "time_pure.inc"
 #include "arguments_pure.inc"
+#include "random_pure.inc"
 /* Compare exact binary values to exact integer powers of ten. */
 static void decimal_digits(WideRequest *r)
 {
@@ -317,6 +318,7 @@ void wide_execute(WideRequest *r) {
     r->status=0;r->out=parts(0);r->used=0;
     if(op==W_DIGITS){decimal_digits(r);return;}
     if(op==W_PATH){path_execute(r);return;}
+    if(op==W_RANDOM){random_execute((RandomRequest *)r->input);r->status=((RandomRequest *)r->input)->status;return;}
     if(op==W_ARGUMENTS){arguments_execute(r);return;}
     if(op==W_TIME){time_execute((TimeRequest *)r->input);r->status=((TimeRequest *)r->input)->status;return;}
     if(op==W_CURSOR){r->out.lo=grapheme_cursor((const unsigned char *)r->input,(uint64_t)r->length,r->b.lo,(int)r->aux);return;}

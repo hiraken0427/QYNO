@@ -7,12 +7,12 @@ OBJS = $(SRCS:.c=.o)
 qyc: $(OBJS)
 	$(CC) -o $@ $(OBJS) -lm
 
-$(OBJS): qyc.h wide_runtime.h grapheme_runtime.h time_runtime.h time_api.def
+$(OBJS): qyc.h wide_runtime.h grapheme_runtime.h time_runtime.h time_api.def random_runtime.h random_api.def
 grapheme_runtime.o: grapheme_data.h
-wide_runtime.o: arguments_pure.inc path_runtime.inc time_pure.inc time_runtime.h time_api.def
+wide_runtime.o: random_pure.inc random_runtime.h arguments_pure.inc path_runtime.inc time_pure.inc time_runtime.h time_api.def
 modules.o: standard_time_source.h
-codegen.o: arguments_codegen.inc directory_codegen.inc time_codegen.inc file_position_runtime.inc recoverable_codegen.inc recoverable_runtime.inc enums_codegen.inc binary_file_runtime.inc library_codegen.inc wide_codegen.inc wide_blob.h complex_input.inc complex_codegen.inc collections_codegen.inc memory_codegen.inc places_codegen.inc models_codegen.inc file_runtime.inc integer_bases_codegen.inc
-type.o: directory_type.inc time_type.inc time_const.inc recoverable_effects.inc recoverable_type.inc enums_type.inc enums_const.inc match_type.inc library_type.inc library_const.inc module_visibility_type.inc wide_type.inc complex_type.inc arrays_type.inc models_type.inc readonly_type.inc const_models.inc initialization_type.inc initialization_flow.inc interfaces_type.inc interfaces_specialize.inc integer_bases_type.inc file_close_analysis.inc inference_warnings.inc return_inference.inc generic_functions.inc
+codegen.o: random_codegen.inc arguments_codegen.inc directory_codegen.inc time_codegen.inc file_position_runtime.inc recoverable_codegen.inc recoverable_runtime.inc enums_codegen.inc binary_file_runtime.inc library_codegen.inc wide_codegen.inc wide_blob.h complex_input.inc complex_codegen.inc collections_codegen.inc memory_codegen.inc places_codegen.inc models_codegen.inc file_runtime.inc integer_bases_codegen.inc
+type.o: random_type.inc directory_type.inc time_type.inc time_const.inc recoverable_effects.inc recoverable_type.inc enums_type.inc enums_const.inc match_type.inc library_type.inc library_const.inc module_visibility_type.inc wide_type.inc complex_type.inc arrays_type.inc models_type.inc readonly_type.inc const_models.inc initialization_type.inc initialization_flow.inc interfaces_type.inc interfaces_specialize.inc integer_bases_type.inc file_close_analysis.inc inference_warnings.inc return_inference.inc generic_functions.inc
 
 test: qyc
 	PYTHON="$(PYTHON)" bash ./test.sh
@@ -52,6 +52,12 @@ test: qyc
 	$(PYTHON) tests/time_stopwatch_test.py ./qyc
 	$(PYTHON) tests/directory_test.py ./qyc
 	$(PYTHON) tests/arguments_test.py ./qyc
+	$(PYTHON) tests/random_engine_test.py
+	$(PYTHON) tests/random_test.py ./qyc
+
+test-random: qyc
+	$(PYTHON) tests/random_engine_test.py
+	$(PYTHON) tests/random_test.py ./qyc
 
 test-arguments: qyc
 	$(PYTHON) tests/arguments_test.py ./qyc
@@ -165,4 +171,4 @@ test-arrays: qyc
 clean:
 	rm -f qyc qyc.exe *.o tmp tmp.exe tmp.qy tmp.s
 
-.PHONY: test test-arguments test-directory test-time test-file-position test-recoverable-io test-enums test-binary-file test-standard-library test-module-visibility test-grapheme-unit test-wide-types test-complex test-default-integer test-integer-types test-auto test-implicit-declarations test-global-const-inference test-return-inference test-generic-functions test-bitwise test-integer-bases test-interfaces test-initialization test-readonly test-visibility test-model test-file test-input-refs test-for test-io test-modules test-lineedit test-rounding test-semantics test-text test-arrays clean
+.PHONY: test test-random test-arguments test-directory test-time test-file-position test-recoverable-io test-enums test-binary-file test-standard-library test-module-visibility test-grapheme-unit test-wide-types test-complex test-default-integer test-integer-types test-auto test-implicit-declarations test-global-const-inference test-return-inference test-generic-functions test-bitwise test-integer-bases test-interfaces test-initialization test-readonly test-visibility test-model test-file test-input-refs test-for test-io test-modules test-lineedit test-rounding test-semantics test-text test-arrays clean

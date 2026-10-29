@@ -5,10 +5,11 @@
 #include <stdint.h>
 #include "wide_runtime.h"
 #include "time_runtime.h"
+#include "random_runtime.h"
 #include "grapheme_runtime.h"
 #include <stdio.h>
 
-#define QYC_VERSION "0.27.5"
+#define QYC_VERSION "0.27.6"
 
 typedef struct SourceFile SourceFile;
 typedef struct Module Module;
@@ -74,6 +75,8 @@ typedef enum {
     IMP_GET_CURRENT_PROCESS, IMP_GET_PROCESS_TIMES, IMP_SLEEP,
     IMP_GET_CURRENT_DIRECTORY_W, IMP_SET_CURRENT_DIRECTORY_W, IMP_WIDE_CHAR_TO_MULTI_BYTE,
     IMP_GET_COMMAND_LINE_W,
+    /* Import groups: kernel32 above, then bcrypt, then ntdll. */
+    IMP_BCRYPT_GEN_RANDOM, IMP_RTL_NTSTATUS_TO_DOS_ERROR,
     IMP_COUNT
 } Import;
 
@@ -193,6 +196,9 @@ typedef enum {
 #define TIME_API(id,name,min,max,args,result) BI_TIME_##id,
 #include "time_api.def"
 #undef TIME_API
+#define RANDOM_API(id,name,ty,op) BI_RANDOM_##id,
+#include "random_api.def"
+#undef RANDOM_API
     BI_LIB_SIZE, BI_LIB_LENGTH,
     BI_PATH_JOIN, BI_PATH_BASENAME, BI_PATH_DIRNAME, BI_PATH_EXTENSION,
     BI_PATH_STEM, BI_PATH_IS_ABSOLUTE, BI_PATH_IS_RELATIVE,
@@ -215,7 +221,12 @@ typedef struct {int min_args,max_args;const char *args;int result;} TimeSpec;
 const TimeSpec *time_spec(int op);
 int builtin_is_time(int b);
 int builtin_is_directory(int b);
+int builtin_is_random(int b);
+int random_builtin_find(const char *name,int length);
+Type random_return_type(int b);
+int random_operation(int b);
 int builtin_may_raise(int b);
+int builtin_node_may_raise(Node *n);
 Type standard_type(Ast *ast,const char *ns,const char *name);
 
 /* using の1項目。参照先と宣言位置の字句スコープを保持する。 */
@@ -352,6 +363,7 @@ struct Node {
     long long val;      /* ND_NUM・ND_BOOL の値。ND_PRINT では文字列リテラル直書きなら 1 */
     WideBits wide;
     int raw_numeric;
+    int random_flags;
     double imag;       /* ND_COMPLEX imaginary component */
     double fval;        /* ND_FNUM の値 */
     char *str;          /* ND_STR・ND_STRLIT の内容（エスケープ処理済み） */

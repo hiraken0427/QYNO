@@ -551,7 +551,7 @@ static char *name_path(void)
         size_t length;
         char *grown;
         if (tok->kind != TK_IDENT ||
-            (is_keyword(tok) && !(equal(tok, "file") && (size != 0 || equal(tok->next, "."))) && !(size != 0 && (equal(tok, "print") || equal(tok, "input") || equal(tok, "file"))))) {
+            (is_keyword(tok) && !(equal(tok, "file") && (size != 0 || equal(tok->next, "."))) && !(size != 0 && (equal(tok, "print") || equal(tok, "input") || equal(tok, "file") || random_builtin_find(tok->loc,tok->len)>=0)))) {
             error_tok(tok, "モジュール名または識別子が必要です");
         }
         length = (size_t)tok->len;

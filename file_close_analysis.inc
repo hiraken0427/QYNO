@@ -158,7 +158,7 @@ static int fc_direct(Node *n, int calls)
         InputField *field;
         for (field = n->fields; field; field = field->next) if (fc_direct(field->var, calls)) return 1;
         if (fc_file_type(n->ty) || (n->var && fc_file_type(n->var->ty)) ||
-            (n->kind == ND_BUILTIN && (n->val >= BI_FILE_OPEN||builtin_may_raise((int)n->val)))) return 1;
+            (n->kind == ND_BUILTIN && (n->val >= BI_FILE_OPEN||builtin_node_may_raise(n)))) return 1;
         if (calls && (n->kind == ND_CALL || n->kind == ND_CONSTRUCT) && fc_info(n->func)->relevant) return 1;
         if (calls && n->kind == ND_MODEL_NEW && fc_info(type_model(n->ty)->default_builder)->relevant) return 1;
         if (fc_direct(n->lhs, calls) || fc_direct(n->rhs, calls) || fc_direct(n->cond, calls) ||
@@ -436,13 +436,14 @@ static FcMap *fc_eval(FcContext *ctx, FcState *s, Node *n)
         return m;
     }
     if (n->kind == ND_BUILTIN) {
+        if(builtin_is_random((int)n->val)&&n->rhs){fc_eval(ctx,s,n->rhs->rhs);fc_eval(ctx,s,n->rhs->lhs);}
         m = fc_empty(); i = 0;
         for (p = n->lhs; p; p = p->next, i++) { FcMap *v = fc_eval(ctx, s, p->kind == ND_REFARG ? p->lhs : p); if (i == 0) m = v; }
         if(n->val==BI_FILE_TRY_OPEN){
             int id=fc_id(ctx,n,0,"");FcMap *result=fc_empty();
             s->known[id]=s->live[id]=1;fc_store(ctx,s,n->lhs->next->lhs,fc_scalar(id));result->success_id=id;return result;
         }
-        if(builtin_may_raise((int)n->val)&&n->val!=BI_FILE_CLOSE)fc_error(ctx,s,n,0xFFFEu);
+        if(builtin_node_may_raise(n)&&n->val!=BI_FILE_CLOSE)fc_error(ctx,s,n,0xFFFEu);
         if (n->val == BI_FILE_OPEN) { int id = fc_id(ctx, n, 0, ""); s->known[id] = s->live[id] = 1; return fc_scalar(id); }
         if (n->val == BI_FILE_CLOSE) { int id = fc_get(ctx, m, ""); if (id > 0) { s->known[id] = 1; s->live[id] = 0; } }
         if(n->val==BI_FILE_CLOSE)fc_error(ctx,s,n,0xFFFEu);

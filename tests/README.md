@@ -309,3 +309,19 @@ Windowsは既存の`QYNO_FILE_TARGET=windows QYNO_FILE_WINDOWS_RUNNER=/absolute/
 0.27.5の最終make testはshellチェック326件、Python1,188メソッド（Windows専用6件skip）で失敗0。
 新規24メソッドはLinuxで21件成功・3件skip、Windowsで23件成功・1件skip。
 UBSan・GC頻発設定でも両ターゲットの検証が通過した。VS Code単体132件・実機182項目が成功した。
+
+
+## 型名・不等式の乱数（0.27.6）
+
+`make test-random`はエンジン7メソッドとコンパイラ32メソッド。
+整数・シード・棄却法は独立した参照計算、小数はPython Fractionの正確な補間と丸めで照合する。
+全整数幅、4種類の小数、全端点、巨大/サブノーマル/隣接値、charの書記素、ASCIIのstr、
+型名と型変換、受け手の借用、Randomのコピー・ref・readonly・配列とfieldを含む。
+コンパイラ経由のLinux専用3件はgetrandomの不在・失敗・EINTR・短い読み取り、
+Windows専用1件はBCrypt / NTSTATUS変換への失敗注入を検証する。
+`QYNO_RANDOM_CHECKED=1 python3 tests/random_engine_test.py`で純粋CエンジンをUBSan付きで検証できる。
+PEのインポートはkernel32・bcrypt・ntdllごとに終端を持つ。既存のWindows失敗注入ヘルパーも複数DLLへ対応した。
+
+0.27.6の最終make testはshell326件・Python1,227メソッド（Windows専用7件skip）、失敗0。
+新規のエンジン7件・コンパイラ32件を検証し、Windowsの生成プログラムと複数DLLのPEも確認した。
+UBSan・GC頻発設定が通過。VS Code単体133件・実機188項目が成功し、VSIXを作成した。

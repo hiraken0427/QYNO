@@ -42,13 +42,15 @@ def inject_windows_api_results(binary, results):
         for base,raw,size in sections:
             if base<=rva<base+size:return raw+rva-base
         raise AssertionError('invalid PE RVA')
-    descriptor=offset(u32(optional+120));lookup=u32(descriptor);iat=u32(descriptor+16)
-    slots={};index=0
-    while True:
-        hint=struct.unpack_from('<Q',data,offset(lookup+index*8))[0]
-        if not hint:break
-        start=offset(hint)+2;end=data.index(0,start)
-        slots[data[start:end].decode()]=iat+index*8;index+=1
+    descriptor=offset(u32(optional+120));slots={}
+    while u32(descriptor):
+        lookup=u32(descriptor);iat=u32(descriptor+16);index=0
+        while True:
+            hint=struct.unpack_from('<Q',data,offset(lookup+index*8))[0]
+            if not hint:break
+            start=offset(hint)+2;end=data.index(0,start)
+            slots[data[start:end].decode()]=iat+index*8;index+=1
+        descriptor+=20
     for name,result in results.items():
         count=0
         for base,raw,size in sections:

@@ -97,6 +97,7 @@ static void check_model_method(Node *node)
 {
     Function *fn; Node *self; int allow = allow_void;
     allow_void = 0; check_interface_receiver(node->lhs); allow_void = allow;
+    if(check_random_method(node))return;
     if (type_is_interface(node->lhs->ty)) {
         for (fn = type_interface(node->lhs->ty)->methods; fn; fn = fn->next)
             if (same_name(fn->name, fn->name_len, node->tok->loc, node->tok->len)) break;

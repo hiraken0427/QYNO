@@ -832,3 +832,17 @@ test('void markers normalize to zero parameters while unit values remain paramet
     const result=labels('void show(Void);\n\tvo¦');
     assert.ok(!result.includes('value'));
 });
+
+
+test('typed random namespace and model completions preserve ordinary type casts', () => {
+    const result=labels('using lib\nint main();\n\trandom.¦');
+    for(const name of ['Random','int','int_128','unsigned_int_64','half','double','quadruple','bool','char','str','seed'])assert.ok(result.includes(name),name);
+    assert.ok(!result.includes('_seed'));assert.ok(!result.includes('integer'));
+    assert.ok(labels('using lib.random as rng\nint main();\n\trng.¦').includes('int'));
+    const methods=labels('using lib.random as rng\nint main();\n\trng.Random generator\n\tgenerator.¦');
+    assert.ok(methods.includes('int'));assert.ok(methods.includes('seed'));assert.ok(!methods.includes('a'));
+    assert.ok(!labels('void inspect(ref readonly lib.random.Random generator);\n\tgenerator.¦').includes('int'));
+    assert.equal(hint('using lib\nint main();\n\trandom.double(¦').label,'double random.double(min < x < max)');
+    assert.ok(hint('int main();\n\tint(¦').label.includes('int / float'));
+    assert.ok(labels('using lib.random as rng\nint main();\n\trng.Random r={¦}').includes('seed'));
+});
