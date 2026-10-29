@@ -4,10 +4,11 @@
 #include <stddef.h>
 #include <stdint.h>
 #include "wide_runtime.h"
+#include "time_runtime.h"
 #include "grapheme_runtime.h"
 #include <stdio.h>
 
-#define QYC_VERSION "0.27.2"
+#define QYC_VERSION "0.27.3"
 
 typedef struct SourceFile SourceFile;
 typedef struct Module Module;
@@ -68,6 +69,9 @@ typedef enum {
     IMP_GET_FILE_TYPE,
     IMP_GET_FILE_INFORMATION_BY_HANDLE,
     IMP_MULTI_BYTE_TO_WIDE_CHAR,
+    IMP_SET_FILE_POINTER_EX, IMP_GET_SYSTEM_TIME_PRECISE_AS_FILE_TIME,
+    IMP_QUERY_PERFORMANCE_COUNTER, IMP_QUERY_PERFORMANCE_FREQUENCY,
+    IMP_GET_CURRENT_PROCESS, IMP_GET_PROCESS_TIMES, IMP_SLEEP,
     IMP_COUNT
 } Import;
 
@@ -184,6 +188,9 @@ typedef enum {
     BI_COMPLEX, BI_HALF, BI_QUAD,
     BI_IO_PRINT,    /* io.print(...)：出力文として解析する */
     BI_IO_INPUT,    /* io.input(...)：入力先と形式を保持する */
+#define TIME_API(id,name,min,max,args,result) BI_TIME_##id,
+#include "time_api.def"
+#undef TIME_API
     BI_LIB_SIZE, BI_LIB_LENGTH,
     BI_PATH_JOIN, BI_PATH_BASENAME, BI_PATH_DIRNAME, BI_PATH_EXTENSION,
     BI_PATH_STEM, BI_PATH_IS_ABSOLUTE, BI_PATH_IS_RELATIVE,
@@ -196,8 +203,16 @@ typedef enum {
     BI_FILE_WRITE,
     BI_FILE_EXISTS,
     BI_FILE_READ_BYTES, BI_FILE_WRITE_BYTES, BI_FILE_TRY_OPEN,
+    BI_FILE_TELL, BI_FILE_SEEK, BI_FILE_SIZE, BI_FILE_MODIFIED_AT,
     BI_COUNT
 } Builtin;
+
+enum { TR_QUAD,TR_VOID,TR_BOOL,TR_INT,TR_DATE,TR_WEEKDAY,TR_TEXT,TR_TICKS };
+typedef struct {int min_args,max_args;const char *args;int result;} TimeSpec;
+const TimeSpec *time_spec(int op);
+int builtin_is_time(int b);
+int builtin_may_raise(int b);
+Type standard_type(Ast *ast,const char *ns,const char *name);
 
 /* using の1項目。参照先と宣言位置の字句スコープを保持する。 */
 struct Using {

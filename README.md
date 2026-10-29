@@ -1,4 +1,4 @@
-# QYNO 0.27.2
+# QYNO 0.27.3
 
 C99とGCCの128bit数値拡張で実装した、Linux x64 / Windows x64 向けのコンパイラ。
 UTF-8 の `.qy` ソースから実行ファイルを直接生成する。
@@ -35,9 +35,9 @@ int main();
 
 ## VS Code 拡張
 
-[QYNO 0.27.2](vscode-extensions/README.md) はハイライト、ユーザー定義の関数名・変数名の補完、
+[QYNO 0.27.3](vscode-extensions/README.md) はハイライト、ユーザー定義の関数名・変数名の補完、
 定義への移動、引数ヒント、セミコロン後の自動インデント、qyc連携の構文・型エラーの赤線表示に対応する。
-[vscode-extensions/0.27.2_VSCode_option.vsix](vscode-extensions/0.27.2_VSCode_option.vsix) を
+[vscode-extensions/0.27.3_VSCode_option.vsix](vscode-extensions/0.27.3_VSCode_option.vsix) を
 VS Code の「VSIX からのインストール…」で指定する。
 診断には別途qycが必要。PATHにない場合は拡張設定の `qyno.compilerPath` に実行ファイルを指定する。
 
@@ -389,3 +389,28 @@ case内の`throw;`で再送出する。try_openのfalse・EOFは送出しない�
 回復するエラー経路のclose不足もコンパイルエラーになる。
 詳細は[回復可能I/Oとtryの仕様](docs/recoverable-io-design.md)、
 [実行例](examples/recoverable-io/main.qy)を参照。
+
+## ファイル位置・時刻・時間計測（0.27.3）
+
+`io.file.tell / seek / size / modified_at`を追加。位置とサイズはint_64のバイト数、
+更新日時はquadrupleのUNIX秒数。seekはバイナリの先頭〜EOFを扱い、先読みを考慮する。
+標準`time`はimport不要で、短い名前には`using time`が必要。
+時計・単位変換・待機・Stopwatch・UTC/固定オフセットのDateTime・文字列処理を提供する。
+
+```text
+using io
+using time
+
+int main();
+	Stopwatch watch
+	watch.start()
+	sleep(milliseconds(20))
+	print(format_duration(watch.stop()))
+	print(isoformat(now(), 540))
+	return 0
+```
+
+処理時間はmonotonic、日時の記録はnowを使う。秒数の戻り値はquadrupleで固定し、
+doubleが必要なら明示変換する。時計の実際の精度はOSとハードウェアに依存する。
+仕様: [ファイル位置](docs/file-position-design.md)、[time](docs/time-design.md)。
+例: [時間計測](examples/time/main.qy)、[ファイル位置と更新日時](examples/io/positions.qy)。

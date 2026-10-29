@@ -158,7 +158,7 @@ static int fc_direct(Node *n, int calls)
         InputField *field;
         for (field = n->fields; field; field = field->next) if (fc_direct(field->var, calls)) return 1;
         if (fc_file_type(n->ty) || (n->var && fc_file_type(n->var->ty)) ||
-            (n->kind == ND_BUILTIN && n->val >= BI_FILE_OPEN)) return 1;
+            (n->kind == ND_BUILTIN && (n->val >= BI_FILE_OPEN||builtin_may_raise((int)n->val)))) return 1;
         if (calls && (n->kind == ND_CALL || n->kind == ND_CONSTRUCT) && fc_info(n->func)->relevant) return 1;
         if (calls && n->kind == ND_MODEL_NEW && fc_info(type_model(n->ty)->default_builder)->relevant) return 1;
         if (fc_direct(n->lhs, calls) || fc_direct(n->rhs, calls) || fc_direct(n->cond, calls) ||
@@ -442,10 +442,10 @@ static FcMap *fc_eval(FcContext *ctx, FcState *s, Node *n)
             int id=fc_id(ctx,n,0,"");FcMap *result=fc_empty();
             s->known[id]=s->live[id]=1;fc_store(ctx,s,n->lhs->next->lhs,fc_scalar(id));result->success_id=id;return result;
         }
-        if(n->val>=BI_FILE_OPEN&&n->val!=BI_FILE_CLOSE&&n->val!=BI_FILE_IS_OPEN)fc_error(ctx,s,n,0xFFEu);
+        if(builtin_may_raise((int)n->val)&&n->val!=BI_FILE_CLOSE)fc_error(ctx,s,n,0x7FFEu);
         if (n->val == BI_FILE_OPEN) { int id = fc_id(ctx, n, 0, ""); s->known[id] = s->live[id] = 1; return fc_scalar(id); }
         if (n->val == BI_FILE_CLOSE) { int id = fc_get(ctx, m, ""); if (id > 0) { s->known[id] = 1; s->live[id] = 0; } }
-        if(n->val==BI_FILE_CLOSE)fc_error(ctx,s,n,0xFFEu);
+        if(n->val==BI_FILE_CLOSE)fc_error(ctx,s,n,0x7FFEu);
         return fc_empty();
     }
     if (n->kind == ND_METHOD) {
@@ -540,7 +540,7 @@ static FcFlow *fc_try(FcContext *ctx,FcState *s,Node *n)
 static FcFlow *fc_step(FcContext *ctx, FcState *s, Node *n)
 {
     if(n->kind==ND_TRY)return fc_try(ctx,s,n);
-    if(n->kind==ND_THROW){FcFlow *f=fc_flow(s,4,NULL);f->error_codes=ctx->caught_codes?ctx->caught_codes:0xFFEu;return f;}
+    if(n->kind==ND_THROW){FcFlow *f=fc_flow(s,4,NULL);f->error_codes=ctx->caught_codes?ctx->caught_codes:0x7FFEu;return f;}
     if (n->kind == ND_BUILD_REJECT) return NULL;
     if (n->kind == ND_IF) {
         int truth; FcFlow *a = NULL, *b = NULL;

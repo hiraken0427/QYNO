@@ -31,6 +31,9 @@ static const BuiltinInfo builtins[BI_COUNT] = {
     { NULL, "quadruple" },
     { "io", "print" },
     { "io", "input" },
+#define TIME_API(id,name,min,max,args,result) {"time",name},
+#include "time_api.def"
+#undef TIME_API
     { "lib", "size" }, { "lib", "length" },
     { "io.path", "join" }, { "io.path", "basename" },
     { "io.path", "dirname" }, { "io.path", "extension" },
@@ -45,7 +48,9 @@ static const BuiltinInfo builtins[BI_COUNT] = {
     { "io.file", "write" },
     { "io.file", "exists" },
     { "io.file", "read_bytes" }, { "io.file", "write_bytes" },
-    { "io.file", "try_open" }
+    { "io.file", "try_open" },
+    { "io.file", "tell" }, { "io.file", "seek" },
+    { "io.file", "size" }, { "io.file", "modified_at" }
 };
 
 static int token_is(Token *t, const char *s)
@@ -93,4 +98,29 @@ const char *builtin_namespace_of(const char *name, int len)
         }
     }
     return NULL;
+}
+
+int builtin_is_time(int b){return b>=BI_TIME_NOW&&b<=BI_TIME_FREQUENCY;}
+const TimeSpec *time_spec(int op)
+{
+    static const TimeSpec specs[]={
+#define TIME_API(id,name,min,max,args,result) {min,max,args,TR_##result},
+#include "time_api.def"
+#undef TIME_API
+    };
+    return &specs[op];
+}
+int builtin_may_raise(int b)
+{
+    return (b>=BI_FILE_OPEN&&b!=BI_FILE_IS_OPEN&&b!=BI_FILE_TRY_OPEN)||
+        (builtin_is_time(b)&&(b<=BI_TIME_SLEEP_UNTIL||b>=BI_TIME_TICKS));
+}
+Type standard_type(Ast *ast,const char *ns,const char *name)
+{
+    Module *mod;Model *m;EnumDef *e;
+    for(mod=ast->modules;mod;mod=mod->next)if(mod->builtin&&!strcmp(mod->name,ns)&&mod->ast){
+        for(m=mod->ast->models;m;m=m->next)if(m->tok->source->module==mod&&!strcmp(m->name,name))return m->ty;
+        for(e=mod->ast->enums;e;e=e->next)if(e->tok->source->module==mod&&!strcmp(e->name,name))return e->ty;
+    }
+    fatal("標準型 %s.%s がありません",ns,name);return TY_NONE;
 }

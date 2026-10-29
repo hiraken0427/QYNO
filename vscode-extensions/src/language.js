@@ -11,7 +11,7 @@ function environment(project, line, character) {
     const names = new Map();
     const namespace = path => ({ name: path.split('.').at(-1), path, kind: 'namespace', documentation: `${path} 名前空間` });
     const exported = (path) => {
-        if (['io', 'io.file', 'io.path', 'math', 'lib'].includes(path)) return namespace(path);
+        if (['io', 'io.file', 'io.path', 'math', 'lib', 'time'].includes(path)) return namespace(path);
         const builtin = STANDARD.find(s => s.path === path);
         if (builtin) return builtin;
         const enumeration=STANDARD.find(s=>s.kind==='enum'&&path.startsWith(s.path+'.'));
@@ -53,7 +53,7 @@ function environment(project, line, character) {
         return [...result.values()];
     };
     for (const symbol of STANDARD) if (!symbol.path.includes('.')) names.set(symbol.name, symbol);
-    for (const root of ['io', 'math', 'lib', ...imports.map(p => p.split('.')[0])]) names.set(root, namespace(root));
+    for (const root of ['io', 'math', 'lib', 'time', ...imports.map(p => p.split('.')[0])]) names.set(root, namespace(root));
     // Resolve module aliases first; fixed-point iteration handles global forward references.
     for (let pass = 0; pass <= usings.length; pass++) for (const u of usings) if (u.alias) {
         const target = resolve(u.path);

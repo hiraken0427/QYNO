@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include "standard_time_source.h"
 
 typedef enum { SYM_NONE, SYM_ENUM, SYM_MODEL, SYM_INTERFACE, SYM_MODULE, SYM_FUNCTION, SYM_CONSTANT, SYM_BUILTIN } SymbolKind;
 typedef struct {
@@ -119,6 +120,17 @@ static Module *standard_module(const char *name)
         if (module->builtin && strcmp(module->name, name) == 0) return module;
     }
     return NULL;
+}
+
+static void standard_source(const char *name,const char *declarations)
+{
+    Module *mod=standard_module(name);
+    mod->source=allocate(sizeof(*mod->source));mod->source->module=mod;
+    mod->source->canonical_path=copy_name(name,strlen(name));
+    mod->source->filename=mod->source->canonical_path;
+    mod->source->text=copy_name(declarations,strlen(declarations));
+    mod->source->input=mod->source->text;
+    select_source(mod->source);mod->ast=parse(tokenize(mod->source->input));
 }
 
 static Module *load_module(const char *name, const char *filename, char *canonical, Token *site)
@@ -242,7 +254,7 @@ Ast *load_program(const char *path, const char **roots, int root_count)
         static const char declarations[] =
             "enum ErrorCode;\n\tno_error\n\tnot_found\n\tpermission_denied\n\talready_exists\n"
             "\tinvalid_path\n\tnot_regular_file\n\ttoo_many_open_files\n\tno_space\n"
-            "\tread_only\n\tbroken_pipe\n\tresource_busy\n\tio_error\n"
+            "\tread_only\n\tbroken_pipe\n\tresource_busy\n\tio_error\n\tunsupported_operation\n\tout_of_range\n\tsystem_error\n"
             "model Error;\n\tErrorCode code\n\tstr message\n\tstr operation\n\tstr path\n"
             "\tint_64 os_code\n\tstr source\n\tint line\n\tint column\n";
         io->source = allocate(sizeof(*io->source));
@@ -252,6 +264,8 @@ Ast *load_program(const char *path, const char **roots, int root_count)
         select_source(io->source);
         io->ast = parse(tokenize(io->source->input));
     }
+    standard_source("io.file","enum SeekOrigin;\n\tbegin\n\tcurrent\n\tend\n");
+    standard_source("time",standard_time_source);
     program->entry = load_module("", path, canonical, NULL);
     program->modules = modules;
     /* 所有モジュールは Token.source に残す。リストだけを出力単位へ連結する。 */
@@ -589,7 +603,8 @@ static void validate_using(Using *u)
         introduced_name(u, name, using_symbol(u, name));
     } else if (target->builtin) {
         if (target->ast) {
-            EnumDef *e; Model *m;
+            EnumDef *e; Model *m; Var *v;
+            for(v=target->ast->global_vars;v;v=v->next)if(v->tok->source->module==target&&!v->is_private){symbol.kind=SYM_CONSTANT;symbol.constant=v;{char *name=copy_name(v->name,(size_t)v->name_len);introduced_name(u,name,symbol);free(name);}}
             for (e=target->ast->enums;e;e=e->next) if(e->tok->source->module==target) {
                 symbol.kind=SYM_ENUM; symbol.enumeration=e; introduced_name(u,e->name,symbol);
             }

@@ -770,3 +770,34 @@ test('try cases offer standard error codes and preserve ordinary match cases', (
     assert.ok(labels('using io\nint main();\n\tError error\n\terror.code=not_¦').includes('not_found'));
     for(const keyword of ['try','finally','throw'])assert.ok(labels('int main();\n\t¦').includes(keyword));
 });
+
+test('time namespace exposes public clocks models constants and hides internal ticks', () => {
+    const result=labels('int main();\n\ttime.¦');
+    for(const name of ['now','monotonic','cpu','sleep','sleep_until','elapsed','Stopwatch','DateTime','Weekday','MILLISECOND','isoformat','try_parse'])assert.ok(result.includes(name),name);
+    assert.ok(!result.includes('_ticks'));assert.ok(!result.includes('_frequency'));
+    assert.ok(!labels('int main();\n\t¦').includes('monotonic'));
+    assert.ok(labels('using time\nint main();\n\t¦').includes('monotonic'));
+    assert.ok(labels('using time as clock\nint main();\n\tclock.¦').includes('Stopwatch'));
+    assert.equal(hint('int main();\n\ttime.sleep(¦').label,'void time.sleep(quadruple seconds)');
+    assert.equal(hint('int main();\n\ttime.try_parse(¦').label,'bool time.try_parse(str text, ref quadruple destination)');
+});
+
+test('Stopwatch completion respects readonly and DateTime fields have defaults', () => {
+    const result=items('using time\nint main();\n\tStopwatch watch\n\twatch.¦');
+    for(const name of ['start','stop','elapsed','lap','reset','restart','is_running'])assert.ok(result.some(i=>i.label===name));
+    const read=labels('void inspect(ref readonly time.Stopwatch watch);\n\twatch.¦');
+    assert.ok(read.includes('elapsed'));assert.ok(read.includes('is_running'));assert.ok(!read.includes('start'));
+    const date=items('int main();\n\ttime.DateTime date\n\tdate.¦');
+    assert.ok(date.some(i=>i.label==='second'&&i.symbol.type==='quadruple'));
+    assert.ok(date.some(i=>i.label==='offset_minutes'));
+    assert.ok(labels('int main();\n\ttime.DateTime date={¦}').includes('year'));
+});
+
+test('file position signatures and enums resolve through namespaces and aliases', () => {
+    const result=labels('using io.file as fs\nint main();\n\tfs.¦');
+    for(const name of ['tell','seek','size','modified_at','SeekOrigin'])assert.ok(result.includes(name));
+    assert.deepEqual(labels('using io.file as fs\nint main();\n\tfs.SeekOrigin.¦').sort(),['begin','current','end']);
+    assert.equal(hint('int main();\n\tio.file.seek(¦').label,'int_64 io.file.seek(file source, int_64 offset, io.file.SeekOrigin origin=io.file.SeekOrigin.begin)');
+    assert.ok(labels('int main();\n\ttime.Weekday.¦').includes('thursday'));
+    assert.ok(labels('int main();\n\tio.ErrorCode.¦').includes('system_error'));
+});

@@ -1,3 +1,8 @@
+# 0.27.3
+
+- io.fileの位置・サイズ・更新日時とSeekOriginの補完を追加。
+- timeの計測・待機・単位・Stopwatch・DateTime・Weekdayと日時処理を追加。
+
 # 0.27.2
 
 - io.ErrorCode / io.Error / io.file.try_openの補完・型情報を追加。

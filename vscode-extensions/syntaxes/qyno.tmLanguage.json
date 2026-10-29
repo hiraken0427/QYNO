@@ -138,7 +138,7 @@
       "name": "storage.modifier.qyno"
     },
     {
-      "match": "\\b(?:io|math|file)\\b(?=\\s*\\.)",
+      "match": "\\b(?:io|math|lib|time|file)\\b(?=\\s*\\.)",
       "name": "entity.name.namespace.qyno"
     },
     {
@@ -363,7 +363,7 @@
           }
         },
         {
-          "match": "\\b(?:io|math|file)\\b(?=\\s*\\.)",
+          "match": "\\b(?:io|math|lib|time|file)\\b(?=\\s*\\.)",
           "name": "entity.name.namespace.qyno"
         },
         {

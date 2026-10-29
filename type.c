@@ -91,6 +91,7 @@ static Function *cur_func;
 static int allow_void;          /* 次に調べる呼び出しが文として使われるなら 1 */
 static int const_check_depth;
 static int function_check_depth;
+static int time_pure_builtin(int b);
 static int io_has_recovery;
 static Type io_standard_type(const char *name);
 static void check_try_open(Node *node);
@@ -159,7 +160,7 @@ static int is_float_literal(Node *node)
     case ND_INT_PARSE:
     case ND_INT_FORMAT:
     case ND_BUILTIN:
-        if (node->kind == ND_BUILTIN && node->val >= BI_FILE_OPEN) return 0;
+        if(node->kind==ND_BUILTIN&&(node->val>=BI_FILE_OPEN||(builtin_is_time((int)node->val)&&!time_pure_builtin((int)node->val))))return 0;
         for (arg = node->lhs; arg != NULL; arg = arg->next) {
             if (!is_float_literal(arg)) {
                 return 0;
@@ -457,6 +458,19 @@ static void check_file_builtin(Node *node)
     int expected = b == BI_FILE_READLINE || b == BI_FILE_WRITE || b == BI_FILE_READ_BYTES || b == BI_FILE_WRITE_BYTES ? 2 : 1;
     allow_void = 0;
     if(b==BI_FILE_TRY_OPEN){check_try_open(node);return;}
+    if(b>=BI_FILE_TELL){
+        Node *offset=second,*origin=offset?offset->next:NULL;
+        if((b==BI_FILE_SEEK&&(node->nargs<2||node->nargs>3))||(b!=BI_FILE_SEEK&&node->nargs!=1))error_tok(node->tok,"io.file.%sの引数が不正です",builtin_name(b));
+        check_expr(first);if(first->ty!=TY_FILE)error_tok(first->tok,"fileが必要です");
+        if(b==BI_FILE_SEEK){Type e=standard_type(cur_ast,"io.file","SeekOrigin");
+            if(readonly_place(first))error_tok(first->tok,"readonlyのfileでseekできません");
+            check_expected(offset,TY_I64);if(!type_is_integer(offset->ty))error_tok(offset->tok,"seekのoffsetはint_64にしてください");offset=coerce(offset,TY_I64,offset->tok,"seek offset");first->next=offset;
+            if(!origin){origin=calloc(1,sizeof(*origin));if(!origin)fatal("SeekOriginを確保できません");origin->kind=ND_NUM;origin->ty=e;origin->tok=node->tok;offset->next=origin;node->nargs=3;}
+            check_expected(origin,e);origin=coerce(origin,e,origin->tok,"SeekOrigin");offset->next=origin;
+            if(is_const_expr(origin)&&eval_const(origin).i==0&&is_const_expr(offset)&&eval_const(offset).i<0)error_tok(offset->tok,"beginからのoffsetは非負にしてください");
+        }
+        node->ty=b==BI_FILE_MODIFIED_AT?TY_QUAD:TY_I64;return;
+    }
     if (node->nargs != expected && !(b == BI_FILE_OPEN && node->nargs == 2))
         error_tok(node->tok, "io.file.%s の引数の数が不正です（%d 個）", builtin_name(b), node->nargs);
     if ((b == BI_FILE_READ_BYTES || b == BI_FILE_WRITE_BYTES) && first->kind == ND_REFARG)
@@ -531,6 +545,7 @@ static void check_file_builtin(Node *node)
  *   int(x)・float(x)・double(x)  x は数値
  */
 #include "library_type.inc"
+#include "time_type.inc"
 
 static void check_builtin(Node *node)
 {
@@ -552,6 +567,7 @@ static void check_builtin(Node *node)
             return;
         }
     }
+    if(builtin_is_time(b)){check_time_builtin(node);return;}
     if (b>=BI_LIB_SIZE && b<BI_FILE_OPEN) { check_library_builtin(node); return; }
     if (b >= BI_FILE_OPEN) { check_file_builtin(node); return; }
     if (b == BI_COMPLEX) { check_complex_constructor(node); return; }
@@ -1492,6 +1508,7 @@ static long long round_integer(Node *node, long long x, long long digits, Builti
 }
 
 #include "library_const.inc"
+#include "time_const.inc"
 
 /* 組み込み関数の値をコンパイル時に計算する */
 static Value eval_builtin(Node *node)
@@ -1502,6 +1519,7 @@ static Value eval_builtin(Node *node)
     Builtin b;
 
     b = (Builtin)node->val;
+    if(builtin_is_time(b))return eval_time_builtin(node);
     if(b>=BI_LIB_SIZE&&b<BI_FILE_OPEN)return eval_library_builtin(node);
     if (b >= BI_FILE_OPEN) const_error(node, "ファイル操作は const の初期値に使えません");
     if (b == BI_COMPLEX) {
@@ -1774,7 +1792,7 @@ static int is_const_expr(Node *node)
     case ND_INT_PARSE:
     case ND_INT_FORMAT:
     case ND_BUILTIN:
-        if (node->kind == ND_BUILTIN && node->val >= BI_FILE_OPEN) return 0;
+        if(node->kind==ND_BUILTIN&&(node->val>=BI_FILE_OPEN||(builtin_is_time((int)node->val)&&!time_pure_builtin((int)node->val))))return 0;
         for (cmp = node->lhs; cmp != NULL; cmp = cmp->next) {
             if (!is_const_expr(cmp)) {
                 return 0;

@@ -11,7 +11,7 @@ async function grammar(theme) {
     const registry = new textmate.Registry({ theme, onigLib: Promise.resolve({ createOnigScanner: patterns => new oniguruma.OnigScanner(patterns), createOnigString: text => new oniguruma.OnigString(text) }), loadGrammar: async scope => scope === 'source.qyno' ? textmate.parseRawGrammar(fs.readFileSync(path.join(__dirname, '../syntaxes/qyno.tmLanguage.json'),'utf8'),'qyno.json') : null });
     return registry.loadGrammar('source.qyno');
 }
-test('TextMate highlights actual QYNO 0.27.2 syntax and resets one-line strings', async () => {
+test('TextMate highlights actual QYNO 0.27.3 syntax and resets one-line strings', async () => {
     const g = await grammar();
     function scope(text, word, expected) { const token = g.tokenizeLine(text).tokens.find(t => t.startIndex <= text.indexOf(word) && t.endIndex > text.indexOf(word)); assert.ok(token?.scopes.includes(expected), JSON.stringify(token)); }
     scope('complex z = 3.0+i4.0', 'complex', 'storage.type.qyno');
@@ -88,7 +88,7 @@ test('TextMate highlights actual QYNO 0.27.2 syntax and resets one-line strings'
 });
 test('manifest paths and snippets exist with QYNO indentation', () => {
     const base=path.join(__dirname,'..'), pkg=require('../package.json');
-    assert.equal(pkg.displayName,'QYNO 0.27.2'); assert.equal(pkg.version,'0.27.2'); assert.equal(pkg.publisher,'hiraken0427');
+    assert.equal(pkg.displayName,'QYNO 0.27.3'); assert.equal(pkg.version,'0.27.3'); assert.equal(pkg.publisher,'hiraken0427');
     for (const file of [pkg.main,...pkg.contributes.grammars.map(g=>g.path),...pkg.contributes.snippets.map(s=>s.path),pkg.contributes.languages[0].configuration]) assert.ok(fs.existsSync(path.join(base,file)),file);
     const snippets=require('../snippets/qyno.json');
     assert.ok(snippets.Main.body.includes('\treturn 0'));
@@ -159,4 +159,11 @@ test('recoverable I/O headers are control flow and throw does not open a block',
     const config=require('../language-configuration.json');
     assert.ok(!new RegExp(config.indentationRules.increaseIndentPattern).test('\tthrow;'));
     assert.ok(new RegExp(config.indentationRules.increaseIndentPattern).test('\ttry;'));
+});
+
+test('time is highlighted as a standard namespace', async()=>{
+    const g=await grammar();
+    const line='io.print(time.monotonic())';
+    const token=g.tokenizeLine(line).tokens.find(t=>t.startIndex<=line.indexOf('time')&&t.endIndex>line.indexOf('time'));
+    assert.ok(token.scopes.includes('entity.name.namespace.qyno'),JSON.stringify(token));
 });
