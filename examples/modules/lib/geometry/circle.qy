@@ -1,5 +1,0 @@
-const double PI = 3.141592653589793
-
-double area(double radius) = PI * radius^2
-
-double circumference(double radius) = 2 * PI * radius

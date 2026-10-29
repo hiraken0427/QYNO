@@ -1,8 +1,0 @@
-import geometry
-using geometry as g
-
-public int main();
-	io.print(g.squared_length(3.0, 4.0))
-	g.Counter counter
-	io.print(counter.current())
-	return 0

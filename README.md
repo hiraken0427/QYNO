@@ -1,525 +1,183 @@
 # QYNO 0.27.7
 
-C99とGCCの128bit数値拡張で実装した、Linux x64 / Windows x64 向けのコンパイラ。
-UTF-8 の `.qy` ソースから実行ファイルを直接生成する。
+著作権およびライセンスに関する情報は、本ファイルの末尾に記載している。
 
-## ビルドとテスト
+[概要](#概要)
 
-Linux x86_64 では GCC、Make、Bash、Python 3 が必要。
-Python はテストに使用し、追加パッケージは不要。
+[ビルド手順](#ビルド手順)
 
-```bash
-make -j4
-make test
+[新機能](#新機能)
+
+[使用方法](#使用方法)
+
+[言語仕様](#言語仕様)
+
+[標準モジュール](#標準モジュール)
+
+[開発状況](#開発状況)
+
+[ライセンス情報](#ライセンス情報)
+
+## 概要
+
+QYNOは、静的型付けのコンパイル言語である。UTF-8で記述したソースコードから、Linux x64およびWindows x64の実行ファイルを生成する。
+
+コンパイラはC言語で実装している。拡張子は.qyである。数式に近い範囲指定や型推論を備え、整数、小数、複素数、配列を扱うことができる。
+
+## ビルド手順
+
+ビルドにはGCCとMakeが必要である。GCCの128bit数値拡張を使用している。
+
+Linux x64では、ソースコードを取得したディレクトリで次のコマンドを実行する。
+
+```sh
+make
 ```
 
-## 実行
+生成されるコンパイラはqycである。ビルド時の生成物は次のコマンドで削除できる。
+
+```sh
+make clean
+```
+
+## 新機能
+
+0.27.7では、文字列の検索、分割、置換を追加した。strとcharに対してcontains、starts_with、ends_with、find、trim、split、replaceを使用できる。
+
+検索は書記素の境界で行い、findは書記素単位の位置を返す。trimは前後の空白を取り除き、splitは空の要素を含めて分割する。いずれも元の文字列を変更せず、定数式でも使用できる。
+
+```text
+int main();
+	str names[] = "  Ken,Alice  ".trim().split(",")
+	io.print(names)
+	io.print("report.txt".ends_with(".txt"))
+	io.print("Hello, guest!".replace("guest", names[0]))
+	return 0
+```
+
+## 使用方法
+
+次のコードをmain.qyとして保存する。インデントにはタブを使用する。
 
 ```text
 using io
 
 int main();
-	io.print("Hello, QYNO!")
+	print("Hello, World!")
 	return 0
 ```
 
-上記を `hello.qy` として保存する。インデントはタブを使う。
+コンパイルして実行する。
 
-```bash
-./qyc hello.qy -o hello
-./hello
+```sh
+./qyc main.qy -o main
+./main
 ```
 
-`--target windows` で Windows 用 PE32+、`--target linux` で Linux 用 ELF64 を生成する。
-既定はコンパイラを実行している OS。`-S` はアセンブリ出力、`--help` はオプション一覧。
+Windows向けの実行ファイルは、出力先を指定して生成する。
 
-## VS Code 拡張
+```sh
+./qyc main.qy --target windows -o main.exe
+```
 
-[QYNO 0.27.7](vscode-extensions/README.md) はハイライト、ユーザー定義の関数名・変数名の補完、
-定義への移動、引数ヒント、セミコロン後の自動インデント、qyc連携の構文・型エラーの赤線表示に対応する。
-[vscode-extensions/0.27.7_VSCode_option.vsix](vscode-extensions/0.27.7_VSCode_option.vsix) を
-VS Code の「VSIX からのインストール…」で指定する。
-診断には別途qycが必要。PATHにない場合は拡張設定の `qyno.compilerPath` に実行ファイルを指定する。
+出力先は--targetで指定する。指定しない場合は、コンパイラを実行しているOSに合わせる。-Sはアセンブリの出力、-Iはモジュールの探索先の追加に使用する。--helpで使い方を確認できる。
 
-## 文字列の標準メソッド（0.27.7）
-
-str / charへ直接呼び出せる7メソッドを追加した。import / usingは不要。
-contains / starts_with / ends_withはbool、findは書記素番号のint_64（未検出は-1）、
-trim / replaceはstr、splitは通常のstr配列を返す。元の文字列を変更せず、constでも使用できる。
+mainで実行時引数を受け取る場合は、str配列を宣言する。実行ファイル名は引数に含まれない。
 
 ```text
-int main();
-	str fields[] = "  Ken,23  ".trim().split(",")
-	io.print(fields)
-	io.print("report.txt".ends_with(".txt"))
-	io.print("Hello, guest!".replace("guest", fields[0]))
+int main(str args[]);
+	for(0 <= i < args.length, i++);
+		io.print(args[i])
 	return 0
 ```
 
-検索はUTF-8の完全一致で、元の文字列の書記素クラスタの途中には一致しない。
-trimはUnicode 17のWhite_Spaceを使い、splitは空要素も保持する。
-空の検索は許可するが、splitの空区切り・replaceの空oldはエラーになる。
-詳細は[仕様](docs/text-methods-design.md)、7メソッドを使う例は[examples/text/main.qy](examples/text/main.qy)を参照。
+## 言語仕様
 
-## モジュールの公開制御（新段階7）
-
-トップレベルの関数・const・model・interfaceにpublic / privateを指定できる。
-省略時はpublic。privateは宣言元モジュール内で使用し、外部の参照・usingからは隠す。
-公開APIにprivate型が露出する場合も検査する。
-[仕様](docs/module-visibility.md)と[実行例](examples/module-visibility/main.qy)を参照。
-
-## 書記素クラスタとvoid（新段階6）
-
-char / strの長さ・添字・入力をUnicode 17の拡張書記素クラスタ単位へ統一した。
-void / Voidは唯一の値 `()` を持ち、変数・配列・ref・auto・関数引数にも使用できる。
-[仕様](docs/graphemes-void.md)と[実行例](examples/types/graphemes-void.qy)を参照。
-
-## 128bit整数・half・quadruple（新段階5）
-
-int_128 / unsigned int_128、half（binary16）、quadruple（binary128）に対応する。
-配列・ref・定数・入出力・forで使用でき、広い小数をdoubleへ一度丸めず解析する。
-
-```text
-int main();
-	int_128 n = 18446744073709551616
-	half small = 1.5
-	quadruple precise = 1.0000000000000000000000000000000002
-	io.print("{n} {small} {precise}")
-	return 0
-```
-
-詳細: [128bit整数・half・quadruple](docs/wide-types.md)。
-検証: `make test-wide-types`。
-
-## 複素数（新段階4）
-
-`complex` / `complex_64`はfloat2成分、`complex_128`はdouble2成分。
-`complex(real=3.0, imag=4.0)`、推奨の`3.0 + i4.0`、`3.0 + 4.0i`を使用できる。
-四則演算・整数乗・絶対値・主平方根、配列・ref・型推論・入出力に対応する。
-`.real` / `.imag`で成分を読み、更新は複素数全体へ代入する。
-例は [examples/types/complex.qy](examples/types/complex.qy)、
-詳細は [型の仕様](docs/types-roadmap.md) を参照。
-
-## 整数型（新段階3）
-
-`int_8` / `int_16` / `int_32` / `int_64` と、`unsigned int_8` などの符号なし整数型を使用できる。
-`int` = `int_32`、`unsigned int` = `unsigned int_32`。64bitの値には型を明示する。
-配列・モデル・ref・型推論、math・入出力・基数変換も対応する。
-狭い型や符号の異なる型への変換は範囲を検査し、暗黙の切り捨てを行わない。
-演算結果は型のbit幅で折り返し、forの範囲外更新ではループを終了する。
-32bitへの移行例は [examples/types/default-integers.qy](examples/types/default-integers.qy)。
-`.length`と`io.file.write`のバイト数は`int_64`を返す。
-型別の例は [examples/types/integers.qy](examples/types/integers.qy)、詳細は
-[整数型の仕様](docs/types-roadmap.md) を参照。
-
-## ローカル変数の型推論
-
-`auto count = 3`、`auto text = "QYNO"`、`auto values = [1, 2]` のように、
-初期値から型を推論できる。`const auto LIMIT = 10` と `const LIMIT = 10` は、
-ローカルとファイル先頭の両方に対応する。定数の前方参照・import / using による参照も型を含めて解決する。
-推論後の型は固定され、配列・モデルのコピーと file の明示 close の規則も維持する。
-未宣言の名前への `y = 3` も、`auto y = 3` と同様にローカル変数を宣言する。
-既存の名前への代入では型と参照先を維持し、内側で別変数を作る場合は `auto y = ...` または型を明示する。
-型名を省略した宣言が未使用の場合は警告し、似た名前の既存変数があれば候補を示す。
-intは32bit。大きな整数リテラルはint_64、さらに大きい正の値はunsigned int_64へ推論する。
-
-関数の戻り値は `auto square(int x) = x^2` または `square(int x) = x^2` と書いて推論できる。
-ブロック形式とモデルのメソッドにも対応する。
-`square(x) = x^2` や `auto square(auto x) = x^2` のように引数の型も省略でき、
-呼び出し時の型ごとに関数を具体化する。`int square(x)` は戻り値の int 制約を維持する。
-戻り値の推論が循環する再帰では必要な関数の戻り値型を明示する。
-詳細は [型拡張の実装順と現時点の仕様](docs/types-roadmap.md)、
-実行例は [examples/types/auto.qy](examples/types/auto.qy) を参照。
-型名省略とスコープの例は [examples/types/implicit.qy](examples/types/implicit.qy) を参照。
-ファイル先頭の定数とモジュールの例は [examples/types/constants.qy](examples/types/constants.qy) を参照。
-関数の戻り値推論の例は [examples/types/functions.qy](examples/types/functions.qy) を参照。
-引数の型推論の例は [examples/types/generic.qy](examples/types/generic.qy) を参照。
-
-## モデル型
-
-`model` はフィールドとメソッドをまとめる値型。通常の代入・引数・戻り値はコピー、
-`ref` は呼び出し元を参照する。メソッドの `this` は暗黙の ref 引数になる。
-
-```text
-model Point;
-	double x = 0.0
-	double y = 0.0
-
-	void move(double dx, double dy);
-		this.x += dx
-		this.y += dy
-
-int main();
-	Point p = {x=3.0, y=4.0}
-	Point copy = p
-	copy.move(1.0, 2.0)
-	io.print(p)       // Point{x=3.0, y=4.0}
-	io.print(copy)    // Point{x=4.0, y=6.0}
-	return 0
-```
-
-配列・入れ子・フィールドの ref 渡しにも対応する。省略したフィールドは既定値で初期化する。
-フィールド・メソッドの `public` / `private` に対応。省略時は public、
-private は宣言元のモデル内部だけで利用できる。自動表示から private を除外し、コピー・比較では保持する。
-`public` と `private` は予約語になる。
-詳細は [モデルの仕様](docs/models.md)、実行例は [examples/models/main.qy](examples/models/main.qy) を参照。
-
-const モデル、readonly メソッド、`ref readonly` 引数に対応する。
-const の値はコンパイル時に確定し、readonly の経路からは入れ子・配列を含めて変更できない。
-独立したコピーは変更できる。file の共有ハンドルの持ち出しも検査する。
-[読み取り専用の仕様](docs/model-readonly-design.md) と
-[実行例](examples/models/readonly.qy) を参照。
-
-0.26.3 ではモデル生成時の `init` を定義できる。`Counter counter = {initial=3}` のように、
-型名を繰り返さずに名前付き引数を渡し、private の設定や入力検証を行う。
-コピーでは init を再実行せず、必須引数・未完了フィールド・file の close 責任も検査する。
-[カスタム初期化の仕様](docs/model-initialization-design.md) と
-[実行例](examples/models/initialization.qy) を参照。
-
-## インターフェース
-
-0.26.4 では `interface Shape;` と `model Rectangle implements Shape;` に対応する。
-`ref Shape` / `ref readonly Shape` 引数で異なるモデルを共通の操作から利用できる。
-具体型へコンパイル時に特殊化し、値コピー・readonly・file の明示 close の規則を維持する。
-
-```text
-interface Shape;
-	readonly double area();
-
-model Rectangle implements Shape;
-	double width
-	double height
-	readonly double area() = this.width * this.height
-
-void print_area(ref readonly Shape shape);
-	io.print(shape.area())
-
-int main();
-	Rectangle rect = {width=3.0, height=4.0}
-	print_area(ref rect)
-	return 0
-```
-
-interface は参照引数の契約に限定し、interface 型の変数・異種配列は導入しない。
-詳細は [インターフェースの仕様](docs/interfaces-design.md)、
-実行例は [examples/models/interfaces.qy](examples/models/interfaces.qy) を参照。
-
-## モジュール
-
-`import geometry.circle` でモジュールを読み込み、
-`using geometry.circle as circle` でそのファイルやブロック内の別名を宣言する。
-関数・定数は完全修飾名でも利用できる。
-
-```bash
-./qyc examples/modules/app/main.qy -I examples/modules/lib -o /tmp/qyno-modules-example
-/tmp/qyno-modules-example
-```
-
-探索ルートはエントリファイルのディレクトリ、その後に `-I` の指定順。
-`-I` は複数指定でき、親ディレクトリにあるモジュールも明示的に追加できる。
-
-詳しくは [モジュールの仕様](docs/modules.md) と [テストの説明](tests/README.md) を参照。
-
-## 標準モジュール
-
-よく使う機能は標準モジュールとして用意し、import なしで利用できる。
-現在は `io`（コンソール入出力）、`io.file`（UTF-8ファイル操作）、`io.path`（パス文字列操作）、
-`math`（数学関数）、`lib`（サイズ・長さの取得）が該当する。
-
-```text
-int main();
-	str name
-	io.input("name> {name}")
-	io.print("Hello, {name}!")
-	return 0
-```
-
-`using io` を書けば `print` / `input` に省略できる。
-0.27.0から裸の呼び出しにはusingが必要。importだけでは関数名を省略できない。
-使用例は [examples/io/greeting.qy](examples/io/greeting.qy)、詳細は [io の仕様](docs/io.md) を参照。
-
-## ファイル操作
-
-`io.file.open(path, mode)` のモードは r / w / a（UTF-8）、rb / wb / ab（バイナリ）。省略時は r。
-`readline(f, ref line)` は、1行読めれば true、EOFなら false を返す。
-取得した file は、正常終了へ至る全経路で明示的な close が必要。
-コンパイラが close を確認できない場合はエラーになる。
-
-```text
-using io.file as fs
-
-int main();
-	file source = fs.open("input.txt")
-	str line
-	while(fs.readline(source, ref line));
-		io.print(line)
-	fs.close(source)
-	return 0
-```
-
-相対パスは実行時の作業ディレクトリを基準にする。
-詳細は [io.file の仕様](docs/io-file-design.md)、
-実行例は [examples/io/files.qy](examples/io/files.qy) を参照。
-
-## 配列と参照渡し
-
-配列全体は `change(ref matrix)` と `void change(ref int matrix[][]);` で渡す。
-1要素は `increase(ref matrix[i][j])` と `void increase(ref int value);` で渡せる。
-int・float・double・bool・str・char の配列で同じ規則を使う。
-
-`matrix.add()` は初期値を持つ要素を1個追加する。上限を指定しない2次元配列なら空の行を追加する。
-直接入力は `io.input(matrix[i][j])`、表示付きの入力は `io.input("入力> {matrix[i][j]}")` と書ける。
-変数を表示用のプロンプトにする場合は `io.input(prompt=message)` と明示する。
-
-詳細は [配列と参照の仕様](docs/arrays.md)、使用例は
-[examples/arrays/references.qy](examples/arrays/references.qy) を参照。
-
-## 範囲 for
-
-開始側を含まない `<` / `>` も使用できる。開いた開始側ではヘッダーの更新を 1 回適用してから始める。
+関数や制御文の本体は、ヘッダー末尾のセミコロンとインデントで記述する。条件分岐にはif、繰り返しにはforとwhileを使用する。
 
 ```text
 int main();
 	int values[] = [0, 1, 2, 3]
 	for(values.length > i >= 0, i--);
 		io.print(values[i])
-	for(0.0 < double x <= 1.0, x += 0.25);
-		io.print(x)
 	return 0
 ```
 
-整数の範囲外への更新は折り返さず終了する。小数の非有限値・前進できない更新は診断する。
-bool は数値範囲のループ変数にしない。詳細は [for の仕様](docs/for-open-start-design.md) を参照。
+整数は8bitから128bitまでを扱い、intは32bitである。unsignedで符号なしを指定できる。小数はhalf、float、double、quadrupleに対応する。複素数はcomplex、complex_64、complex_128で扱う。
 
-## ビット演算と基数表記
+charはUnicodeの1書記素、strは書記素の列である。boolは真偽値、voidは()だけを値に持つ型である。これらの型は配列でも使用できる。
 
-0.26.5以降、`and` / `or` / `xor` を bool と int で共用する。
-boolのand / orは短絡し、intのビット演算は両辺を評価する。ビット反転はbnot、シフトは << / >>。
-シフト量は0〜63、右シフトは符号を保つ算術右シフトになる。
+autoは初期値から型を推論する。未宣言の名前への代入でも型を推論し、宣言後の型は固定される。関数の引数や戻り値の型も省略できる。constは定数、refは参照渡しに使用する。
+
+modelではフィールドとメソッドを定義する。生成時の値は型名を繰り返さず、Point p = {x=3.0, y=4.0}のように記述できる。publicとprivateで公開範囲を指定し、readonlyで変更を制限する。共通の操作はinterfaceで定義できる。
+
+enumはmodelから独立した列挙型である。列挙値による分岐にはmatchを使用する。
+
+importでモジュールを読み込み、usingで名前の省略や別名を指定する。探索先はエントリファイルのディレクトリを起点とし、-Iで追加できる。
 
 ```text
-using io
-
-int main();
-	int flags = 0b0011 or 0o4
-	io.print((flags and 4) != 0)
-	io.print("{flags:0b}, {flags:0o}, {flags:0d}, {flags:0x}")
-	str text = str(flags, base=16, prefix=true)
-	int restored = int(text)
-	io.input("hex> {flags:0x}")
-	return 0
+import geometry.circle
+using geometry.circle as circle
 ```
 
-0b / 0o / 0d / 0xの整数リテラルと、int / strの相互変換、print / input / file.writeの基数指定に対応する。
-指定のない表記・出力は10進数。整数入力は接頭辞を判定し、接頭辞がなければ10進数として読む。
-詳細は [ビット演算とシフト演算](docs/bitwise-design.md)、
-[整数の基数表記・変換・入出力](docs/integer-bases-design.md) を参照。
-実行例は [bitwise.qy](examples/numbers/bitwise.qy) と [bases.qy](examples/numbers/bases.qy)。
+and、or、xorは、boolでは論理演算、整数ではビット演算として動作する。シフトには<<と>>を使用する。整数は2進数、8進数、10進数、16進数で記述でき、接頭辞は0b、0o、0d、0xである。接頭辞を省略した場合は10進数となる。
 
-## 開発ブランチ
+## 標準モジュール
 
-通常の開発は `dev` で行い、検証した変更を `main` へ反映する。
-Git の運用方針は [AGENTS.md](AGENTS.md) を参照。
+io、math、lib、timeはimportなしで使用できる。名前を省略する場合はusingが必要である。using ioを記述した場合はprintとinputを使用でき、記述しない場合はio.printとio.inputを使用する。
 
-## 標準ライブラリ（0.27.0）
+ioはコンソールとファイルの入出力を扱う。io.pathはパスの操作、io.dirは作業ディレクトリの取得と変更に使用する。パスはstrで扱う。
 
-裸のprint/inputにも `using io` または選択usingが必要。修飾名の `io.print(...)` / `io.input(...)` はimport・using不要。
-`math`・`lib`・`io.path`でも同じ規則を使う。importだけでは関数名を省略できない。
+ファイルはio.file.openで開き、io.file.closeで明示的に閉じる。closeを確認できない経路はコンパイルエラーとなる。テキストとバイナリの読み書きに対応し、位置、サイズ、更新日時を取得できる。I/Oエラーはtry、case、finallyで処理する。
 
-`lib.size(value)` は型のビット幅・UTF-8本体・現在の全配列要素などの合計を返す。
-メモリ管理情報・予約容量・ABIスロットのサイズは含まない。
-`lib.length(value)` は文字列の書記素数、配列の外側の要素数、数値の整数部分の10進桁数をint_64で返す。
+mathは数学関数を提供する。lib.sizeは値のビットサイズ、lib.lengthは文字列や配列の長さ、数値の整数部分の桁数を返す。
+
+lib.randomは型名と不等式で乱数を生成する。lib.random.intは整数、lib.random.doubleは小数、lib.random.boolは真偽値を返す。シードを指定した生成と、独立した生成器にも対応する。
+
+timeは時刻の取得、経過時間の計測、待機に使用する。Stopwatchによる計測と、日時の変換にも対応する。
+
+## 開発状況
+
+現在のQYNOは開発中のプロトタイプである。仕様は予告なく変更される場合がある。
+
+動作、互換性および特定の用途への適合性を保証しない。仕様、実装および本ソフトウェアの利用により生じた損害について、法令で認められる範囲で作者は責任を負わない。
+
+開発はdevブランチで行い、確認した変更をmainブランチへ反映する。
+
+## ライセンス情報
+
+QYNO本体はBSD 2-Clause Licenseで公開する。著作権はhiraken0427に帰属する。
+
+以下はQYNO本体のライセンス全文である。
 
 ```text
-using io
+BSD 2-Clause License
 
-int main();
-	int matrix[2][3]
-	print(lib.size(matrix))       // 192
-	print(lib.size(matrix[0][0])) // 32
-	print(lib.length(42))         // 2
-	print(lib.length(3.1415))     // 1
-	print(io.path.join("data", "settings.json"))
-	return 0
+Copyright (c) 2026, hiraken0427
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-io.pathは結合・ファイル名・親・拡張子・stem・絶対/相対判定・normalize・拡張子置換の基本9関数を提供する。
-詳細: [0.27.0仕様と拡張候補](docs/standard-library-0270-design.md)、[実行例](examples/stdlib/main.qy)。
+UnicodeのデータにはUnicode License V3が適用される。著作権表記とライセンス全文は[grapheme_data.h](grapheme_data.h)に収録している。
 
-## バイナリI/O（0.27.1）
-
-`io.file.read_bytes(source, count)` は最大countバイトをunsigned int_8の1次元配列で返す。
-正のcountでEOFなら空配列、不足分の0埋めは行わない。受け取り先は上限なしのdata[]を推奨する。
-`io.file.write_bytes(destination, data)` は配列を1要素1バイトで全量書き、バイト数をint_64で返す。
-
-read_bytesはrb、write_bytesはwb / abで開いたハンドルを使用する。
-UTF-8検証・改行変換・BOM操作はせず、任意のバイトを保持する。パスのUTF-8検証と明示closeの検査は維持する。
-
-詳細: [バイナリI/O仕様](docs/binary-file-design.md)、[実行例](examples/io/binary.qy)。
-
-## enumとmatch（0.27.1追加改訂）
-
-独立した列挙型を `enum sex;` で定義し、typedefなしで `sex gender` のように使用できる。
-先頭0からの連番または明示値に対応し、値0のメンバーを既定値とする。
-名前の表示・入力・明示変換、配列・model・ref・readonly・const・型推論・モジュール公開制御に対応する。
-
-```text
-enum sex;
-	undetermined
-	male
-	female=3
-
-int main();
-	sex gender=female
-	match(gender);
-		case undetermined,male;
-			io.print("other")
-		case female;
-			io.print(gender) // female
-	return 0
-```
-
-matchはenumの全メンバーを列挙するかelseが必要。重複と列挙漏れはコンパイルエラーになり、対象式は1回だけ評価する。
-メソッド定義・呼び出しの括弧は従来どおり必要。回復可能I/Oは今回追加していない。
-[詳細な仕様](docs/enums-design.md)・[ユーザー例](examples/enums/main.qy)。
-
-## 回復可能I/Oとtry（0.27.2）
-
-標準の`io.ErrorCode`と`io.Error`でI/O失敗を扱う。
-`io.file.try_open(path, ref destination, ref error, mode="r")`はboolで成否を返す。
-通常のopen/read/write等は`try`の`case`で捕捉し、`finally`で明示的なcloseを共通化できる。
-
-```text
-using io
-
-int main();
-	file source
-	try(source = file.open("settings.txt")) as error;
-		print(file.read(source))
-	case(ErrorCode.not_found);
-		print("設定ファイルがありません")
-	case();
-		print("{error.operation}: {error.message}")
-	finally;
-		file.close(source)
-	return 0
-```
-
-case内の`throw;`で再送出する。try_openのfalse・EOFは送出しない。
-回復するエラー経路のclose不足もコンパイルエラーになる。
-詳細は[回復可能I/Oとtryの仕様](docs/recoverable-io-design.md)、
-[実行例](examples/recoverable-io/main.qy)を参照。
-
-## ファイル位置・時刻・時間計測（0.27.3）
-
-`io.file.tell / seek / size / modified_at`を追加。位置とサイズはint_64のバイト数、
-更新日時はquadrupleのUNIX秒数。seekはバイナリの先頭〜EOFを扱い、先読みを考慮する。
-標準`time`はimport不要で、短い名前には`using time`が必要。
-時計・単位変換・待機・Stopwatch・UTC/固定オフセットのDateTime・文字列処理を提供する。
-
-```text
-using io
-using time
-
-int main();
-	Stopwatch watch
-	watch.start()
-	sleep(milliseconds(20))
-	print(format_duration(watch.stop()))
-	print(isoformat(now(), 540))
-	return 0
-```
-
-処理時間はmonotonic、日時の記録はnowを使う。秒数の戻り値はquadrupleで固定し、
-doubleが必要なら明示変換する。時計の実際の精度はOSとハードウェアに依存する。
-仕様: [ファイル位置](docs/file-position-design.md)、[time](docs/time-design.md)。
-例: [時間計測](examples/time/main.qy)、[ファイル位置と更新日時](examples/io/positions.qy)。
-
-
-## 作業ディレクトリと絶対パス（0.27.4）
-
-`io.dir.current()`で現在の作業ディレクトリをstrで取得し、`io.dir.change(path)`で
-既存ディレクトリへ移動する。絶対パスと通常の相対パスに対応する。
-`io.path.absolute(path)`は実在しない出力先にも使え、`..`を保持する。
-
-```text
-using io
-using io.dir as dir
-
-int main();
-	str before = dir.current()
-	try(dir.change(".."));
-		print(dir.current())
-		print(io.path.absolute("output.txt"))
-	finally;
-		dir.change(before)
-	return 0
-```
-
-変更後に開く相対パスは新しい場所が基準になる。既にopenしたfileの参照先は変わらない。
-変更失敗は既存のtryで扱い、通常ファイルへの移動はErrorCode.not_directoryになる。
-Windowsでは区切りを`/`で返し、ドライブ相対`C:work`・ルート相対`/work`は拒否する。
-仕様: [作業ディレクトリ](docs/process-path-random-design.md)。
-例: [取得・移動・復帰](examples/io/directories.qy)。
-main引数は0.27.5で追加した。型名と不等式による乱数APIは0.27.6で追加した。
-
-
-## 実行時引数と引数なしの明示（0.27.5）
-
-mainで通常のstr配列を受け取れる。実行ファイル名を含めず、引数なしなら空配列になる。
-数字やパスもstrで受け取り、必要に応じて明示変換する。
-
-```text
-int main(str args[]);
-	print_arguments(args)
-	return 0
-
-void print_arguments(str values[]);
-	for(0 <= i < values.length, i++);
-		io.print("{i}: {values[i]}")
-```
-
-`./main.exe alpha "two words" ""`なら、argsは`["alpha", "two words", ""]`。
-引数名は自由で、配列の変更や通常の値コピー・ref渡しも使える。
-Windowsの引用符・バックスラッシュはMSVC CRTの文法に従い、両OSで厳密なUTF-8へ取り込む。
-不正な文字列はmain実行前にデータエラー65として診断する。
-
-引数が不要なら従来の`int main();`、または`int main(void);` / `int main(Void);`と書ける。
-通常関数・メソッド・interface・initでも`()`と`(void)`を同じ引数なしとして扱う。
-名前付きの`void value`は値`()`を受け取る1個の引数のまま。
-仕様: [実行時引数](docs/process-path-random-design.md#5-mainの実行時引数)。
-例: [引数・パスの処理](examples/arguments/main.qy)。
-
-
-## 型名と不等式による乱数（0.27.6）
-
-lib.randomはimport不要。using libまたはモジュール別名を使い、裸の型変換と区別する。
-
-```text
-using lib.random as random
-
-int main();
-	random.seed(42)
-	int dice = random.int(1 <= i <= 6)
-	double ratio = random.double(0 < x < 1)
-	bool enabled = random.bool()
-	char letter = random.char("あいうえお😺")
-	str label = random.str(8, "ABCDEF0123456789")
-	io.print("{dice} {ratio} {enabled} {letter} {label}")
-	random.Random generator = {seed=42}
-	io.print(generator.int(1 <= i <= 6))
-	return 0
-```
-
-整数は全幅のsigned / unsignedに対応し、引数なしなら型の全域を生成する。
-unsigned int_64のAPI名はunsigned_int_64。int / int_32は同じ型と列の別名。
-half / float / double / quadrupleは有限範囲の不等式が必須で、開いた端点を返さない。
-中央のi / xは仮の名前で宣言不要。境界の式だけを左から1回ずつ評価する。
-空の範囲はエラー、候補1個や長さ0の生成では乱数を消費しない。
-
-共有生成器は最初の抽選時にOSから自動シードする。seedを指定すれば両OSで同じ列を再現する。
-Randomは既存modelと同じ値コピーで、呼び出し元の生成器を進める場合はrefで渡す。
-charはUnicode書記素クラスタ単位、strの候補は印字可能ASCIIに限定し指定長を保証する。
-アルゴリズムはxoshiro256** / SplitMix64で、暗号用途には使用しない。
-仕様: [乱数](docs/process-path-random-design.md)。
-例: [再現可能なモンテカルロ計算](examples/random/main.qy)。
+GCC実行時コードにはGPLv3以降とGCC Runtime Library Exception 3.1が適用される。著作権表記、ライセンス全文および配布元は[wide_blob.h](wide_blob.h)に収録している。

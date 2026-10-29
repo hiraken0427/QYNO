@@ -1,8 +1,0 @@
-import geometry.circle
-using geometry.circle as circle
-using geometry.circle.PI
-
-int main();
-	io.print("PI = {PI}")
-	io.print("半径2の面積 = {circle.area(2.0)}")
-	return 0
