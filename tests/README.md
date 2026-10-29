@@ -28,6 +28,8 @@ Python を指定する場合は `make test PYTHON=/path/to/python3` とする。
 | `make test-for` | 範囲の開閉、評価回数、整数の範囲外、小数の有限性・停滞、bool の拒否 |
 | `make test-input-refs` | 全スカラー型の直接入力・要素参照、評価順、参照中の変更、引数なしの add、GC・出力形式 |
 | `make test-recoverable-io` | ErrorCode / Error / try_open、try/case/finally/throw、伝播・close・OS失敗注入・部分書き込み |
+| `make test-file-position` | 論理位置、seek、先読み、4GB超のサイズ、更新日時、OS失敗、readonly |
+| `make test-time` | 時間値・時計・待機・単位・日時36メソッド、注入時計のStopwatch3メソッド |
 | `make test-file` | ファイルの各モード、UTF-8・改行・EOF、共有ハンドル、書式、明示 close の関数間解析、OS失敗 |
 | `make test-lineedit` | 擬似端末でのカーソル移動・編集、Unicode、EOF・割り込み、端末設定の復元 |
 | `bash test.sh` | 既存チェック、行編集、`all_features.qy`、CLI の出力指定・アセンブリ出力 |
@@ -265,3 +267,13 @@ matchの網羅性・重複・評価回数・スコープ・return・必須フィ
 
 回復可能I/O専用スイートは53メソッド。アセンブリの実行一致・モジュール境界も検証する。
 0.27.2の最終make testはshellチェック326件とPythonテストメソッド1,074件が成功した。
+
+0.27.3ではfile位置23、time36、Stopwatch3の計62メソッドを追加する。
+Windowsは`QYNO_FILE_TARGET=windows QYNO_FILE_WINDOWS_RUNNER=/absolute/path/to/runner`を指定して
+各スイートを実行できる。syscall注入等のLinux専用8件はskipする。
+Stopwatchのスイートは通常コンパイラと同じソースからテスト用時計付きコンパイラを一時作成する。
+
+0.27.3の最終`make test`はshellチェック326件とPythonテストメソッド1,136件がすべて成功した。
+VS Code単体テスト129件、VS Code 1.85.2の実機チェック170項目も成功した。
+新規62メソッドのWindows生成プログラムによる検証では54件が成功し、Linux専用8件をskipした。
+WindowsのAPI失敗は生成PEへの呼び出し結果注入でも確認し、LinuxのerrnoとWindowsのエラー番号を区別する。

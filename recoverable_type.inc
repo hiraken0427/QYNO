@@ -1,12 +1,7 @@
 /* Checked try syntax; control-flow and resource effects are analyzed after typing. */
 static Type io_standard_type(const char *name)
 {
-    Module *m;
-    for(m=cur_ast->modules;m;m=m->next) if(m->builtin&&!strcmp(m->name,"io")) {
-        if(!strcmp(name,"Error")) return m->ast->models->ty;
-        return m->ast->enums->ty;
-    }
-    fatal("標準 io 型がありません");return TY_NONE;
+    return standard_type(cur_ast,"io",name);
 }
 static void check_try(Node *n)
 {

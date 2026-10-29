@@ -51,7 +51,10 @@ static const char *import_names[IMP_COUNT] = {
     "GetLastError",
     "GetFileType",
     "GetFileInformationByHandle",
-    "MultiByteToWideChar"
+    "MultiByteToWideChar",
+    "SetFilePointerEx", "GetSystemTimePreciseAsFileTime",
+    "QueryPerformanceCounter", "QueryPerformanceFrequency",
+    "GetCurrentProcess", "GetProcessTimes", "Sleep"
 };
 
 const char *import_name(Import imp)

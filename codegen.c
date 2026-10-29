@@ -90,8 +90,14 @@ static int file_error_label, file_validate_label, file_path_label, file_raw_clos
 static int file_finalize_label, file_cleanup_label, file_kind_label, file_raw_open_label;
 static int file_check_label, file_append_label, file_string_label, file_capture_label;
 static int file_getc_label, file_text_label;
+static int file_raw_seek_label,file_stat_label;
+static int time_labels[T_COUNT],time_clock_label,time_sleep_label,time_timespec_label,time_filetime_label;
+static int time_date_type;
+static void gen_time_runtime(void);
+static void gen_time_builtin(Node *node);
 static void gen_file_builtin(Node *node);
 static void gen_file_context(Node *node);
+static void gen_os_context(Token *tok,const char *ns,const char *operation);
 
 static int depth;
 static int main_label;
@@ -5353,7 +5359,10 @@ static void gen_call(Node *node)
             gen_expr(arg);
             push();
         }
-        if (node->kind == ND_BUILTIN && node->val >= BI_FILE_OPEN) gen_file_context(node);
+        if (node->kind == ND_BUILTIN && (node->val >= BI_FILE_OPEN||builtin_is_time((int)node->val))) gen_file_context(node);
+        if(node->kind==ND_CALL&&node->func->model&&node->func->tok->source->module->builtin&&!strcmp(node->func->tok->source->module->name,"time")&&!node->tok->source->module->builtin){
+            char operation[128];snprintf(operation,sizeof(operation),"Stopwatch.%.*s",node->func->name_len,node->func->name);gen_os_context(node->tok,"time",operation);
+        }
         x64_call(node->func->label);
         if (node->nargs) {
             x64_add_imm(RSP, 8 * node->nargs);
@@ -5382,7 +5391,10 @@ static void gen_call(Node *node)
         x64_load(RAX, RBP, -base + i * 8);
         push();
     }
-    if (node->kind == ND_BUILTIN && node->val >= BI_FILE_OPEN) gen_file_context(node);
+    if (node->kind == ND_BUILTIN && (node->val >= BI_FILE_OPEN||builtin_is_time((int)node->val))) gen_file_context(node);
+    if(node->kind==ND_CALL&&node->func->model&&node->func->tok->source->module->builtin&&!strcmp(node->func->tok->source->module->name,"time")&&!node->tok->source->module->builtin){
+        char operation[128];snprintf(operation,sizeof(operation),"Stopwatch.%.*s",node->func->name_len,node->func->name);gen_os_context(node->tok,"time",operation);
+    }
     x64_call(node->func->label);
     if (node->nargs) {
         x64_add_imm(RSP, 8 * node->nargs);
@@ -5485,7 +5497,8 @@ static void gen_expr_inner(Node *node)
         return;
     case ND_BUILTIN:
         if (node->val == BI_COMPLEX) { gen_complex_constructor(node); return; }
-        if(node->val>=BI_LIB_SIZE && node->val<BI_FILE_OPEN) gen_library_builtin(node);
+        if(builtin_is_time((int)node->val))gen_time_builtin(node);
+        else if(node->val>=BI_LIB_SIZE && node->val<BI_FILE_OPEN) gen_library_builtin(node);
         else if (node->val >= BI_FILE_OPEN) gen_file_builtin(node);
         else gen_builtin(node);
         return;
@@ -5643,20 +5656,26 @@ static void gen_print_value(Node *expr)
  *   literal：文字列リテラル直書き（固定部分 ND_STR と {式} の並び）なら 1、任意の型の式1つなら 0
  *   add_newline：最後に改行を出すなら 1（最後の固定部分とまとめて1回で書く）
  */
-static void gen_file_context(Node *node)
+static void gen_os_context(Token *tok,const char *ns,const char *operation)
 {
     char prefix[1200];
-    int n = snprintf(prefix, sizeof(prefix), "QYNO 実行時エラー: %s:%d:%d: io.file.%s: ",
-                     node->tok->source->filename, node->tok->line, node->tok->col,
-                     builtin_name((Builtin)node->val));
+    int n = snprintf(prefix, sizeof(prefix), "QYNO 実行時エラー: %s:%d:%d: %s.%s: ",
+                     tok->source->filename, tok->line, tok->col,
+                     ns,operation);
     if (n < 0) fatal("ファイルの診断を作成できません");
     if ((size_t)n >= sizeof(prefix)) n = (int)sizeof(prefix) - 1;
     x64_lea_data(R11, prog_add_str(prog, prefix, (size_t)n));
     x64_store(R14, FILE_CONTEXT, R11);
     x64_store_imm(R14, FILE_PATH, 0); x64_store_imm(R14, FILE_OS_ERROR, 0);
-    x64_lea_data(R11,prog_add_str(prog,node->tok->source->filename,strlen(node->tok->source->filename)));x64_store(R14,IO_SOURCE,R11);
-    x64_lea_data(R11,prog_add_str(prog,builtin_name((Builtin)node->val),strlen(builtin_name((Builtin)node->val))));x64_store(R14,IO_OPERATION,R11);
-    x64_store_imm(R14,IO_LINE,node->tok->line);x64_store_imm(R14,IO_COLUMN,node->tok->col);
+    x64_lea_data(R11,prog_add_str(prog,tok->source->filename,strlen(tok->source->filename)));x64_store(R14,IO_SOURCE,R11);
+    x64_lea_data(R11,prog_add_str(prog,operation,strlen(operation)));x64_store(R14,IO_OPERATION,R11);
+    x64_store_imm(R14,IO_LINE,tok->line);x64_store_imm(R14,IO_COLUMN,tok->col);
+}
+
+static void gen_file_context(Node *node)
+{
+    if(builtin_is_time((int)node->val)&&node->tok->source->module->builtin&&!strcmp(node->tok->source->module->name,"time"))return;
+    gen_os_context(node->tok,builtin_namespace((Builtin)node->val),builtin_name((Builtin)node->val));
 }
 
 static void gen_file_builtin(Node *node)
@@ -6008,6 +6027,7 @@ static void gen_stmt(Node *node)
 }
 
 #include "recoverable_codegen.inc"
+#include "time_codegen.inc"
 
 static void gen_function(Function *fn)
 {
@@ -6086,6 +6106,7 @@ void codegen(Ast *ast, Program *out_prog, FILE *out_text, Target out_target)
     loop_depth = 0;
 
     emitting_models = ast->models;emitting_enums=ast->enums;
+    time_date_type=standard_type(ast,"time","DateTime");
     x64_begin(prog, text);
     path_call_label=new_label("path.call");
     {EnumDef *e;for(e=ast->enums;e;e=e->next){e->check_label=new_label("enum.check");e->name_label=new_label("enum.name");e->parse_label=new_label("enum.parse");}}
@@ -6175,6 +6196,10 @@ void codegen(Ast *ast, Program *out_prog, FILE *out_text, Target out_target)
             file_labels[b - BI_FILE_OPEN] = x64_new_label(label_name);
         }
     }
+    {int op;for(op=0;op<T_COUNT;op++){snprintf(label_name,sizeof(label_name),".L.qy_time_%d",op);time_labels[op]=x64_new_label(label_name);}}
+    time_clock_label=x64_new_label(".L.qy_time_clock");time_sleep_label=x64_new_label(".L.qy_time_sleep");
+    time_timespec_label=x64_new_label(".L.qy_timespec");time_filetime_label=x64_new_label(".L.qy_filetime");
+    file_raw_seek_label=x64_new_label(".L.qy_raw_seek");file_stat_label=x64_new_label(".L.qy_stat");
     file_write_all_label = x64_new_label(".L.qy_file_write_all");
     io_raise_label=x64_new_label(".L.qy_io_raise");
     io_empty_label=x64_new_label(".L.qy_io_empty");
@@ -6255,6 +6280,7 @@ void codegen(Ast *ast, Program *out_prog, FILE *out_text, Target out_target)
     gen_complex_runtime();
     gen_input_routines();
     gen_file_runtime();
+    gen_time_runtime();
     gen_model_runtime();
 
     /* ユーザーのプログラム */

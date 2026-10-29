@@ -254,7 +254,7 @@ function analyze(text, uri = '') {
             const name = ts[0].value, ancestors = new Set(stack.map(s => s.id));
             const bound = symbols.some(s => s.name === name && ancestors.has(s.scopeId) &&
                 ['variable', 'constant', 'parameter', 'function', 'model', 'interface', 'enum'].includes(s.kind));
-            const namespace = ['io', 'math', 'lib', ...imports.map(i => i.path.split('.')[0]),
+            const namespace = ['io', 'math', 'lib', 'time', ...imports.map(i => i.path.split('.')[0]),
                 ...usings.filter(u => ancestors.has(u.scopeId)).map(u => u.alias)].includes(name);
             if (!bound && !namespace) declare(ts[0], { kind: 'variable', type: 'auto', implicit: true, scopeId: scope.id });
         }

@@ -1,15 +1,55 @@
 'use strict';
-// Reference: QYNO 0.27.2. No runtime dependency on a compiler installation.
+// Reference: QYNO 0.27.3. No runtime dependency on a compiler installation.
 const callable = (path, type, params, documentation) => ({
     kind: 'function', name: path.split('.').at(-1), path, type, rank: 0,
     params: params.map(p => typeof p === 'string' ? { name: p, type: 'value', rank: 0 } : { rank: 0, ...p }),
     documentation, builtin: true
 });
 const INTEGER_TYPES = ['int_8', 'int_16', 'int_32', 'int_64', 'int_128', 'unsigned int', 'unsigned int_8', 'unsigned int_16', 'unsigned int_32', 'unsigned int_64', 'unsigned int_128'];
-const IO_CODES = ['no_error','not_found','permission_denied','already_exists','invalid_path','not_regular_file','too_many_open_files','no_space','read_only','broken_pipe','resource_busy','io_error'];
+const IO_CODES = ['no_error','not_found','permission_denied','already_exists','invalid_path','not_regular_file','too_many_open_files','no_space','read_only','broken_pipe','resource_busy','io_error','unsupported_operation','out_of_range','system_error'];
 const IO_ERROR_CODE = {name:'ErrorCode',path:'io.ErrorCode',type:'io.ErrorCode',kind:'enum',builtin:true,members:IO_CODES.map((name,enumValue)=>({name,path:'io.ErrorCode.'+name,type:'io.ErrorCode',kind:'enumMember',readonly:true,builtin:true,enumValue,documentation:'回復可能なファイルI/Oエラー分類'}))};
 const IO_ERROR = {name:'Error',path:'io.Error',type:'io.Error',kind:'model',builtin:true,members:[['code','io.ErrorCode'],['message','str'],['operation','str'],['path','str'],['os_code','int_64'],['source','str'],['line','int'],['column','int']].map(([name,type])=>({name,type,kind:'field',rank:0,visibility:'public',builtin:true,documentation:'発生時点のI/Oエラー情報'}))};
+const enumType=(path,names)=>({name:path.split('.').at(-1),path,type:path,kind:'enum',builtin:true,members:names.map((name,enumValue)=>({name,path:path+'.'+name,type:path,kind:'enumMember',readonly:true,builtin:true,enumValue}))});
+const SEEK_ORIGIN=enumType('io.file.SeekOrigin',['begin','current','end']);
+const WEEKDAY=enumType('time.Weekday',['monday','tuesday','wednesday','thursday','friday','saturday','sunday']);
+const DATE_TIME={name:'DateTime',path:'time.DateTime',type:'time.DateTime',kind:'model',builtin:true,members:[['year','int','1970'],['month','int','1'],['day','int','1'],['hour','int','0'],['minute','int','0'],['second','quadruple','0.0'],['offset_minutes','int','0']].map(([name,type,defaultText])=>({name,type,defaultText,kind:'field',rank:0,visibility:'public',builtin:true}))};
+const STOPWATCH={name:'Stopwatch',path:'time.Stopwatch',type:'time.Stopwatch',kind:'model',builtin:true,members:['start','stop','elapsed','lap','reset','restart','is_running'].map(name=>({...callable(name,name==='is_running'?'bool':['stop','elapsed','lap'].includes(name)?'quadruple':'void',[],'停止期間を除く累積時間を秒数で扱います。'),readonly:['elapsed','is_running'].includes(name),visibility:'public'}))};
 const STANDARD = [
+    SEEK_ORIGIN, WEEKDAY, DATE_TIME, STOPWATCH,
+    callable('time.now', "quadruple", [], "UNIX時刻の秒数。日時用。OSによる時刻変更の影響を受けます。"),
+    callable('time.monotonic', "quadruple", [], "後戻りしない時計の秒数。起点は非公開で、処理時間や期限の計測に使います。"),
+    callable('time.cpu', "quadruple", [], "プロセスが使用したuser+kernelのCPU秒数。"),
+    callable('time.elapsed', "quadruple", [{"name": "start", "type": "quadruple"}], "秒単位のquadrupleを使用するtime標準関数。UTC/固定オフセットに対応します。"),
+    callable('time.sleep', "void", [{"name": "seconds", "type": "quadruple"}], "有限・非負の期間だけ待機します。秒単位。0は即時復帰。"),
+    callable('time.sleep_until', "void", [{"name": "deadline", "type": "quadruple"}], "monotonicの指定期限まで待ちます。過去の期限なら即時復帰。"),
+    callable('time.nanoseconds', "quadruple", [{"name": "value", "type": "quadruple"}], "秒単位のquadrupleを使用するtime標準関数。UTC/固定オフセットに対応します。"),
+    callable('time.microseconds', "quadruple", [{"name": "value", "type": "quadruple"}], "秒単位のquadrupleを使用するtime標準関数。UTC/固定オフセットに対応します。"),
+    callable('time.milliseconds', "quadruple", [{"name": "value", "type": "quadruple"}], "秒単位のquadrupleを使用するtime標準関数。UTC/固定オフセットに対応します。"),
+    callable('time.seconds', "quadruple", [{"name": "value", "type": "quadruple"}], "秒単位のquadrupleを使用するtime標準関数。UTC/固定オフセットに対応します。"),
+    callable('time.minutes', "quadruple", [{"name": "value", "type": "quadruple"}], "秒単位のquadrupleを使用するtime標準関数。UTC/固定オフセットに対応します。"),
+    callable('time.hours', "quadruple", [{"name": "value", "type": "quadruple"}], "秒単位のquadrupleを使用するtime標準関数。UTC/固定オフセットに対応します。"),
+    callable('time.days', "quadruple", [{"name": "value", "type": "quadruple"}], "秒単位のquadrupleを使用するtime標準関数。UTC/固定オフセットに対応します。"),
+    callable('time.weeks', "quadruple", [{"name": "value", "type": "quadruple"}], "秒単位のquadrupleを使用するtime標準関数。UTC/固定オフセットに対応します。"),
+    callable('time.in_nanoseconds', "quadruple", [{"name": "value", "type": "quadruple"}], "秒単位のquadrupleを使用するtime標準関数。UTC/固定オフセットに対応します。"),
+    callable('time.in_microseconds', "quadruple", [{"name": "value", "type": "quadruple"}], "秒単位のquadrupleを使用するtime標準関数。UTC/固定オフセットに対応します。"),
+    callable('time.in_milliseconds', "quadruple", [{"name": "value", "type": "quadruple"}], "秒単位のquadrupleを使用するtime標準関数。UTC/固定オフセットに対応します。"),
+    callable('time.in_seconds', "quadruple", [{"name": "value", "type": "quadruple"}], "秒単位のquadrupleを使用するtime標準関数。UTC/固定オフセットに対応します。"),
+    callable('time.in_minutes', "quadruple", [{"name": "value", "type": "quadruple"}], "秒単位のquadrupleを使用するtime標準関数。UTC/固定オフセットに対応します。"),
+    callable('time.in_hours', "quadruple", [{"name": "value", "type": "quadruple"}], "秒単位のquadrupleを使用するtime標準関数。UTC/固定オフセットに対応します。"),
+    callable('time.in_days', "quadruple", [{"name": "value", "type": "quadruple"}], "秒単位のquadrupleを使用するtime標準関数。UTC/固定オフセットに対応します。"),
+    callable('time.in_weeks', "quadruple", [{"name": "value", "type": "quadruple"}], "秒単位のquadrupleを使用するtime標準関数。UTC/固定オフセットに対応します。"),
+    callable('time.to_datetime', "time.DateTime", [{"name": "timestamp", "type": "quadruple"}, {"name": "offset_minutes", "type": "int", "optional": true, "default": "0"}], "秒単位のquadrupleを使用するtime標準関数。UTC/固定オフセットに対応します。"),
+    callable('time.to_timestamp', "quadruple", [{"name": "date", "type": "time.DateTime"}], "秒単位のquadrupleを使用するtime標準関数。UTC/固定オフセットに対応します。"),
+    callable('time.weekday', "time.Weekday", [{"name": "date", "type": "time.DateTime"}], "秒単位のquadrupleを使用するtime標準関数。UTC/固定オフセットに対応します。"),
+    callable('time.day_of_year', "int", [{"name": "date", "type": "time.DateTime"}], "秒単位のquadrupleを使用するtime標準関数。UTC/固定オフセットに対応します。"),
+    callable('time.is_leap_year', "bool", [{"name": "year", "type": "int"}], "秒単位のquadrupleを使用するtime標準関数。UTC/固定オフセットに対応します。"),
+    callable('time.days_in_month', "int", [{"name": "year", "type": "int"}, {"name": "month", "type": "int"}], "秒単位のquadrupleを使用するtime標準関数。UTC/固定オフセットに対応します。"),
+    callable('time.isoformat', "str", [{"name": "timestamp", "type": "quadruple"}, {"name": "offset_minutes", "type": "int", "optional": true, "default": "0"}], "日時を小数秒9桁と必須のZ/固定オフセットで表示します。"),
+    callable('time.format', "str", [{"name": "timestamp", "type": "quadruple"}, {"name": "pattern", "type": "str", "placeholder": "\"%Y-%m-%d %H:%M:%S\""}, {"name": "offset_minutes", "type": "int", "optional": true, "default": "0"}], "UTC/固定オフセットで日時を表示。%fは6桁、%Nは9桁。"),
+    callable('time.parse', "quadruple", [{"name": "text", "type": "str"}], "秒単位のquadrupleを使用するtime標準関数。UTC/固定オフセットに対応します。"),
+    callable('time.try_parse', "bool", [{"name": "text", "type": "str"}, {"name": "destination", "type": "quadruple", "ref": true}], "ISO日時を解析。失敗時falseで出力先を保持します。出力先はref quadruple。"),
+    callable('time.format_duration', "str", [{"name": "seconds", "type": "quadruple"}, {"name": "digits", "type": "int", "optional": true, "default": "3"}], "[-][Dd ]HH:MM:SSの形式で期間を表示。digitsは0〜9。"),
+    ...['NANOSECOND','MICROSECOND','MILLISECOND','SECOND','MINUTE','HOUR','DAY','WEEK'].map(name=>({name,path:'time.'+name,type:'quadruple',kind:'constant',readonly:true,builtin:true,documentation:'秒単位の時間定数'})),
     IO_ERROR_CODE, IO_ERROR,
     ...['complex','complex_64','complex_128'].map(type=>callable(type,type,[{name:'real',type:type==='complex_128'?'double':'float',optional:true,defaultText:'0.0'},{name:'imag',type:type==='complex_128'?'double':'float',optional:true,defaultText:'0.0'}], '複素数を構築します。complexはcomplex_64の別名。real / imagは実数、値1個なら実数または複素数から変換できます。i4.0 / 4.0iも使用できます。')),
 
@@ -30,6 +70,8 @@ const STANDARD = [
     ...['join','basename','dirname','extension','stem','is_absolute','is_relative','normalize','with_extension'].map(name=>callable('io.path.'+name, ['is_absolute','is_relative'].includes(name)?'bool':'str',
         name==='join'?[{name:'base',type:'str'},{name:'child',type:'str'}]:name==='with_extension'?[{name:'path',type:'str'},{name:'extension',type:'str'}]:[{name:'path',type:'str'}],
         ({join:'パス2個を結合します。',basename:'末尾の名前を取得します。',dirname:'親パスを取得します。',extension:'最後の拡張子をドット付きで返します。',stem:'拡張子を除いた末尾の名前を返します。',is_absolute:'完全な絶対パスか判定します。',is_relative:'完全な絶対パスでないか判定します。',normalize:'区切りと余分な . を整理します。.. は保持します。',with_extension:'拡張子を変更します。空文字なら削除します。'})[name]+' 生成先OSの規則で処理し、ファイルへはアクセスしません。')),
+    ...['tell','size','modified_at'].map(name=>callable('io.file.'+name,name==='modified_at'?'quadruple':'int_64',[{name:'source',type:'file'}],name==='modified_at'?'最終更新日時をUNIX秒数で取得。':'論理位置または内容のバイト数を取得。位置を変更しません。')),
+    callable('io.file.seek','int_64',[{name:'source',type:'file'},{name:'offset',type:'int_64'},{name:'origin',type:'io.file.SeekOrigin',optional:true,default:'io.file.SeekOrigin.begin',defaultText:'io.file.SeekOrigin.begin'}],'バイナリの先頭〜EOFへ移動し、位置を返します。currentは先読みを除いた論理位置。'),
     callable('io.file.try_open','bool',[{name:'path',type:'str'},{name:'destination',type:'file',ref:true},{name:'error',type:'io.Error',ref:true},{name:'mode',type:'str',optional:true,default:'"r"'}],'成功時trueとfile、失敗時falseとErrorを返します。出力先は未オープンが必要。falseではcaseへ移りません。'),
     callable('io.file.open', 'file', [{ name: 'path', type: 'str', placeholder: '"path.txt"' }, { name: 'mode', type: 'str', optional: true, default: '"r"' }], '通常ファイルを開きます。r/w/a はUTF-8、rb/wb/ab はバイナリ。w/wb は切り詰め、a/ab は追記。正常終了の全経路で明示的な close が必要です。'),
     callable('io.file.close', 'void', [{ name: 'source', type: 'file' }], '共有ハンドルを閉じます。二重 close と未オープンの close は許可されます。'),

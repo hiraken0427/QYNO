@@ -297,7 +297,14 @@ static void gen_file_open_runtime(void)
     x64_lea_data(RAX,prog_add_str(prog,"通常ファイルではありません、またはファイル情報を取得できません",strlen("通常ファイルではありません、またはファイル情報を取得できません")));
     x64_mov_imm(RDI,5);x64_call(io_raise_label);rt_leave();
     x64_bind(regular); rt_load(RAX, 4); rt_load(RCX, 5); x64_store(RAX, 0, RCX);
-    rt_load(RCX, 2); x64_store(RAX, 8, RCX); rt_leave();
+    rt_load(RCX, 2); x64_store(RAX, 8, RCX);
+    {int not_append=rt_label("file.open.not.append"),append_ok=rt_label("file.open.append.ok");
+     x64_and_imm(RCX,3);rt_cmp(RCX,3);x64_jcc(CC_NZ,not_append);
+     x64_load(RAX,RAX,0);x64_xor(RDI,RDI);x64_mov_imm(RSI,2);x64_call(file_raw_seek_label);
+     x64_test(RAX,RAX);x64_jcc(CC_NS,append_ok);x64_neg(RAX);x64_store(R14,FILE_OS_ERROR,RAX);
+     rt_load(RAX,4);x64_store_imm(RAX,8,0);x64_load(RAX,RAX,0);x64_call(file_raw_close_label);
+     file_fail(EX_IOERR,"追記の初期位置を取得できません");x64_bind(append_ok);x64_bind(not_append);}
+    rt_load(RAX,4);rt_leave();
 }
 
 /* rax=control, rdi=required mode(0 any,1 text read,2 text write,5 binary read,6 binary write). */
@@ -524,10 +531,13 @@ static void gen_file_exists_runtime(void)
 
 #include "binary_file_runtime.inc"
 
+#include "file_position_runtime.inc"
+
 static void gen_file_runtime(void)
 {
     gen_file_error_runtime(); gen_file_validate_runtime(); gen_file_path_runtime();
     gen_file_raw_close(); gen_file_finalizer(); gen_file_kind_runtime();
+    gen_file_position_runtime();
     gen_file_raw_open(); gen_file_open_runtime(); gen_file_check_runtime();
     gen_file_close_runtime(); gen_file_buffer_runtime(); gen_file_capture_runtime();
     gen_file_getc_runtime(); gen_file_read_text_runtime(); gen_file_write_runtime(); gen_file_exists_runtime();

@@ -31,14 +31,17 @@ static void gen_recoverable_runtime(void)
     int classified=rt_label("io.classified"),empty=rt_label("io.no.os.error");
     rt_enter(io_raise_label,4);rt_save(1,RAX);rt_save(2,RDI);
     x64_load(RAX,R14,FILE_OS_ERROR);x64_test(RAX,RAX);x64_jcc(CC_Z,empty);
+    rt_load(RCX,2);rt_cmp(RCX,12);x64_jcc(CC_AE,empty);
     rt_set(2,11);
     if(target==TARGET_LINUX){
+        io_classify(38,12,classified);io_classify(95,12,classified);io_classify(29,12,classified);io_classify(75,13,classified);
         io_classify(2,1,classified);io_classify(13,2,classified);io_classify(1,2,classified);
         io_classify(17,3,classified);io_classify(36,4,classified);io_classify(20,4,classified);io_classify(40,4,classified);
         io_classify(21,5,classified);io_classify(24,6,classified);io_classify(23,6,classified);
         io_classify(28,7,classified);io_classify(122,7,classified);io_classify(30,8,classified);
         io_classify(32,9,classified);io_classify(16,10,classified);io_classify(26,10,classified);
     }else{
+        io_classify(1,12,classified);io_classify(50,12,classified);io_classify(120,12,classified);io_classify(534,13,classified);
         io_classify(2,1,classified);io_classify(3,1,classified);io_classify(5,2,classified);
         io_classify(80,3,classified);io_classify(183,3,classified);io_classify(123,4,classified);
         io_classify(161,4,classified);io_classify(206,4,classified);io_classify(267,4,classified);
