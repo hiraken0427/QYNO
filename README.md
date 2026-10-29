@@ -1,4 +1,4 @@
-# QYNO 0.27.7
+# QYNO 0.27.8
 
 著作権およびライセンスに関する情報は、本ファイルの末尾に記載している。
 
@@ -42,18 +42,31 @@ make clean
 
 ## 新機能
 
-0.27.7では、文字列の検索、分割、置換を追加した。strとcharに対してcontains、starts_with、ends_with、find、trim、split、replaceを使用できる。
-
-検索は書記素の境界で行い、findは書記素単位の位置を返す。trimは前後の空白を取り除き、splitは空の要素を含めて分割する。いずれも元の文字列を変更せず、定数式でも使用できる。
+0.27.8では、パスを指定してファイルを一括で読み書きする機能を追加した。read_textで全体を文字列として読み込み、write_textで上書き、append_textで追記を行う。read_linesは行の配列を返し、write_linesは行の配列を書き込む。書き込みの戻り値はint_64のバイト数である。
 
 ```text
+using io.file as fs
+
 int main();
-	str names[] = "  Ken,Alice  ".trim().split(",")
-	io.print(names)
-	io.print("report.txt".ends_with(".txt"))
-	io.print("Hello, guest!".replace("guest", names[0]))
+	fs.write_text("input.txt", " Ken \nAlice\n")
+	fs.append_text("input.txt", "Bob\n")
+	str names[] = fs.read_lines("input.txt")
+	for(0 <= i < names.length, i++);
+		names[i] = names[i].trim()
+	fs.write_lines("output.txt", names)
+	io.print(fs.read_text("output.txt"))
 	return 0
 ```
+
+これらの関数で開いたファイルは、処理が終わると内部で閉じる。OSによる失敗は既存のtryとcaseで処理できる。
+
+read_textとread_linesはUTF-8を読み込み、BOMとNULを保持する。read_linesはLF、CRLF、CRを改行として扱う。空行は保持し、空のファイルは空の配列となる。末尾の改行から余分な空行は作らない。
+
+読み込みの上限は既定で64MiBである。read_textの第2引数で変更できる。read_linesは第2引数でバイト数、第3引数で行数を指定でき、行数の既定値は1048576である。上限を超えた場合はio.ErrorCode.out_of_rangeとなる。
+
+write_textとappend_textは改行を追加しない。write_linesは既定で各行の末尾にLFを付ける。第3引数でLF、CRLF、CRを指定でき、第4引数をfalseにすると最後の行には改行を付けない。要素内の改行は許可しない。空の配列は空のファイルとして書き込む。
+
+テキストの引数はstrまたはchar、行の配列はstr配列である。引数は記述順に指定する。書き込む文字列はファイルを開く前に検査するが、書き込み開始後の変更を巻き戻す機能ではない。
 
 ## 使用方法
 
@@ -128,7 +141,7 @@ io、math、lib、timeはimportなしで使用できる。名前を省略する�
 
 ioはコンソールとファイルの入出力を扱う。io.pathはパスの操作、io.dirは作業ディレクトリの取得と変更に使用する。パスはstrで扱う。
 
-ファイルはio.file.openで開き、io.file.closeで明示的に閉じる。closeを確認できない経路はコンパイルエラーとなる。テキストとバイナリの読み書きに対応し、位置、サイズ、更新日時を取得できる。I/Oエラーはtry、case、finallyで処理する。
+ファイルはio.file.openで開き、io.file.closeで明示的に閉じる。closeを確認できない経路はコンパイルエラーとなる。テキストとバイナリの読み書きに対応し、位置、サイズ、更新日時を取得できる。I/Oエラーはtry、case、finallyで処理する。パス指定の一括読み書きでは、ファイルの開閉をライブラリが行う。
 
 mathは数学関数を提供する。lib.sizeは値のビットサイズ、lib.lengthは文字列や配列の長さ、数値の整数部分の桁数を返す。
 

@@ -533,6 +533,8 @@ static void gen_file_exists_runtime(void)
 
 #include "file_position_runtime.inc"
 
+#include "file_bulk_runtime.inc"
+
 static void gen_file_runtime(void)
 {
     gen_file_error_runtime(); gen_file_validate_runtime(); gen_file_path_runtime();
@@ -541,5 +543,5 @@ static void gen_file_runtime(void)
     gen_file_raw_open(); gen_file_open_runtime(); gen_file_check_runtime();
     gen_file_close_runtime(); gen_file_buffer_runtime(); gen_file_capture_runtime();
     gen_file_getc_runtime(); gen_file_read_text_runtime(); gen_file_write_runtime(); gen_file_exists_runtime();
-    gen_file_binary_runtime(); gen_recoverable_runtime();
+    gen_file_binary_runtime(); gen_recoverable_runtime(); gen_file_bulk_runtime();
 }
