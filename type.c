@@ -452,6 +452,8 @@ static int check_random_method(Node *node);
 static long long round_integer(Node *node, long long x, long long digits, Builtin mode);
 static void check_pow_domain(Node *node);
 
+#include "file_bulk_type.inc"
+
 static void check_file_builtin(Node *node)
 {
     Builtin b = (Builtin)node->val;
@@ -459,6 +461,7 @@ static void check_file_builtin(Node *node)
     Node *second = first != NULL ? first->next : NULL;
     int expected = b == BI_FILE_READLINE || b == BI_FILE_WRITE || b == BI_FILE_READ_BYTES || b == BI_FILE_WRITE_BYTES ? 2 : 1;
     allow_void = 0;
+    if(file_bulk_builtin(b)){check_file_bulk_builtin(node);return;}
     if(b==BI_FILE_TRY_OPEN){check_try_open(node);return;}
     if(b>=BI_FILE_TELL){
         Node *offset=second,*origin=offset?offset->next:NULL;
