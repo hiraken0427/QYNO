@@ -6,7 +6,7 @@ typedef struct { uint64_t lo, hi; } WideBits;
 enum { W_HALF=1016, W_FLOAT=1032, W_DOUBLE=1064, W_QUAD=1128 };
 enum { W_CONVERT, W_ADD, W_SUB, W_MUL, W_DIV, W_MOD, W_NEG, W_ABS,
        W_POW, W_AND, W_OR, W_XOR, W_NOT, W_SHL, W_SHR, W_CMP,
-       W_SQRT, W_ROUND, W_READ, W_FORMAT, W_NEXT, W_TEXT, W_CURSOR, W_DIGITS, W_PATH, W_TIME };
+       W_SQRT, W_ROUND, W_READ, W_FORMAT, W_NEXT, W_TEXT, W_CURSOR, W_DIGITS, W_PATH, W_TIME, W_ARGUMENTS };
 typedef struct {
     WideBits a, b, out;
     int64_t op, ty, from, aux;

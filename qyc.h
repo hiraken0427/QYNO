@@ -8,7 +8,7 @@
 #include "grapheme_runtime.h"
 #include <stdio.h>
 
-#define QYC_VERSION "0.27.4"
+#define QYC_VERSION "0.27.5"
 
 typedef struct SourceFile SourceFile;
 typedef struct Module Module;
@@ -73,6 +73,7 @@ typedef enum {
     IMP_QUERY_PERFORMANCE_COUNTER, IMP_QUERY_PERFORMANCE_FREQUENCY,
     IMP_GET_CURRENT_PROCESS, IMP_GET_PROCESS_TIMES, IMP_SLEEP,
     IMP_GET_CURRENT_DIRECTORY_W, IMP_SET_CURRENT_DIRECTORY_W, IMP_WIDE_CHAR_TO_MULTI_BYTE,
+    IMP_GET_COMMAND_LINE_W,
     IMP_COUNT
 } Import;
 

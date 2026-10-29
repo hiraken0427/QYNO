@@ -1,4 +1,4 @@
-# QYNO 0.27.4
+# QYNO 0.27.5
 
 C99とGCCの128bit数値拡張で実装した、Linux x64 / Windows x64 向けのコンパイラ。
 UTF-8 の `.qy` ソースから実行ファイルを直接生成する。
@@ -35,9 +35,9 @@ int main();
 
 ## VS Code 拡張
 
-[QYNO 0.27.4](vscode-extensions/README.md) はハイライト、ユーザー定義の関数名・変数名の補完、
+[QYNO 0.27.5](vscode-extensions/README.md) はハイライト、ユーザー定義の関数名・変数名の補完、
 定義への移動、引数ヒント、セミコロン後の自動インデント、qyc連携の構文・型エラーの赤線表示に対応する。
-[vscode-extensions/0.27.4_VSCode_option.vsix](vscode-extensions/0.27.4_VSCode_option.vsix) を
+[vscode-extensions/0.27.5_VSCode_option.vsix](vscode-extensions/0.27.5_VSCode_option.vsix) を
 VS Code の「VSIX からのインストール…」で指定する。
 診断には別途qycが必要。PATHにない場合は拡張設定の `qyno.compilerPath` に実行ファイルを指定する。
 
@@ -441,4 +441,31 @@ int main();
 Windowsでは区切りを`/`で返し、ドライブ相対`C:work`・ルート相対`/work`は拒否する。
 仕様: [作業ディレクトリ](docs/process-path-random-design.md)。
 例: [取得・移動・復帰](examples/io/directories.qy)。
-同仕様書のmain引数・型名と不等式による乱数APIは後続の設計であり、0.27.4には含まない。
+main引数は0.27.5で追加した。型名と不等式による乱数APIは引き続き後続の設計とする。
+
+
+## 実行時引数と引数なしの明示（0.27.5）
+
+mainで通常のstr配列を受け取れる。実行ファイル名を含めず、引数なしなら空配列になる。
+数字やパスもstrで受け取り、必要に応じて明示変換する。
+
+```text
+int main(str args[]);
+	print_arguments(args)
+	return 0
+
+void print_arguments(str values[]);
+	for(0 <= i < values.length, i++);
+		io.print("{i}: {values[i]}")
+```
+
+`./main.exe alpha "two words" ""`なら、argsは`["alpha", "two words", ""]`。
+引数名は自由で、配列の変更や通常の値コピー・ref渡しも使える。
+Windowsの引用符・バックスラッシュはMSVC CRTの文法に従い、両OSで厳密なUTF-8へ取り込む。
+不正な文字列はmain実行前にデータエラー65として診断する。
+
+引数が不要なら従来の`int main();`、または`int main(void);` / `int main(Void);`と書ける。
+通常関数・メソッド・interface・initでも`()`と`(void)`を同じ引数なしとして扱う。
+名前付きの`void value`は値`()`を受け取る1個の引数のまま。
+仕様: [実行時引数](docs/process-path-random-design.md#5-mainの実行時引数)。
+例: [引数・パスの処理](examples/arguments/main.qy)。

@@ -217,7 +217,9 @@ function analyze(text, uri = '') {
                 const end = closing(ts, index + 2);
                 const body = newScope(line, indent + 1, 'function', scope, true);
                 const params = [];
-                for (const part of split(ts.slice(index + 3, end < 0 ? ts.length : end))) {
+                const parameterTokens = ts.slice(index + 3, end < 0 ? ts.length : end);
+                const voidMarker = parameterTokens.length === 1 && ['void', 'Void'].includes(parameterTokens[0].value);
+                for (const part of split(voidMarker ? [] : parameterTokens)) {
                     let p = 0; const ref = part[p]?.value === 'ref';
                     if (['ref', 'val'].includes(part[p]?.value)) p++;
                     const readonly = ref && part[p]?.value === 'readonly'; if (readonly) p++;

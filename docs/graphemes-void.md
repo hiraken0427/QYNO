@@ -73,3 +73,7 @@ int main();
 
 回帰検証: `make test-grapheme-unit`（20メソッド、公式766ケースを含む）。
 従来の「結合文字は複数文字」「voidをautoや引数へ使えない」というテストは新仕様へ移行した。
+
+0.27.5では仮引数がvoid / Voidの1語だけの`f(void)`を、明示的な引数なしとして追加した。
+`f(void value)`は従来どおり値`()`を受け取る1引数であり、区別する。
+mainのstr配列引数も含む詳細は[実行時引数の仕様](process-path-random-design.md)を参照。

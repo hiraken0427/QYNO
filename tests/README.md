@@ -292,3 +292,20 @@ Windowsでは`QYNO_FILE_TARGET=windows QYNO_FILE_WINDOWS_RUNNER=/absolute/path/t
 新規28メソッドはLinuxで25件成功・3件skip、Windows生成プログラムで24件成功・4件skip。
 UBSan・GC頻発設定でもLinuxの同じ28メソッドが通過した。
 VS Code単体130件、VS Code 1.85.2実機176項目が成功し、VSIXを作成した。
+
+
+## 実行時引数・voidマーカー（0.27.5）
+
+`make test-arguments`は24メソッド。通常・空・Unicode・長い/多数の引数、
+実行ファイル名の除外、配列の変更・コピー・ref、繰り返し確保、戻り値、-Sを確認する。
+名前付きvoid値、メソッドのthis、interface契約、init、無効なmainシグネチャも扱う。
+Windows分割の純粋関数は固定ケースとPythonのWindows引用符処理による120ケースで照合する。
+出力バッファの境界と不対サロゲートも検査する。
+Linux専用1件は無効UTF-8とno-args形式による未使用引数の無視。
+Windows専用3件はno-argsでのGetCommandLineW未使用、実際のmsvcrt.dllとの比較、
+生成PEへ無効UTF-16を注入したmain前の診断を検証する。
+Windowsは既存の`QYNO_FILE_TARGET=windows QYNO_FILE_WINDOWS_RUNNER=/absolute/path/to/runner`を使用する。
+
+0.27.5の最終make testはshellチェック326件、Python1,188メソッド（Windows専用6件skip）で失敗0。
+新規24メソッドはLinuxで21件成功・3件skip、Windowsで23件成功・1件skip。
+UBSan・GC頻発設定でも両ターゲットの検証が通過した。VS Code単体132件・実機182項目が成功した。
