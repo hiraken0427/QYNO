@@ -101,6 +101,8 @@ Windows向けの実行ファイルは、出力先を指定して生成する。
 
 出力先は--targetで指定する。指定しない場合は、コンパイラを実行しているOSに合わせる。-Sはアセンブリの出力、-Iはモジュールの探索先の追加に使用する。--helpで使い方を確認できる。
 
+Visual Studio Code用の拡張機能は[VSCode Extensions](VSCode%20Extensions/README.md)に置いている。ソースコードと現行バージョンのVSIXを含む。
+
 mainで実行時引数を受け取る場合は、str配列を宣言する。実行ファイル名は引数に含まれない。
 
 ```text
