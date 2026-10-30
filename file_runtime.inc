@@ -450,8 +450,8 @@ static void gen_file_read_text_runtime(void)
     x64_load(RAX, RBP, 16); x64_mov_imm(RDI, 1); x64_call(file_check_label);
     x64_xor(RDI, RDI); file_io_call(file_text_label); rt_leave();
     {
-        int empty = rt_label("file.readline.empty");
-        rt_enter(file_labels[BI_FILE_READLINE - BI_FILE_OPEN], 0);
+        int empty = rt_label("file.read_line.empty");
+        rt_enter(file_labels[BI_FILE_READ_LINE - BI_FILE_OPEN], 0);
         x64_load(RAX, RBP, 24); x64_mov_imm(RDI, 1); x64_call(file_check_label);
         x64_mov_imm(RDI, 1); file_io_call(file_text_label);
         x64_test(RDX, RDX); x64_jcc(CC_Z, empty);

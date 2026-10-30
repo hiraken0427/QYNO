@@ -254,7 +254,7 @@ Ast *load_program(const char *path, const char **roots, int root_count)
         static const char declarations[] =
             "enum ErrorCode;\n\tno_error\n\tnot_found\n\tpermission_denied\n\talready_exists\n"
             "\tinvalid_path\n\tnot_regular_file\n\ttoo_many_open_files\n\tno_space\n"
-            "\tread_only\n\tbroken_pipe\n\tresource_busy\n\tio_error\n\tunsupported_operation\n\tout_of_range\n\tsystem_error\n\tnot_directory\n"
+            "\tread_only\n\tbroken_pipe\n\tresource_busy\n\tio_error\n\tunsupported_operation\n\tout_of_range\n\tsystem_error\n\tnot_directory\n\tdirectory_not_empty\n"
             "model Error;\n\tErrorCode code\n\tstr message\n\tstr operation\n\tstr path\n"
             "\tint_64 os_code\n\tstr source\n\tint line\n\tint column\n";
         io->source = allocate(sizeof(*io->source));
@@ -520,6 +520,26 @@ static Symbol scoped_symbol(Module *owner, const char *name, Using *scope, Using
     return result;
 }
 
+/* Diagnose only failed lookups, so user declarations keep their own names. */
+static void diagnose_renamed(Module *owner,const char *name,Using *scope,Using *skip,Token *site)
+{
+    const char *dot=strrchr(name,'.'),*replacement;Using *u;
+    if(dot){
+        char *prefix=copy_name(name,(size_t)(dot-name));
+        Symbol parent=scoped_symbol(owner,prefix,scope,skip,site);free(prefix);
+        if(parent.kind==SYM_MODULE&&parent.module->builtin&&
+           (replacement=builtin_replacement(parent.module->name,dot+1)))
+            error_tok(site,"%s は廃止されました。%s.%s を使用してください",name,parent.module->name,replacement);
+        return;
+    }
+    for(u=scope;u;u=u->vnext)if(u!=skip&&u->state==2&&!u->alias&&u->target_module&&u->target_module->builtin&&
+        (replacement=builtin_replacement(u->target_module->name,name)))
+            error_tok(site,"%s は廃止されました。%s を使用してください",name,replacement);
+    for(u=owner->ast->usings;u;u=u->next)if(u!=skip&&u->state==2&&!u->alias&&u->target_module&&u->target_module->builtin&&
+        (replacement=builtin_replacement(u->target_module->name,name)))
+            error_tok(site,"%s は廃止されました。%s を使用してください",name,replacement);
+}
+
 static void resolve_using(Using *u)
 {
     Symbol target;
@@ -527,6 +547,7 @@ static void resolve_using(Using *u)
     if (u->state == 1) error_tok(u->path_tok, "using の参照が循環しています: %s", u->path);
     u->state = 1;
     target = scoped_symbol(u->tok->source->module, u->path, u->scope, u, u->path_tok);
+    if(target.kind==SYM_NONE)diagnose_renamed(u->tok->source->module,u->path,u->scope,u,u->path_tok);
     if (target.kind == SYM_NONE) error_tok(u->path_tok, "using の対象 %s はありません。必要な import と名前を確認してください", u->path);
     if (u->alias != NULL && target.kind != SYM_MODULE) error_tok(u->alias, "as の別名はモジュールにだけ指定できます: %s", u->path);
     u->target_enum = target.enumeration;
@@ -794,6 +815,7 @@ void resolve_module_name(Node *node)
             return;
         }
         if (symbol.kind == SYM_NONE) {
+            diagnose_renamed(owner,name,node->usings,NULL,node->tok);
             const char *ns = builtin_namespace_of(name, (int)strlen(name));
             if (ns != NULL) error_tok(node->tok, "関数 %s は定義されていません（%s.%s と書くか、using %s.%s を宣言してください）", name, ns, name, ns, name);
         }

@@ -17,7 +17,7 @@ static void gen_file_binary_runtime(void)
     x64_store_imm(RAX, 24, 0); x64_store_imm(RAX, 32, 0);
     x64_bind(loop); rt_load(RAX, 2); x64_test(RAX, RAX); x64_jcc(CC_Z, done);
     rt_load(RAX, 1); file_io_call(file_getc_label); rt_cmp(RAX, -1); x64_jcc(CC_Z, done);
-    x64_mov(RDI, RAX); rt_load(RAX, 3); x64_call(array_add_label);
+    x64_mov(RDI, RAX); rt_load(RAX, 3); x64_call(array_append_label);
     rt_load(RAX, 2); x64_sub_imm(RAX, 1); rt_save(2, RAX); x64_jmp(loop);
     x64_bind(done); rt_load(RAX, 3); rt_leave();
 

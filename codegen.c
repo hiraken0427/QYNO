@@ -97,7 +97,7 @@ static int random_call_label;
 static int text_method_label;
 static void gen_random_runtime(void);
 static void gen_random_builtin(Node *node);
-static int directory_labels[3];
+static int directory_labels[7];
 static void gen_directory_runtime(void);
 static void gen_directory_builtin(Node *node);
 static void gen_call(Node *node);
@@ -132,7 +132,7 @@ static int raw_free_label;
 static int gc_mark_label;
 static int gc_collect_label;
 static int array_copy_label, array_slot_label, array_get_label;
-static int array_add_label, array_remove_label, array_clear_label;
+static int array_append_label, array_remove_label, array_clear_label;
 static int array_equal_label, array_print_label, quoted_string_label;
 static int array_ref_label, string_get_label, string_replace_label;
 static Function *emitting_function;
@@ -1034,7 +1034,7 @@ static void gen_round_integral(int label, Builtin mode)
         x64_ucomisd(3, 0);
         x64_jcc(CC_BE, minus);
         x64_jmp(done);
-    } else if (mode == BI_ROUNDUP) {
+    } else if (mode == BI_CEIL) {
         x64_ucomisd(1, 3);          /* t >= x なら t のまま、t < x なら t + 1 */
         x64_jcc(CC_AE, done);
         x64_jmp(plus);
@@ -1186,8 +1186,8 @@ static void gen_round_integer(Builtin mode, int unsign)
     } else {
         x64_test(RDX, RDX);
         x64_jcc(CC_Z, rounded);
-        if (unsign) { if (mode == BI_ROUNDDOWN) x64_jmp(rounded); }
-        else { x64_test(R8, R8); x64_jcc(mode == BI_ROUNDUP ? CC_S : CC_NS, rounded); }
+        if (unsign) { if (mode == BI_FLOOR) x64_jmp(rounded); }
+        else { x64_test(R8, R8); x64_jcc(mode == BI_CEIL ? CC_S : CC_NS, rounded); }
     }
     x64_add_imm(RAX, 1);
     x64_bind(rounded);
@@ -1212,8 +1212,8 @@ static void gen_round_integer(Builtin mode, int unsign)
 
     x64_bind(huge);
     if (mode != BI_ROUND) {
-        if (unsign) { if (mode == BI_ROUNDUP) x64_jmp(overflow); }
-        else { x64_test(R8, R8); x64_jcc(mode == BI_ROUNDUP ? CC_NS : CC_S, overflow); }
+        if (unsign) { if (mode == BI_CEIL) x64_jmp(overflow); }
+        else { x64_test(R8, R8); x64_jcc(mode == BI_CEIL ? CC_NS : CC_S, overflow); }
     }
     x64_bind(zero);
     x64_xor(RAX, RAX);
@@ -1868,7 +1868,7 @@ static void gen_builtin(Node *node)
     }
     if(type_is_wide(ty)||type_is_wide(node->ty)){
         if(b==BI_INT||b==BI_FLOAT||b==BI_DOUBLE||b==BI_HALF||b==BI_QUAD){gen_expr(x);gen_wide(W_CONVERT,node->ty,ty,0,node->tok);return;}
-        if(b==BI_ABS||b==BI_SQRT||b==BI_ROUND||b==BI_ROUNDUP||b==BI_ROUNDDOWN){
+        if(b==BI_ABS||b==BI_SQRT||b==BI_ROUND||b==BI_CEIL||b==BI_FLOOR){
             gen_expr(x);push();if(digits)gen_expr(digits);else x64_xor(RAX,RAX);x64_mov(RDI,RAX);pop(RAX);
             gen_wide(b==BI_ABS?W_ABS:b==BI_SQRT?W_SQRT:W_ROUND,ty,ty,b-BI_ROUND,node->tok);return;
         }
@@ -1903,8 +1903,8 @@ static void gen_builtin(Node *node)
         gen_abs_rax(ty);
         return;
     case BI_ROUND:
-    case BI_ROUNDUP:
-    case BI_ROUNDDOWN:
+    case BI_CEIL:
+    case BI_FLOOR:
         gen_expr(x);
         if (type_is_integer(ty) && digits == NULL) {
             return;             /* int はすでに整数 */
@@ -4868,6 +4868,7 @@ static void gen_real_to_float(int range)
 #include "places_codegen.inc"
 #include "library_codegen.inc"
 #include "directory_codegen.inc"
+#include "file_mutation_runtime.inc"
 #include "arguments_codegen.inc"
 #include "random_codegen.inc"
 #include "text_codegen.inc"
@@ -6131,7 +6132,7 @@ void codegen(Ast *ast, Program *out_prog, FILE *out_text, Target out_target)
     path_call_label=new_label("path.call");
     random_call_label=new_label("random.call");
     text_method_label=new_label("text.method");
-    {int op;for(op=0;op<3;op++)directory_labels[op]=new_label("directory.operation");}
+    {int op;for(op=0;op<7;op++)directory_labels[op]=new_label("directory.operation");}
     {EnumDef *e;for(e=ast->enums;e;e=e->next){e->check_label=new_label("enum.check");e->name_label=new_label("enum.name");e->parse_label=new_label("enum.parse");}}
     { Model *m;
       for (m = ast->models; m; m = m->next) {
@@ -6185,7 +6186,7 @@ void codegen(Ast *ast, Program *out_prog, FILE *out_text, Target out_target)
     array_copy_label = x64_new_label(".L.qy_array_copy");
     array_slot_label = x64_new_label(".L.qy_array_slot");
     array_get_label = x64_new_label(".L.qy_array_get");
-    array_add_label = x64_new_label(".L.qy_array_add");
+    array_append_label = x64_new_label(".L.qy_array_append");
     array_remove_label = x64_new_label(".L.qy_array_remove");
     array_clear_label = x64_new_label(".L.qy_array_clear");
     array_equal_label = x64_new_label(".L.qy_array_equal");
@@ -6205,14 +6206,14 @@ void codegen(Ast *ast, Program *out_prog, FILE *out_text, Target out_target)
     runtime_error_label = x64_new_label(".L.qy_runtime_error");
     exit_label = x64_new_label(".L.qy_exit");
     round_labels[0] = x64_new_label(".L.qy_round");
-    round_labels[1] = x64_new_label(".L.qy_roundup");
-    round_labels[2] = x64_new_label(".L.qy_rounddown");
+    round_labels[1] = x64_new_label(".L.qy_ceil");
+    round_labels[2] = x64_new_label(".L.qy_floor");
     round_integer_labels[0][0] = x64_new_label(".L.qy_round_integer.round");
     round_integer_labels[1][0] = x64_new_label(".L.qy_round_unsigned.round");
-    round_integer_labels[0][1] = x64_new_label(".L.qy_round_integer.roundup");
-    round_integer_labels[1][1] = x64_new_label(".L.qy_round_unsigned.roundup");
-    round_integer_labels[0][2] = x64_new_label(".L.qy_round_integer.rounddown");
-    round_integer_labels[1][2] = x64_new_label(".L.qy_round_unsigned.rounddown");
+    round_integer_labels[0][1] = x64_new_label(".L.qy_round_integer.ceil");
+    round_integer_labels[1][1] = x64_new_label(".L.qy_round_unsigned.ceil");
+    round_integer_labels[0][2] = x64_new_label(".L.qy_round_integer.floor");
+    round_integer_labels[1][2] = x64_new_label(".L.qy_round_unsigned.floor");
     {
         int b;
         for (b = BI_FILE_OPEN; b < BI_COUNT; b++) {
@@ -6280,7 +6281,7 @@ void codegen(Ast *ast, Program *out_prog, FILE *out_text, Target out_target)
     gen_string_scan();
     gen_array_access_runtime();
     gen_array_copy_runtime();
-    gen_array_add_runtime();
+    gen_array_append_runtime();
     gen_array_delete_runtime();
     gen_array_equal_runtime();
     gen_array_ref_runtime();
@@ -6292,20 +6293,21 @@ void codegen(Ast *ast, Program *out_prog, FILE *out_text, Target out_target)
     gen_pow_real(0);
     gen_pow_real(1);
     gen_round(BI_ROUND);
-    gen_round(BI_ROUNDUP);
-    gen_round(BI_ROUNDDOWN);
+    gen_round(BI_CEIL);
+    gen_round(BI_FLOOR);
     gen_round_integer(BI_ROUND, 0);
     gen_round_integer(BI_ROUND, 1);
-    gen_round_integer(BI_ROUNDUP, 0);
-    gen_round_integer(BI_ROUNDUP, 1);
-    gen_round_integer(BI_ROUNDDOWN, 0);
-    gen_round_integer(BI_ROUNDDOWN, 1);
+    gen_round_integer(BI_CEIL, 0);
+    gen_round_integer(BI_CEIL, 1);
+    gen_round_integer(BI_FLOOR, 0);
+    gen_round_integer(BI_FLOOR, 1);
     gen_wide_runtime();
     gen_complex_runtime();
     gen_input_routines();
     gen_file_runtime();
     gen_time_runtime();
     gen_directory_runtime();
+    gen_file_mutation_runtime();
     gen_arguments_runtime();
     gen_random_runtime();
     gen_text_method_runtime();

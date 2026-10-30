@@ -86,7 +86,7 @@ static void gen_file_bulk_read_entries(void)
     x64_bind(slice);rt_save(7,RCX);rt_load(RDI,6);rt_load(RCX,5);x64_sub(RDI,RCX);x64_add_imm(RDI,8);
     x64_call(alloc_label);rt_save(8,RAX);rt_load(RCX,6);rt_load(RDX,5);x64_sub(RCX,RDX);x64_store(RAX,0,RCX);
     x64_lea(RDI,RAX,8);rt_load(RSI,1);x64_add_imm(RSI,8);x64_add(RSI,RDX);x64_rep_movsb();
-    rt_load(RAX,3);rt_load(RDI,8);x64_call(array_add_label);
+    rt_load(RAX,3);rt_load(RDI,8);x64_call(array_append_label);
     rt_load(RCX,7);rt_save(4,RCX);x64_jmp(loop);
     x64_bind(too_many);bulk_range_error("File exceeds max_lines");rt_leave();
     x64_bind(done);rt_load(RAX,3);rt_leave();

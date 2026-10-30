@@ -42,8 +42,11 @@ static void directory_current_result(void)
     x64_mov_imm(RDI,14);x64_call(io_raise_label);rt_leave();
     x64_bind(absolute);rt_load(RAX,4);rt_leave();
 }
+#include "directory_management_runtime.inc"
+
 static void gen_directory_runtime(void)
 {
+    gen_directory_management_runtime();
     int retry=rt_label("directory.current.retry"),read=rt_label("directory.current.read"),good=rt_label("directory.current.good");
     int grow=rt_label("directory.current.grow"),room=rt_label("directory.current.room");
     rt_enter(directory_labels[0],6);rt_set(2,128);

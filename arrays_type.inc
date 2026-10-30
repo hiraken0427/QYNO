@@ -175,20 +175,20 @@ static void check_method(Node *node)
     allow_void = 0;
     check_expr(node->lhs);
     if (!type_is_array(node->lhs->ty)) {
-        error_tok(node->tok, "add・remove_at・clear は配列に使ってください");
+        error_tok(node->tok, "append・remove_at・clear は配列に使ってください");
     }
     check_place(node->lhs);
-    if (node->val == AM_ADD && expression_max_length(node->lhs) == 0) {
+    if (node->val == AM_APPEND && expression_max_length(node->lhs) == 0) {
         const_error(node, "上限0の配列には追加できません");
     }
-    if (node->val == AM_ADD && node->nargs == 0) expected = 0;
+    if (node->val == AM_APPEND && node->nargs == 0) expected = 0;
     if (node->nargs != expected) {
         error_tok(node->tok, "この配列操作の引数は %d 個です", expected);
     }
     if (expected) {
-        Type to = node->val == AM_ADD ? array_element(node->lhs->ty) : TY_I64;
+        Type to = node->val == AM_APPEND ? array_element(node->lhs->ty) : TY_I64;
         check_expected(node->rhs, to);
-        if (node->val == AM_ADD) check_value_transfer(node->rhs);
+        if (node->val == AM_APPEND) check_value_transfer(node->rhs);
         node->rhs = node->val == AM_REMOVE_AT && type_is_integer(node->rhs->ty) ? new_cast(node->rhs, TY_I64) : coerce(node->rhs, to, node->rhs->tok, "配列操作の引数");
         if (node->val == AM_REMOVE_AT && is_const_expr(node->rhs) && eval_const(node->rhs).i < 0) {
             const_error(node, "配列の添字が範囲外です");
@@ -198,7 +198,7 @@ static void check_method(Node *node)
             if (limit >= 0 && eval_const(node->rhs).i >= limit) const_error(node, "配列の添字が範囲外です");
         }
     }
-    if (node->val == AM_ADD && node->nargs == 0 &&
+    if (node->val == AM_APPEND && node->nargs == 0 &&
         (type_is_model(array_element(node->lhs->ty)) || type_is_array(array_element(node->lhs->ty)))) {
         ArrayDim *dims = expression_dims(node->lhs);
         node->rhs = model_default(array_element(node->lhs->ty), dims ? dims->next : NULL, node->tok);

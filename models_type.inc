@@ -97,6 +97,16 @@ static void check_model_method(Node *node)
 {
     Function *fn; Node *self; int allow = allow_void;
     allow_void = 0; check_interface_receiver(node->lhs); allow_void = allow;
+    if(type_is_array(node->lhs->ty)){
+        int count=0;Node *arg;
+        if(!strcmp(node->name,"add"))error_tok(node->tok,"配列の末尾への追加には append を使用してください");
+        if(!strcmp(node->name,"append"))node->val=AM_APPEND;
+        else if(!strcmp(node->name,"remove_at"))node->val=AM_REMOVE_AT;
+        else if(!strcmp(node->name,"clear"))node->val=AM_CLEAR;
+        else error_tok(node->tok,"配列にはメソッド %s はありません",node->name);
+        for(arg=node->rhs;arg;arg=arg->next)count++;
+        node->kind=ND_METHOD;node->nargs=count;check_method(node);return;
+    }
     if(check_random_method(node))return;
     if(check_text_method(node))return;
     if (type_is_interface(node->lhs->ty)) {

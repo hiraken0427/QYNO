@@ -453,14 +453,16 @@ static long long round_integer(Node *node, long long x, long long digits, Builti
 static void check_pow_domain(Node *node);
 
 #include "file_bulk_type.inc"
+#include "file_mutation_type.inc"
 
 static void check_file_builtin(Node *node)
 {
     Builtin b = (Builtin)node->val;
     Node *first = node->lhs;
     Node *second = first != NULL ? first->next : NULL;
-    int expected = b == BI_FILE_READLINE || b == BI_FILE_WRITE || b == BI_FILE_READ_BYTES || b == BI_FILE_WRITE_BYTES ? 2 : 1;
+    int expected = b == BI_FILE_READ_LINE || b == BI_FILE_WRITE || b == BI_FILE_READ_BYTES || b == BI_FILE_WRITE_BYTES ? 2 : 1;
     allow_void = 0;
+    if(b>=BI_FILE_REMOVE){check_file_mutation_builtin(node);return;}
     if(file_bulk_builtin(b)){check_file_bulk_builtin(node);return;}
     if(b==BI_FILE_TRY_OPEN){check_try_open(node);return;}
     if(b>=BI_FILE_TELL){
@@ -516,10 +518,10 @@ static void check_file_builtin(Node *node)
             if (second->ty != array_type(TY_U8)) error_tok(second->tok, "write_bytes の data は unsigned int_8 の1次元配列にしてください");
             node->ty = TY_I64;
         }
-    } else if (b == BI_FILE_READLINE) {
+    } else if (b == BI_FILE_READ_LINE) {
         Var target = {0};
         target.ty = TY_STR;
-        if (second->kind != ND_REFARG) error_tok(second->tok, "readline の出力先は ref str を指定してください");
+        if (second->kind != ND_REFARG) error_tok(second->tok, "read_line の出力先は ref str を指定してください");
         check_ref_arg(second, &target, 2);
         node->ty = TY_BOOL;
     } else if (b == BI_FILE_WRITE) {
@@ -546,7 +548,7 @@ static void check_file_builtin(Node *node)
  * 組み込み関数の引数の数と型を確かめ、戻り値の型を決める
  *   math.sqrt(x)                 x は数値。int は double に変換する。戻り値は x の型
  *   math.abs(x)                  x は数値。戻り値は x の型
- *   math.round・roundup・rounddown(x, 桁数?)  x は数値、桁数は int。戻り値は x の型
+ *   math.round・ceil・floor(x, 桁数?)  x は数値、桁数は int。戻り値は x の型
  *   int(x)・float(x)・double(x)  x は数値
  */
 #include "random_type.inc"
@@ -584,7 +586,7 @@ static void check_builtin(Node *node)
     if (b == BI_INT && node->lhs && integer_unsigned(node->cmp_ty)) check_expected(node->lhs, node->cmp_ty);
     if ((b == BI_INT || b == BI_STR) && check_integer_conversion(node)) return;
     min_args = 1;
-    max_args = (b == BI_ROUND || b == BI_ROUNDUP || b == BI_ROUNDDOWN) ? 2 : 1;
+    max_args = (b == BI_ROUND || b == BI_CEIL || b == BI_FLOOR) ? 2 : 1;
     if (node->nargs < min_args || node->nargs > max_args) {
         if (max_args == 2) {
             error_tok(node->tok, "%s の引数は 1 個か 2 個（値, 桁数）です（%d 個渡しています）",
@@ -650,8 +652,8 @@ static void check_builtin(Node *node)
         node->ty = TY_DOUBLE;
         return;
     case BI_ROUND:
-    case BI_ROUNDUP:
-    case BI_ROUNDDOWN:
+    case BI_CEIL:
+    case BI_FLOOR:
         node->ty = x->ty;
         if (type_is_integer(x->ty) && !type_is_wide(x->ty) && is_const_expr(x) &&
             (digits == NULL || is_const_expr(digits))) {
@@ -1442,7 +1444,7 @@ static double round_integral(double x, Builtin mode)
             t -= 1.0;
         }
         break;
-    case BI_ROUNDUP:
+    case BI_CEIL:
         if (t < x) {
             t += 1.0;
         }
@@ -1490,7 +1492,7 @@ static long long round_integer(Node *node, long long x, long long digits, Builti
     }
     if (digits < -19) {
         /* 10^20 以上では、四捨五入は必ず 0。非0方向の天井・床は範囲外。 */
-        if ((mode == BI_ROUNDUP && (unsign || x > 0)) || (mode == BI_ROUNDDOWN && !unsign && x < 0)) {
+        if ((mode == BI_CEIL && (unsign || x > 0)) || (mode == BI_FLOOR && !unsign && x < 0)) {
             const_error(node, "整数の丸め結果が int の範囲を超えます");
         }
         return 0;
@@ -1503,7 +1505,7 @@ static long long round_integer(Node *node, long long x, long long digits, Builti
     quotient = magnitude / scale;
     remainder = magnitude % scale;
     increment = mode == BI_ROUND ? remainder >= scale / 2 :
-                remainder != 0 && (mode == BI_ROUNDUP ? unsign || x > 0 : !unsign && x < 0);
+                remainder != 0 && (mode == BI_CEIL ? unsign || x > 0 : !unsign && x < 0);
     quotient += increment;
     limit = integer_width(node->ty) == 64 ? UINT64_MAX : (UINT64_C(1) << integer_width(node->ty)) - 1;
     if (!unsign) limit = (limit >> 1) + (x < 0);
@@ -1545,7 +1547,7 @@ static Value eval_builtin(Node *node)
     }
     x = eval_const(node->lhs);
     if(b==BI_HALF||b==BI_QUAD) return type_is_text(x.ty)?wide_read_value(node,x,node->ty,0):wide_calculate(node,W_CONVERT,x,(Value){0},node->ty,0);
-    if(type_is_wide(x.ty) && b<=BI_ROUNDDOWN) { Value amount={0};amount.ty=TY_I64;amount.i=node->lhs->next?eval_const(node->lhs->next).i:0;return wide_calculate(node,b==BI_SQRT?W_SQRT:b==BI_ABS?W_ABS:W_ROUND,x,amount,node->ty,b-BI_ROUND); }
+    if(type_is_wide(x.ty) && b<=BI_FLOOR) { Value amount={0};amount.ty=TY_I64;amount.i=node->lhs->next?eval_const(node->lhs->next).i:0;return wide_calculate(node,b==BI_SQRT?W_SQRT:b==BI_ABS?W_ABS:W_ROUND,x,amount,node->ty,b-BI_ROUND); }
     v = x;
     v.ty = node->ty;
     digits = node->lhs->next != NULL ? eval_const(node->lhs->next).i : 0;
@@ -1563,8 +1565,8 @@ static Value eval_builtin(Node *node)
         }
         return v;
     case BI_ROUND:
-    case BI_ROUNDUP:
-    case BI_ROUNDDOWN:
+    case BI_CEIL:
+    case BI_FLOOR:
         if (type_is_integer(x.ty)) {
             v.i = round_integer(node, x.i, digits, b);
             return v;

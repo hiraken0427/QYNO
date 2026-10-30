@@ -19,8 +19,8 @@ static const BuiltinInfo builtins[BI_COUNT] = {
     { "math", "sqrt" },
     { "math", "abs" },
     { "math", "round" },
-    { "math", "roundup" },
-    { "math", "rounddown" },
+    { "math", "ceil" },
+    { "math", "floor" },
     { NULL, "int" },
     { NULL, "float" },
     { NULL, "double" },
@@ -44,11 +44,13 @@ static const BuiltinInfo builtins[BI_COUNT] = {
     { "io.path", "is_relative" }, { "io.path", "normalize" },
     { "io.path", "with_extension" },
     { "io.dir", "current" }, { "io.dir", "change" }, { "io.path", "absolute" },
+    { "io.dir", "exists" }, { "io.dir", "create" },
+    { "io.dir", "list" }, { "io.dir", "remove" },
     { "io.file", "open" },
     { "io.file", "close" },
     { "io.file", "is_open" },
     { "io.file", "read" },
-    { "io.file", "readline" },
+    { "io.file", "read_line" },
     { "io.file", "write" },
     { "io.file", "exists" },
     { "io.file", "read_bytes" }, { "io.file", "write_bytes" },
@@ -56,7 +58,8 @@ static const BuiltinInfo builtins[BI_COUNT] = {
     { "io.file", "tell" }, { "io.file", "seek" },
     { "io.file", "size" }, { "io.file", "modified_at" },
     { "io.file", "read_text" }, { "io.file", "write_text" },
-    { "io.file", "append_text" }, { "io.file", "read_lines" }, { "io.file", "write_lines" }
+    { "io.file", "append_text" }, { "io.file", "read_lines" }, { "io.file", "write_lines" },
+    { "io.file", "remove" }, { "io.file", "copy" }, { "io.file", "move" }
 };
 
 static int token_is(Token *t, const char *s)
@@ -118,7 +121,7 @@ int random_operation(int b){static const int ops[]={
 #include "random_api.def"
 #undef RANDOM_API
 };return ops[b-BI_RANDOM_INT8];}
-int builtin_is_directory(int b){return b>=BI_DIR_CURRENT&&b<=BI_PATH_ABSOLUTE;}
+int builtin_is_directory(int b){return b>=BI_DIR_CURRENT&&b<=BI_DIR_REMOVE;}
 int builtin_is_time(int b){return b>=BI_TIME_NOW&&b<=BI_TIME_FREQUENCY;}
 const TimeSpec *time_spec(int op)
 {
@@ -144,4 +147,14 @@ Type standard_type(Ast *ast,const char *ns,const char *name)
         for(e=mod->ast->enums;e;e=e->next)if(e->tok->source->module==mod&&!strcmp(e->name,name))return e->ty;
     }
     fatal("標準型 %s.%s がありません",ns,name);return TY_NONE;
+}
+
+/* Old standard names are diagnostics, never callable aliases. */
+const char *builtin_replacement(const char *ns,const char *name)
+{
+    if(!strcmp(ns,"math")&&!strcmp(name,"roundup"))return "ceil";
+    if(!strcmp(ns,"math")&&!strcmp(name,"rounddown"))return "floor";
+    if(!strcmp(ns,"io.file")&&!strcmp(name,"readline"))return "read_line";
+    if(!strcmp(ns,"time")&&!strcmp(name,"isoformat"))return "iso_format";
+    return NULL;
 }

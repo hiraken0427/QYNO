@@ -10,7 +10,7 @@
 #include "grapheme_runtime.h"
 #include <stdio.h>
 
-#define QYC_VERSION "0.27.8"
+#define QYC_VERSION "0.27.9"
 
 typedef struct SourceFile SourceFile;
 typedef struct Module Module;
@@ -76,6 +76,8 @@ typedef enum {
     IMP_GET_CURRENT_PROCESS, IMP_GET_PROCESS_TIMES, IMP_SLEEP,
     IMP_GET_CURRENT_DIRECTORY_W, IMP_SET_CURRENT_DIRECTORY_W, IMP_WIDE_CHAR_TO_MULTI_BYTE,
     IMP_GET_COMMAND_LINE_W,
+    IMP_CREATE_DIRECTORY_W, IMP_GET_FILE_INFORMATION_BY_HANDLE_EX, IMP_SET_FILE_INFORMATION_BY_HANDLE,
+    IMP_GET_FILE_ATTRIBUTES_W,
     /* Import groups: kernel32 above, then bcrypt, then ntdll. */
     IMP_BCRYPT_GEN_RANDOM, IMP_RTL_NTSTATUS_TO_DOS_ERROR,
     IMP_COUNT
@@ -184,8 +186,8 @@ typedef enum {
     BI_SQRT,        /* math.sqrt(x) */
     BI_ABS,         /* math.abs(x)（|x| を推奨） */
     BI_ROUND,       /* math.round(x, 桁数?)：絶対値で四捨五入して符号を付ける */
-    BI_ROUNDUP,     /* math.roundup(x, 桁数?)：天井関数 */
-    BI_ROUNDDOWN,   /* math.rounddown(x, 桁数?)：床関数 */
+    BI_CEIL,     /* math.ceil(x, 桁数?)：天井関数 */
+    BI_FLOOR,   /* math.floor(x, 桁数?)：床関数 */
     BI_INT,         /* int(x) */
     BI_FLOAT,       /* float(x) */
     BI_DOUBLE,      /* double(x) */
@@ -205,22 +207,25 @@ typedef enum {
     BI_PATH_STEM, BI_PATH_IS_ABSOLUTE, BI_PATH_IS_RELATIVE,
     BI_PATH_NORMALIZE, BI_PATH_WITH_EXTENSION,
     BI_DIR_CURRENT, BI_DIR_CHANGE, BI_PATH_ABSOLUTE,
+    BI_DIR_EXISTS, BI_DIR_CREATE, BI_DIR_LIST, BI_DIR_REMOVE,
     BI_FILE_OPEN,
     BI_FILE_CLOSE,
     BI_FILE_IS_OPEN,
     BI_FILE_READ,
-    BI_FILE_READLINE,
+    BI_FILE_READ_LINE,
     BI_FILE_WRITE,
     BI_FILE_EXISTS,
     BI_FILE_READ_BYTES, BI_FILE_WRITE_BYTES, BI_FILE_TRY_OPEN,
     BI_FILE_TELL, BI_FILE_SEEK, BI_FILE_SIZE, BI_FILE_MODIFIED_AT,
     BI_FILE_READ_TEXT, BI_FILE_WRITE_TEXT, BI_FILE_APPEND_TEXT, BI_FILE_READ_LINES, BI_FILE_WRITE_LINES,
+    BI_FILE_REMOVE, BI_FILE_COPY, BI_FILE_MOVE,
     BI_COUNT
 } Builtin;
 
 enum { TR_QUAD,TR_VOID,TR_BOOL,TR_INT,TR_DATE,TR_WEEKDAY,TR_TEXT,TR_TICKS };
 typedef struct {int min_args,max_args;const char *args;int result;} TimeSpec;
 const TimeSpec *time_spec(int op);
+const char *builtin_replacement(const char *ns,const char *name);
 int builtin_is_time(int b);
 int builtin_is_directory(int b);
 int builtin_is_random(int b);
@@ -353,7 +358,7 @@ typedef enum {
     CMP_GE      /* >= */
 } CmpKind;
 
-typedef enum { AM_ADD, AM_REMOVE_AT, AM_CLEAR } ArrayMethod;
+typedef enum { AM_APPEND, AM_REMOVE_AT, AM_CLEAR } ArrayMethod;
 typedef enum { UPDATE_SET, UPDATE_ADD, UPDATE_SUB, UPDATE_INC, UPDATE_DEC } UpdateKind;
 
 struct Node {

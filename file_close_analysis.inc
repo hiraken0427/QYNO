@@ -456,7 +456,7 @@ static FcMap *fc_eval(FcContext *ctx, FcState *s, Node *n)
             FcMap *item = fc_eval(ctx, s, n->rhs); FcMap *copy = fc_empty(); FcEntry *e;
             copy->origin = m->origin; copy->prefix = m->prefix; copy->length = m->length;
             for (e = m->entries; e; e = e->next) fc_put(copy, e->path, e->id);
-            if (n->val == AM_ADD && m->length >= 0) {
+            if (n->val == AM_APPEND && m->length >= 0) {
                 char key[64]; snprintf(key, sizeof(key), "[%lld]", m->length); copy->length++;
                 for (e = item->entries; e; e = e->next) fc_put(copy, fc_join(key, e->path), e->id);
             } else { copy = fc_empty(); copy->origin = n->val == AM_CLEAR ? 0 : -1; copy->length = n->val == AM_CLEAR ? 0 : -1; }
