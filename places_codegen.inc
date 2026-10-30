@@ -171,13 +171,13 @@ static void gen_array_method(Node *node)
     place_resolve(&plan, plan.count);
     x64_load(RAX, RAX, 0);
     if (node->rhs != NULL) place_load(&plan, RDI, plan.count + 1);
-    else if (node->val == AM_ADD) {
+    else if (node->val == AM_APPEND) {
         Type element = array_element(node->lhs->ty);
         if (element == TY_STR) x64_lea_data(RDI, empty_str_offset);
         else if (element == TY_CHAR) x64_lea_data(RDI, zero_char_offset);
         else x64_xor(RDI, RDI); /* 0 / false / 初期子配列 */
     }
-    x64_call(node->val == AM_ADD ? array_add_label : node->val == AM_REMOVE_AT ? array_remove_label : array_clear_label);
+    x64_call(node->val == AM_APPEND ? array_append_label : node->val == AM_REMOVE_AT ? array_remove_label : array_clear_label);
     place_release(&plan);
 }
 
@@ -195,7 +195,7 @@ static void gen_array_literal(Node *node)
         x64_mov(RDI, RAX);
         x64_load(RAX, RSP, 0);
         collection_context(node->tok);
-        x64_call(array_add_label);
+        x64_call(array_append_label);
     }
     pop(RAX);
 }

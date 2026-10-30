@@ -305,7 +305,7 @@ static void gen_dir_list(void)
     rt_load(RDI,6);rt_load(RCX,7);x64_sub(RDI,RCX);x64_cmp(RAX,RDI);x64_jcc(CC_A,large);
     x64_add(RAX,RCX);rt_save(7,RAX);rt_load(RDI,12);x64_add_imm(RDI,8);x64_call(alloc_label);rt_save(14,RAX);
     rt_load(RCX,12);x64_store(RAX,0,RCX);x64_lea(RDI,RAX,8);rt_load(RSI,11);x64_rep_movsb();
-    rt_load(RAX,3);rt_load(RDI,14);x64_call(array_add_label);
+    rt_load(RAX,3);rt_load(RDI,14);x64_call(array_append_label);
     x64_bind(next);rt_load(RCX,10);rt_save(9,RCX);x64_jmp(record);
     x64_bind(large);dir_policy_error(13,"Directory listing exceeds its limit");x64_jmp(finish);
     x64_bind(malformed);dir_policy_error(14,"Malformed native directory record");x64_jmp(finish);

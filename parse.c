@@ -802,20 +802,11 @@ static Node *postfix(void)
         } else if (consume(".")) {
             field = tok;
             if (field->kind == TK_IDENT && equal(field->next, "(")) {
-                Node *method = new_node(ND_METHOD, field);
+                Node *method = new_node(ND_MODEL_METHOD, field);
                 Node *receiver = node;
-                if (equal(field, "add")) {
-                    method->val = AM_ADD;
-                } else if (equal(field, "remove_at")) {
-                    method->val = AM_REMOVE_AT;
-                } else if (equal(field, "clear")) {
-                    method->val = AM_CLEAR;
-                } else {
-                    method->kind = ND_MODEL_METHOD;
-                    method->name = calloc((size_t)field->len + 1, 1);
-                    if (!method->name) fatal("メソッド名を確保できません");
-                    memcpy(method->name, field->loc, (size_t)field->len);
-                }
+                method->name = calloc((size_t)field->len + 1, 1);
+                if (!method->name) fatal("Cannot allocate a method name");
+                memcpy(method->name, field->loc, (size_t)field->len);
                 tok = field->next->next;
                 call_args(method);
                 method->rhs = method->lhs;

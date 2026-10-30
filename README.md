@@ -1,4 +1,4 @@
-# QYNO 0.27.8
+# QYNO 0.27.9
 
 著作権およびライセンスに関する情報は、本ファイルの末尾に記載している。
 
@@ -42,50 +42,37 @@ make clean
 
 ## 新機能
 
-0.27.8では、ディレクトリの作成、一覧取得、削除と、パスを指定してファイルを一括で読み書きする機能を追加した。read_textで全体を文字列として読み込み、write_textで上書き、append_textで追記を行う。read_linesは行の配列を返し、write_linesは行の配列を書き込む。書き込みの戻り値はint_64のバイト数である。
+0.27.9では、ファイルの削除、コピー、移動を追加した。io.file.removeで削除、copyでコピー、moveで移動と名前変更を行う。戻り値はvoidである。
 
 ```text
 using io.file as fs
-
-int main();
-	fs.write_text("input.txt", " Ken \nAlice\n")
-	fs.append_text("input.txt", "Bob\n")
-	str names[] = fs.read_lines("input.txt")
-	for(0 <= i < names.length, i++);
-		names[i] = names[i].trim()
-	fs.write_lines("output.txt", names)
-	io.print(fs.read_text("output.txt"))
-	return 0
-```
-
-これらの関数で開いたファイルは、処理が終わると内部で閉じる。OSによる失敗は既存のtryとcaseで処理できる。
-
-read_textとread_linesはUTF-8を読み込み、BOMとNULを保持する。read_linesはLF、CRLF、CRを改行として扱う。空行は保持し、空のファイルは空の配列となる。末尾の改行から余分な空行は作らない。
-
-読み込みの上限は既定で64MiBである。read_textの第2引数で変更できる。read_linesは第2引数でバイト数、第3引数で行数を指定でき、行数の既定値は1048576である。上限を超えた場合はio.ErrorCode.out_of_rangeとなる。
-
-write_textとappend_textは改行を追加しない。write_linesは既定で各行の末尾にLFを付ける。第3引数でLF、CRLF、CRを指定でき、第4引数をfalseにすると最後の行には改行を付けない。要素内の改行は許可しない。空の配列は空のファイルとして書き込む。
-
-テキストの引数はstrまたはchar、行の配列はstr配列である。引数は記述順に指定する。書き込む文字列はファイルを開く前に検査するが、書き込み開始後の変更を巻き戻す機能ではない。
-
-io.dir.existsはディレクトリの存在を確認する。createは1階層の作成、listは直下の名前一覧、removeは空のディレクトリの削除を行う。相対パスの起点は実行時の作業ディレクトリである。
-
-```text
 using io.dir as dir
 
 int main();
-	dir.create("output")
-	io.print(dir.exists("output"))
-	str names[] = dir.list(".")
-	for(0 <= i < names.length, i++);
-		io.print(names[i])
-	dir.remove("output")
+	dir.create("backup")
+	fs.write_text("report.txt", "QYNO\n")
+	fs.copy("report.txt", "backup/report.txt")
+	fs.move("report.txt", "report_old.txt")
+	fs.remove("report_old.txt")
 	return 0
 ```
 
-listは隠し項目を含む名前をUTF-8のバイト順で返す。下の階層は探索しない。第2引数で件数、第3引数で名前全体のUTF-8バイト数の上限を指定できる。既定値は1048576件と64MiBである。上限を超えた場合はout_of_rangeとなり、途中の一覧は返さない。
+通常のファイルを対象とし、ディレクトリやリンクは扱わない。コピーと移動の出力先に既存の項目がある場合はalready_existsとなる。親ディレクトリは自動で作成しない。相対パスの起点は実行時の作業ディレクトリである。
 
-createは既存の項目を上書きせず、親ディレクトリも作成しない。removeはルート、末尾が.または..のパス、リンクの削除を許可しない。空でない場合はio.ErrorCode.directory_not_emptyとなる。existsとlistではディレクトリへのリンク先を参照する。
+copyは文字コードを変換せず、一定量ずつ読み書きする。権限や更新日時の複製は行わない。途中で失敗した場合、出力先に書き込み済みのデータが残ることがある。moveは別のファイルシステムへの移動に対応せず、unsupported_operationとなる。自動的なコピーと削除は行わない。並行して変更されるファイルの内容や名前を固定する機能ではない。
+
+配列の末尾への追加はaddからappendへ変更した。append(value)は値を1つ追加し、append()は要素型の初期値を1つ追加する。二次元配列では空の行を追加する。
+
+```text
+int main();
+	int values[] = [1, 2]
+	values.append(3)
+	values.append()
+	io.print(values)
+	return 0
+```
+
+io.file.readlineはread_line、math.roundupはceil、math.rounddownはfloor、time.isoformatはiso_formatへ変更した。処理内容は変更していない。旧名称は新名称を案内するコンパイルエラーとなる。利用者が定義した関数やmodelのメソッドは改名の対象に含めない。
 
 ## 使用方法
 
@@ -161,6 +148,10 @@ io、math、lib、timeはimportなしで使用できる。名前を省略する�
 ioはコンソールとファイルの入出力を扱う。io.pathはパスの操作、io.dirはディレクトリの取得、移動、作成、一覧取得、削除に使用する。パスはstrで扱う。
 
 ファイルはio.file.openで開き、io.file.closeで明示的に閉じる。closeを確認できない経路はコンパイルエラーとなる。テキストとバイナリの読み書きに対応し、位置、サイズ、更新日時を取得できる。I/Oエラーはtry、case、finallyで処理する。パス指定の一括読み書きでは、ファイルの開閉をライブラリが行う。
+
+io.file.read_textとread_linesは、UTF-8のファイルを文字列または行の配列として読み込む。既定の上限は64MiBであり、read_linesの行数上限は1048576である。write_textは上書き、append_textは追記、write_linesは行の配列の書き込みを行う。
+
+io.dir.existsは存在確認、createは1階層の作成、listは直下の名前一覧、removeは空のディレクトリの削除を行う。listはUTF-8のバイト順で名前を返す。上限は既定で1048576件、名前全体で64MiBである。ディレクトリへのリンクはexistsとlistで参照できるが、removeでは削除できない。空でない場合はdirectory_not_emptyとなる。
 
 mathは数学関数を提供する。lib.sizeは値のビットサイズ、lib.lengthは文字列や配列の長さ、数値の整数部分の桁数を返す。
 

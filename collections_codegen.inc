@@ -212,17 +212,17 @@ static void gen_array_copy_runtime(void)
 }
 
 /* rax=配列、rdi=追加する値。子配列のコピー・領域確保の成功後にだけ変更する。 */
-static void gen_array_add_runtime(void)
+static void gen_array_append_runtime(void)
 {
-    int allowed = rt_label("add.allowed");
-    int scalar = rt_label("add.scalar");
-    int capacity = rt_label("add.capacity");
-    int grow = rt_label("add.grow");
-    int limited = rt_label("add.limited");
-    int allocate = rt_label("add.allocate");
-    int append = rt_label("add.append");
-    int model_done = rt_label("add.model.done");
-    rt_enter(array_add_label, 6);
+    int allowed = rt_label("append.allowed");
+    int scalar = rt_label("append.scalar");
+    int capacity = rt_label("append.capacity");
+    int grow = rt_label("append.grow");
+    int limited = rt_label("append.limited");
+    int allocate = rt_label("append.allocate");
+    int append = rt_label("append.append");
+    int model_done = rt_label("append.model.done");
+    rt_enter(array_append_label, 6);
     array_require_unborrowed();
     rt_save(1, RAX); rt_save(2, RDI);
     x64_load(RCX, RAX, 0);
@@ -247,7 +247,7 @@ static void gen_array_add_runtime(void)
     x64_load(RSI, RDX, 0); rt_cmp(RSI, 1); x64_jcc(CC_NZ, model_done);
     { Model *m;
       for (m = emitting_models; m; m = m->next) {
-          int next_model = rt_label("add.not.model");
+          int next_model = rt_label("append.not.model");
           rt_cmp(RCX, m->ty); x64_jcc(CC_NZ, next_model);
           rt_load(RAX, 2); x64_call(m->copy_label); rt_save(2, RAX);
           x64_bind(next_model);

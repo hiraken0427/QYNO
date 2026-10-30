@@ -19,8 +19,8 @@ static const BuiltinInfo builtins[BI_COUNT] = {
     { "math", "sqrt" },
     { "math", "abs" },
     { "math", "round" },
-    { "math", "roundup" },
-    { "math", "rounddown" },
+    { "math", "ceil" },
+    { "math", "floor" },
     { NULL, "int" },
     { NULL, "float" },
     { NULL, "double" },
@@ -50,7 +50,7 @@ static const BuiltinInfo builtins[BI_COUNT] = {
     { "io.file", "close" },
     { "io.file", "is_open" },
     { "io.file", "read" },
-    { "io.file", "readline" },
+    { "io.file", "read_line" },
     { "io.file", "write" },
     { "io.file", "exists" },
     { "io.file", "read_bytes" }, { "io.file", "write_bytes" },
@@ -58,7 +58,8 @@ static const BuiltinInfo builtins[BI_COUNT] = {
     { "io.file", "tell" }, { "io.file", "seek" },
     { "io.file", "size" }, { "io.file", "modified_at" },
     { "io.file", "read_text" }, { "io.file", "write_text" },
-    { "io.file", "append_text" }, { "io.file", "read_lines" }, { "io.file", "write_lines" }
+    { "io.file", "append_text" }, { "io.file", "read_lines" }, { "io.file", "write_lines" },
+    { "io.file", "remove" }, { "io.file", "copy" }, { "io.file", "move" }
 };
 
 static int token_is(Token *t, const char *s)
@@ -146,4 +147,14 @@ Type standard_type(Ast *ast,const char *ns,const char *name)
         for(e=mod->ast->enums;e;e=e->next)if(e->tok->source->module==mod&&!strcmp(e->name,name))return e->ty;
     }
     fatal("標準型 %s.%s がありません",ns,name);return TY_NONE;
+}
+
+/* Old standard names are diagnostics, never callable aliases. */
+const char *builtin_replacement(const char *ns,const char *name)
+{
+    if(!strcmp(ns,"math")&&!strcmp(name,"roundup"))return "ceil";
+    if(!strcmp(ns,"math")&&!strcmp(name,"rounddown"))return "floor";
+    if(!strcmp(ns,"io.file")&&!strcmp(name,"readline"))return "read_line";
+    if(!strcmp(ns,"time")&&!strcmp(name,"isoformat"))return "iso_format";
+    return NULL;
 }
