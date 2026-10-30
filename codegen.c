@@ -97,7 +97,7 @@ static int random_call_label;
 static int text_method_label;
 static void gen_random_runtime(void);
 static void gen_random_builtin(Node *node);
-static int directory_labels[3];
+static int directory_labels[7];
 static void gen_directory_runtime(void);
 static void gen_directory_builtin(Node *node);
 static void gen_call(Node *node);
@@ -6131,7 +6131,7 @@ void codegen(Ast *ast, Program *out_prog, FILE *out_text, Target out_target)
     path_call_label=new_label("path.call");
     random_call_label=new_label("random.call");
     text_method_label=new_label("text.method");
-    {int op;for(op=0;op<3;op++)directory_labels[op]=new_label("directory.operation");}
+    {int op;for(op=0;op<7;op++)directory_labels[op]=new_label("directory.operation");}
     {EnumDef *e;for(e=ast->enums;e;e=e->next){e->check_label=new_label("enum.check");e->name_label=new_label("enum.name");e->parse_label=new_label("enum.parse");}}
     { Model *m;
       for (m = ast->models; m; m = m->next) {

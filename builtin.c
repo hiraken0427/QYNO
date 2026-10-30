@@ -44,6 +44,8 @@ static const BuiltinInfo builtins[BI_COUNT] = {
     { "io.path", "is_relative" }, { "io.path", "normalize" },
     { "io.path", "with_extension" },
     { "io.dir", "current" }, { "io.dir", "change" }, { "io.path", "absolute" },
+    { "io.dir", "exists" }, { "io.dir", "create" },
+    { "io.dir", "list" }, { "io.dir", "remove" },
     { "io.file", "open" },
     { "io.file", "close" },
     { "io.file", "is_open" },
@@ -118,7 +120,7 @@ int random_operation(int b){static const int ops[]={
 #include "random_api.def"
 #undef RANDOM_API
 };return ops[b-BI_RANDOM_INT8];}
-int builtin_is_directory(int b){return b>=BI_DIR_CURRENT&&b<=BI_PATH_ABSOLUTE;}
+int builtin_is_directory(int b){return b>=BI_DIR_CURRENT&&b<=BI_DIR_REMOVE;}
 int builtin_is_time(int b){return b>=BI_TIME_NOW&&b<=BI_TIME_FREQUENCY;}
 const TimeSpec *time_spec(int op)
 {

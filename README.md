@@ -42,7 +42,7 @@ make clean
 
 ## 新機能
 
-0.27.8では、パスを指定してファイルを一括で読み書きする機能を追加した。read_textで全体を文字列として読み込み、write_textで上書き、append_textで追記を行う。read_linesは行の配列を返し、write_linesは行の配列を書き込む。書き込みの戻り値はint_64のバイト数である。
+0.27.8では、ディレクトリの作成、一覧取得、削除と、パスを指定してファイルを一括で読み書きする機能を追加した。read_textで全体を文字列として読み込み、write_textで上書き、append_textで追記を行う。read_linesは行の配列を返し、write_linesは行の配列を書き込む。書き込みの戻り値はint_64のバイト数である。
 
 ```text
 using io.file as fs
@@ -67,6 +67,25 @@ read_textとread_linesはUTF-8を読み込み、BOMとNULを保持する。read_
 write_textとappend_textは改行を追加しない。write_linesは既定で各行の末尾にLFを付ける。第3引数でLF、CRLF、CRを指定でき、第4引数をfalseにすると最後の行には改行を付けない。要素内の改行は許可しない。空の配列は空のファイルとして書き込む。
 
 テキストの引数はstrまたはchar、行の配列はstr配列である。引数は記述順に指定する。書き込む文字列はファイルを開く前に検査するが、書き込み開始後の変更を巻き戻す機能ではない。
+
+io.dir.existsはディレクトリの存在を確認する。createは1階層の作成、listは直下の名前一覧、removeは空のディレクトリの削除を行う。相対パスの起点は実行時の作業ディレクトリである。
+
+```text
+using io.dir as dir
+
+int main();
+	dir.create("output")
+	io.print(dir.exists("output"))
+	str names[] = dir.list(".")
+	for(0 <= i < names.length, i++);
+		io.print(names[i])
+	dir.remove("output")
+	return 0
+```
+
+listは隠し項目を含む名前をUTF-8のバイト順で返す。下の階層は探索しない。第2引数で件数、第3引数で名前全体のUTF-8バイト数の上限を指定できる。既定値は1048576件と64MiBである。上限を超えた場合はout_of_rangeとなり、途中の一覧は返さない。
+
+createは既存の項目を上書きせず、親ディレクトリも作成しない。removeはルート、末尾が.または..のパス、リンクの削除を許可しない。空でない場合はio.ErrorCode.directory_not_emptyとなる。existsとlistではディレクトリへのリンク先を参照する。
 
 ## 使用方法
 
@@ -139,7 +158,7 @@ and、or、xorは、boolでは論理演算、整数ではビット演算とし�
 
 io、math、lib、timeはimportなしで使用できる。名前を省略する場合はusingが必要である。using ioを記述した場合はprintとinputを使用でき、記述しない場合はio.printとio.inputを使用する。
 
-ioはコンソールとファイルの入出力を扱う。io.pathはパスの操作、io.dirは作業ディレクトリの取得と変更に使用する。パスはstrで扱う。
+ioはコンソールとファイルの入出力を扱う。io.pathはパスの操作、io.dirはディレクトリの取得、移動、作成、一覧取得、削除に使用する。パスはstrで扱う。
 
 ファイルはio.file.openで開き、io.file.closeで明示的に閉じる。closeを確認できない経路はコンパイルエラーとなる。テキストとバイナリの読み書きに対応し、位置、サイズ、更新日時を取得できる。I/Oエラーはtry、case、finallyで処理する。パス指定の一括読み書きでは、ファイルの開閉をライブラリが行う。
 

@@ -254,7 +254,7 @@ Ast *load_program(const char *path, const char **roots, int root_count)
         static const char declarations[] =
             "enum ErrorCode;\n\tno_error\n\tnot_found\n\tpermission_denied\n\talready_exists\n"
             "\tinvalid_path\n\tnot_regular_file\n\ttoo_many_open_files\n\tno_space\n"
-            "\tread_only\n\tbroken_pipe\n\tresource_busy\n\tio_error\n\tunsupported_operation\n\tout_of_range\n\tsystem_error\n\tnot_directory\n"
+            "\tread_only\n\tbroken_pipe\n\tresource_busy\n\tio_error\n\tunsupported_operation\n\tout_of_range\n\tsystem_error\n\tnot_directory\n\tdirectory_not_empty\n"
             "model Error;\n\tErrorCode code\n\tstr message\n\tstr operation\n\tstr path\n"
             "\tint_64 os_code\n\tstr source\n\tint line\n\tint column\n";
         io->source = allocate(sizeof(*io->source));
