@@ -1,0 +1,136 @@
+{
+  "name": "qyno-vscode",
+  "displayName": "QYNO 0.27.9",
+  "description": "QYNOの構文表示、補完、定義参照とコンパイラ診断を行う拡張機能。",
+  "version": "0.27.9",
+  "publisher": "hiraken0427",
+  "author": "hiraken0427",
+  "license": "BSD-2-Clause",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hiraken0427/QYNO.git",
+    "directory": "VSCode Extensions"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Snippets"
+  ],
+  "keywords": [
+    "QYNO",
+    "qy",
+    "language"
+  ],
+  "main": "./src/extension.js",
+  "activationEvents": [
+    "onLanguage:qyno"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": true
+    },
+    "virtualWorkspaces": {
+      "supported": true
+    }
+  },
+  "contributes": {
+    "languages": [
+      {
+        "id": "qyno",
+        "aliases": [
+          "QYNO",
+          "qyno"
+        ],
+        "extensions": [
+          ".qy"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "qyno",
+        "scopeName": "source.qyno",
+        "path": "./syntaxes/qyno.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "qyno",
+        "path": "./snippets/qyno.json"
+      }
+    ],
+    "configurationDefaults": {
+      "[qyno]": {
+        "editor.insertSpaces": false,
+        "editor.tabSize": 4,
+        "editor.detectIndentation": false,
+        "editor.wordBasedSuggestions": "off",
+        "editor.quickSuggestions": {
+          "other": true,
+          "comments": false,
+          "strings": true
+        }
+      }
+    },
+    "configuration": {
+      "title": "QYNO",
+      "properties": {
+        "qyno.entryFile": {
+          "type": "string",
+          "default": "",
+          "description": "エントリファイルのパス。省略時は編集中のファイルを使用する。"
+        },
+        "qyno.moduleRoots": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "モジュールの追加探索先。相対パスはワークスペースを基準とする。"
+        },
+        "qyno.maxIndexedFiles": {
+          "type": "integer",
+          "default": 2000,
+          "minimum": 1,
+          "maximum": 10000,
+          "description": "モジュール候補の探索に使用するファイル数の上限。"
+        },
+        "qyno.diagnostics.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "信頼済みのローカルワークスペースでqycによる検査を行う。"
+        },
+        "qyno.compilerPath": {
+          "type": "string",
+          "default": "qyc",
+          "scope": "machine-overridable",
+          "restricted": true,
+          "description": "QYNO 0.27.9のqyc実行ファイルのパス。相対パスはワークスペースを基準とする。"
+        },
+        "qyno.diagnostics.delay": {
+          "type": "integer",
+          "default": 500,
+          "minimum": 100,
+          "maximum": 10000,
+          "description": "編集から検査開始までの待機時間。単位はミリ秒である。"
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "qyno.checkDocument",
+        "title": "QYNO: 現在のファイルを検査"
+      }
+    ]
+  },
+  "scripts": {
+    "check": "node --check src/extension.js && node --check src/analysis.js && node --check src/catalog.js && node --check src/language.js && node --check src/initialization.js && node --check src/diagnostics.js",
+    "package": "vsce package --no-dependencies --out QYNO-0.27.9.vsix"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "4.0.0"
+  }
+}
