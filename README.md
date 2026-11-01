@@ -1,4 +1,4 @@
-# QYNO 0.27.10
+# QYNO 0.28.0
 
 著作権およびライセンスに関する情報は、本ファイルの末尾に記載している。
 
@@ -42,32 +42,9 @@ make clean
 
 ## 新機能
 
-0.27.10では、パスから情報を取得するio.path.infoを追加した。戻り値はio.path.PathInfoであり、種別、通常ファイルのサイズ、更新日時を持つ。
+0.28.0では、最適化を通常のコンパイル処理に追加した。定数の計算と値の伝播、不要な代入や分岐、I/Oエラー確認、整数の正規化を整理する。最適化の指定は不要である。
 
-```text
-using io.path as path
-
-int main();
-	try;
-		auto entry = path.info("data.txt")
-		io.print(entry.kind)
-		if(entry.has_size);
-			io.print("{entry.size_bytes} bytes")
-		io.print(time.iso_format(entry.modified_at))
-	case(io.ErrorCode.not_found);
-		io.print("ファイルが見つかりません")
-	return 0
-```
-
-kindはio.path.PathKindであり、other、regular_file、directory、linkの順に0から3の値を持つ。通常ファイルだけがhas_size=trueとなり、size_bytesにバイト数を返す。空ファイルのサイズは0である。通常ファイル以外ではhas_size=false、size_bytes=0となる。
-
-modified_atはquadrupleのUNIX時刻である。io.file.modified_atと同じ秒単位で扱い、負の時刻も許可する。0は1970年1月1日を表す。
-
-既定では最後のリンク自体を調べる。第2引数をtrueにするとリンク先を調べる。切れたリンクは既定ではlinkとして取得できるが、リンク先を指定した場合はnot_foundとなる。Windowsではシンボリックリンクとジャンクションをlinkとし、分類できないreparse pointはotherとする。
-
-相対パスは実行時の作業ディレクトリを基準とする。ルート、.、..も取得できる。末尾の区切りはルート以外で取り除くため、file/はfileと同じ対象を調べる。途中の階層にあるリンクは通常のパス解決に従う。
-
-結果は取得時点の値である。フィールドを書き換えてもファイルには反映されない。必要な情報を取得できない場合はio.Errorとなり、途中の結果は返さない。内部の開閉はライブラリが行う。
+浮動小数点の演算順と丸めを維持し、参照や配列の操作に必要な実行時検査を残す。
 
 ## 使用方法
 
@@ -157,6 +134,33 @@ mathは数学関数を提供する。lib.sizeは値のビットサイズ、lib.l
 lib.randomは型名と不等式で乱数を生成する。lib.random.intは整数、lib.random.doubleは小数、lib.random.boolは真偽値を返す。シードを指定した生成と、独立した生成器にも対応する。
 
 timeは時刻の取得、経過時間の計測、待機に使用する。Stopwatchによる計測と、日時の変換にも対応する。
+
+io.path.infoは、パスから種別、通常ファイルのサイズ、更新日時を取得する。戻り値はio.path.PathInfoである。
+
+```text
+using io.path as path
+
+int main();
+	try;
+		auto entry = path.info("data.txt")
+		io.print(entry.kind)
+		if(entry.has_size);
+			io.print("{entry.size_bytes} bytes")
+		io.print(time.iso_format(entry.modified_at))
+	case(io.ErrorCode.not_found);
+		io.print("ファイルが見つかりません")
+	return 0
+```
+
+kindはio.path.PathKindであり、other、regular_file、directory、linkの順に0から3の値を持つ。通常ファイルだけがhas_size=trueとなり、size_bytesにバイト数を返す。空ファイルのサイズは0である。通常ファイル以外ではhas_size=false、size_bytes=0となる。
+
+modified_atはquadrupleのUNIX時刻である。io.file.modified_atと同じ秒単位で扱い、負の時刻も許可する。0は1970年1月1日を表す。
+
+既定では最後のリンク自体を調べる。第2引数をtrueにするとリンク先を調べる。切れたリンクは既定ではlinkとして取得できるが、リンク先を指定した場合はnot_foundとなる。Windowsではシンボリックリンクとジャンクションをlinkとし、分類できないreparse pointはotherとする。
+
+相対パスは実行時の作業ディレクトリを基準とする。ルート、.、..も取得できる。末尾の区切りはルート以外で取り除くため、file/はfileと同じ対象を調べる。途中の階層にあるリンクは通常のパス解決に従う。
+
+結果は取得時点の値である。フィールドを書き換えてもファイルには反映されない。必要な情報を取得できない場合はio.Errorとなり、途中の結果は返さない。内部の開閉はライブラリが行う。
 
 ## 開発状況
 

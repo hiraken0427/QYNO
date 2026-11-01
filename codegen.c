@@ -41,6 +41,7 @@
  */
 
 #include "qyc.h"
+#include "optimizer.h"
 #include "wide_blob.h"
 #include <math.h>
 
@@ -84,6 +85,10 @@ static void gen_print_value(Node *expr);
 #define IO_COLUMN 336
 static int io_raise_label, io_empty_label, io_unhandled_label, io_report_label;
 static void gen_io_check(void);
+static void gen_copy_check(Type ty)
+{
+    if (optimizer_copy_effects(ty) & OPT_RAISE) gen_io_check();
+}
 static int file_labels[BI_COUNT - BI_FILE_OPEN];
 static int file_write_all_label;
 static int file_error_label, file_validate_label, file_path_label, file_raw_close_label;
@@ -1256,10 +1261,7 @@ static void gen_integer_normalize(Type ty)
 {
     int bits = integer_width(ty);
     if (bits >= 64) return;
-    x64_mov_imm(R10, integer_bits((UINT64_C(1) << bits) - 1)); x64_and(RAX, R10);
-    if (!integer_unsigned(ty)) {
-        x64_mov_imm(R10, INT64_C(1) << (bits - 1)); x64_xor(RAX, R10); x64_sub(RAX, R10);
-    }
+    x64_extend(RAX, bits, integer_unsigned(ty));
 }
 static void gen_integer_range(Type from, Type to, int bad)
 {
@@ -1401,7 +1403,12 @@ static void gen_cast(Node *node)
         gen_char_check(node->tok, node->lhs->kind == ND_INPUT ? EX_DATAERR : EX_SOFTWARE);
         return;
     }
-    if (type_is_integer(node->lhs->ty) && type_is_integer(node->ty)) gen_integer_checked(node->lhs->ty, node->ty, node->tok);
+    if (type_is_integer(node->lhs->ty) && type_is_integer(node->ty)) {
+        int from = integer_width(node->lhs->ty), to = integer_width(node->ty);
+        int from_unsigned = integer_unsigned(node->lhs->ty), to_unsigned = integer_unsigned(node->ty);
+        if (!((from_unsigned == to_unsigned && from <= to) || (from_unsigned && !to_unsigned && from < to)))
+            gen_integer_checked(node->lhs->ty, node->ty, node->tok);
+    }
     gen_convert(node->lhs->ty, node->ty);
 }
 
@@ -1765,16 +1772,16 @@ static void gen_chain(Node *node)
     end = chained ? new_label("cmp.end") : -1;
 
     gen_expr(node->lhs->lhs);
-    if (type_is_model(node->lhs->lhs->ty)) x64_call(type_model(node->lhs->lhs->ty)->copy_label);
+    if (type_is_model(node->lhs->lhs->ty)) { x64_call(type_model(node->lhs->lhs->ty)->copy_label); gen_copy_check(node->lhs->lhs->ty); }
     if (type_is_array(node->lhs->lhs->ty)) {
-        x64_load(RDI, RAX, 16); x64_xor(RSI, RSI); x64_call(array_copy_label);gen_io_check();
+        x64_load(RDI, RAX, 16); x64_xor(RSI, RSI); x64_call(array_copy_label);gen_copy_check(node->lhs->lhs->ty);
     }
     push();
     for (cmp = node->lhs; cmp != NULL; cmp = cmp->next) {
         gen_expr(cmp->rhs);
-        if (cmp->next != NULL && type_is_model(cmp->rhs->ty)) x64_call(type_model(cmp->rhs->ty)->copy_label);
+        if (cmp->next != NULL && type_is_model(cmp->rhs->ty)) { x64_call(type_model(cmp->rhs->ty)->copy_label); gen_copy_check(cmp->rhs->ty); }
         if (cmp->next != NULL && type_is_array(cmp->rhs->ty)) {
-            x64_load(RDI, RAX, 16); x64_xor(RSI, RSI); x64_call(array_copy_label);gen_io_check();
+            x64_load(RDI, RAX, 16); x64_xor(RSI, RSI); x64_call(array_copy_label);gen_copy_check(cmp->rhs->ty);
         }
         pop(RDI);
         if (cmp->next != NULL) {
@@ -5348,8 +5355,10 @@ static int io_function_error;
 static Node *io_catch;
 static void gen_io_check(void)
 {
-    int ok=rt_label("io.call.ok");
+    int ok;
     if(!emitting_function)return;
+    if(emitting_function->opt_ready && !(emitting_function->opt_effects & OPT_RAISE))return;
+    ok=rt_label("io.call.ok");
     x64_load(R11,R14,IO_PENDING);x64_test(R11,R11);x64_jcc(CC_Z,ok);
     x64_lea(RSP,RBP,-emitting_function->stack_size-(io_scope?io_scope->stack_depth*8:0));
     x64_jmp(io_scope?io_scope->error_label:io_function_error);
@@ -5386,7 +5395,8 @@ static void gen_call(Node *node)
             x64_add_imm(RSP, 8 * node->nargs);
             depth -= node->nargs;
         }
-        gen_io_check();return;
+        if (optimizer_local_effects(node) & OPT_RAISE) gen_io_check();
+        return;
     }
     bytes = ((node->nargs + owners) * 8 + 15) / 16 * 16;
     base = emitting_function->stack_size + depth * 8 + bytes;
@@ -5425,7 +5435,8 @@ static void gen_call(Node *node)
         x64_store(RDX, 32, RCX);
     }
     if (bytes) { x64_add_imm(RSP, bytes); depth -= bytes / 8; }
-    gen_io_check();x64_jmp(finished);
+    if (optimizer_local_effects(node) & OPT_RAISE) gen_io_check();
+    x64_jmp(finished);
     x64_bind(failed);
     for(i=node->nargs;i<node->nargs+owners;i++){
         int unpinned=rt_label("io.argument.unpinned");
@@ -5440,9 +5451,9 @@ static void gen_call(Node *node)
 static void gen_expr_inner(Node *node);
 static void gen_expr(Node *node)
 {
-    gen_expr_inner(node);gen_io_check();
+    gen_expr_inner(node);
     if(node->ty==TY_VOID)x64_xor(RAX,RAX);
-    if (type_is_integer(node->ty)) gen_integer_normalize(node->ty);
+    if (type_is_integer(node->ty) && !optimizer_integer_canonical(node)) gen_integer_normalize(node->ty);
 }
 static void gen_expr_inner(Node *node)
 {
@@ -5464,7 +5475,7 @@ static void gen_expr_inner(Node *node)
     case ND_MODEL_INIT:
         gen_model_init(node); return;
     case ND_MODEL_COPY:
-        gen_expr(node->lhs); x64_call(type_model(node->ty)->copy_label); return;
+        gen_expr(node->lhs); x64_call(type_model(node->ty)->copy_label); gen_copy_check(node->ty); return;
     case ND_ARRAY_LITERAL:
         gen_array_literal(node);
         return;
@@ -5475,7 +5486,7 @@ static void gen_expr_inner(Node *node)
         collection_context(node->tok);
         collection_shape(node->ty, node->dims, RDI);
         x64_mov_imm(RSI, node->kind == ND_ARRAY_NEW ? 1 : node->val);
-        x64_call(array_copy_label);gen_io_check();
+        x64_call(array_copy_label);gen_copy_check(node->ty);
         return;
     case ND_METHOD:
         gen_array_method(node);
@@ -5782,6 +5793,7 @@ static void gen_stmts(Node *list)
         if (depth != baseline) {
             fatal("内部エラー: スタックの深さが %d のままです", depth);
         }
+        if (node->kind == ND_RETURN || node->kind == ND_BREAK || node->kind == ND_CONTINUE || node->kind == ND_THROW) break;
     }
 }
 
@@ -5789,6 +5801,11 @@ static void gen_if(Node *node)
 {
     int else_label;
     int end_label;
+
+    if (node->cond->kind == ND_BOOL) {
+        gen_stmts(node->cond->val ? node->then : node->els);
+        return;
+    }
 
     else_label = new_label("if.else");
     end_label = new_label("if.end");
@@ -5825,6 +5842,8 @@ static void gen_while(Node *node)
 {
     int begin;
     int end;
+
+    if (node->cond->kind == ND_BOOL && !node->cond->val) return;
 
     begin = new_label("while.begin");
     end = new_label("while.end");
@@ -5985,6 +6004,7 @@ static void gen_stmt(Node *node)
         x64_jmp(continue_labels[loop_depth - 1]);
         return;
     case ND_DECL:
+        if (node->opt_dead_store) return;
         if (node->var->is_const) {
             return;             /* const は値を直接埋め込むので領域を使わない */
         }
@@ -6007,11 +6027,12 @@ static void gen_stmt(Node *node)
         x64_store(RBP, -node->var->offset, RAX);   /* ref の変数なら、使う場所を入れる */
         return;
     case ND_ASSIGN:
+        if (node->opt_dead_store) return;
         gen_expr(node->lhs);
-        if (type_is_model(node->var->ty)) x64_call(type_model(node->var->ty)->copy_label);
+        if (type_is_model(node->var->ty)) { x64_call(type_model(node->var->ty)->copy_label); gen_copy_check(node->var->ty); }
         if (type_is_array(node->var->ty)) {
             push(); gen_load_var(node->var, node->tok); x64_load(RDI, RAX, 16); pop(RAX);
-            collection_context(node->tok); x64_xor(RSI, RSI); x64_call(array_copy_label);gen_io_check();
+            collection_context(node->tok); x64_xor(RSI, RSI); x64_call(array_copy_label);gen_copy_check(node->var->ty);
         }
         gen_store_var(node->var, node->tok);
         return;

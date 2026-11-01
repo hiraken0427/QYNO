@@ -129,6 +129,7 @@ static void gen_index_store(Node *node)
             x64_bind(empty);
             place_load(&plan, RAX, value);
             x64_call(type_model(node->lhs->ty)->copy_label);
+            gen_copy_check(node->lhs->ty);
             place_save(&plan, value, RAX);
             place_resolve(&plan, plan.count);
         }
@@ -149,6 +150,7 @@ static void gen_index_store(Node *node)
             }
             x64_bind(copy);
             x64_call(array_copy_label);
+            gen_copy_check(node->lhs->ty);
             place_save(&plan, value, RAX);
             place_resolve(&plan, plan.count);
         }
@@ -178,6 +180,7 @@ static void gen_array_method(Node *node)
         else x64_xor(RDI, RDI); /* 0 / false / 初期子配列 */
     }
     x64_call(node->val == AM_APPEND ? array_append_label : node->val == AM_REMOVE_AT ? array_remove_label : array_clear_label);
+    if (optimizer_local_effects(node) & OPT_RAISE) gen_io_check();
     place_release(&plan);
 }
 
@@ -189,6 +192,7 @@ static void gen_array_literal(Node *node)
     x64_xor(RSI, RSI);
     collection_context(node->tok);
     x64_call(array_copy_label);
+    gen_copy_check(node->ty);
     push();
     for (item = node->lhs; item != NULL; item = item->next) {
         gen_expr(item);
@@ -196,6 +200,7 @@ static void gen_array_literal(Node *node)
         x64_load(RAX, RSP, 0);
         collection_context(node->tok);
         x64_call(array_append_label);
+        gen_copy_check(node->ty);
     }
     pop(RAX);
 }

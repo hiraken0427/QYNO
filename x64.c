@@ -359,6 +359,28 @@ void x64_mov_imm(Reg dst, long long val)
     emit(b, 10, "mov %s, %lld", reg64_names[dst], val);
 }
 
+/* Canonical scalar representation without changing arithmetic flags. */
+void x64_extend(Reg dst, int width, int unsign)
+{
+    static const char *reg16_names[] = {
+        "ax", "cx", "dx", "bx", "sp", "bp", "si", "di",
+        "r8w", "r9w", "r10w", "r11w", "r12w", "r13w", "r14w", "r15w"
+    };
+    unsigned char b[4];
+    if (width == 32) {
+        b[0] = rex(!unsign, dst, dst);
+        b[1] = unsign ? 0x89 : 0x63;
+        b[2] = modrm_reg(low3(dst), dst);
+        if (unsign) emit(b, 3, "mov %s, %s", reg32_names[dst], reg32_names[dst]);
+        else emit(b, 3, "movsxd %s, %s", reg64_names[dst], reg32_names[dst]);
+        return;
+    }
+    b[0] = rex(1, dst, dst); b[1] = 0x0F;
+    b[2] = (unsigned char)(width == 8 ? (unsign ? 0xB6 : 0xBE) : (unsign ? 0xB7 : 0xBF));
+    b[3] = modrm_reg(low3(dst), dst);
+    emit(b, 4, "%s %s, %s", unsign ? "movzx" : "movsx", reg64_names[dst], width == 8 ? reg8_names[dst] : reg16_names[dst]);
+}
+
 /* add r/m64, r64：REX.W 01 /r */
 void x64_add(Reg dst, Reg src)
 {

@@ -1,4 +1,5 @@
 #include "qyc.h"
+#include "optimizer.h"
 
 #include <stdarg.h>
 #include <stdlib.h>
@@ -283,6 +284,7 @@ int main(int argc, char **argv)
 
     /* 4. 型検査 */
     typecheck(ast, target);
+    optimize_program(ast);
 
     /* -S：アセンブリだけを出力して終わる */
     if (asm_only) {
