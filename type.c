@@ -454,6 +454,7 @@ static void check_pow_domain(Node *node);
 
 #include "file_bulk_type.inc"
 #include "file_mutation_type.inc"
+#include "path_info_type.inc"
 
 static void check_file_builtin(Node *node)
 {
@@ -462,7 +463,8 @@ static void check_file_builtin(Node *node)
     Node *second = first != NULL ? first->next : NULL;
     int expected = b == BI_FILE_READ_LINE || b == BI_FILE_WRITE || b == BI_FILE_READ_BYTES || b == BI_FILE_WRITE_BYTES ? 2 : 1;
     allow_void = 0;
-    if(b>=BI_FILE_REMOVE){check_file_mutation_builtin(node);return;}
+    if(b==BI_PATH_INFO){check_path_info_builtin(node);return;}
+    if(b>=BI_FILE_REMOVE&&b<=BI_FILE_MOVE){check_file_mutation_builtin(node);return;}
     if(file_bulk_builtin(b)){check_file_bulk_builtin(node);return;}
     if(b==BI_FILE_TRY_OPEN){check_try_open(node);return;}
     if(b>=BI_FILE_TELL){

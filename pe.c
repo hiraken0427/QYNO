@@ -55,7 +55,7 @@ static const char *import_names[IMP_COUNT] = {
     "QueryPerformanceCounter", "QueryPerformanceFrequency",
     "GetCurrentProcess", "GetProcessTimes", "Sleep",
     "GetCurrentDirectoryW", "SetCurrentDirectoryW", "WideCharToMultiByte",
-    "GetCommandLineW", "CreateDirectoryW", "GetFileInformationByHandleEx", "SetFileInformationByHandle", "GetFileAttributesW", "BCryptGenRandom", "RtlNtStatusToDosError"
+    "GetCommandLineW", "CreateDirectoryW", "GetFileInformationByHandleEx", "SetFileInformationByHandle", "GetFileAttributesW", "SetLastError", "BCryptGenRandom", "RtlNtStatusToDosError"
 };
 
 const char *import_name(Import imp)

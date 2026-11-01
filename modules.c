@@ -265,6 +265,8 @@ Ast *load_program(const char *path, const char **roots, int root_count)
         io->ast = parse(tokenize(io->source->input));
     }
     standard_source("io.file","enum SeekOrigin;\n\tbegin\n\tcurrent\n\tend\n");
+    standard_source("io.path","enum PathKind;\n\tother\n\tregular_file\n\tdirectory\n\tlink\n"
+        "model PathInfo;\n\tPathKind kind\n\tbool has_size\n\tint_64 size_bytes\n\tquadruple modified_at\n");
     standard_source("time",standard_time_source);
     standard_source("lib.random","model Random;\n\tprivate unsigned int_64 a\n\tprivate unsigned int_64 b\n\tprivate unsigned int_64 c\n\tprivate unsigned int_64 d\n\tvoid init(unsigned int_64 seed=0);\n\t\tlib.random._seed(ref this,seed)\n");
     program->entry = load_module("", path, canonical, NULL);
