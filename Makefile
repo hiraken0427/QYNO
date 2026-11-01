@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -std=c99 -g -Wall -Wextra -pedantic
+CFLAGS = -std=c99 -O2 -g -Wall -Wextra -pedantic
 LDLIBS = -lm
 
 SRCS = main.c modules.c tokenize.c parse.c type.c codegen.c x64.c buffer.c program.c builtin.c pe.c elf.c unicode.c types.c integer_bases.c wide_runtime.c grapheme_runtime.c
