@@ -381,6 +381,20 @@ void x64_extend(Reg dst, int width, int unsign)
     emit(b, 4, "%s %s, %s", unsign ? "movzx" : "movsx", reg64_names[dst], width == 8 ? reg8_names[dst] : reg16_names[dst]);
 }
 
+/* LEA with a typed element scale. RSP cannot be a SIB index. */
+void x64_lea_index(Reg dst, Reg base, Reg index, int scale)
+{
+    unsigned char b[5];
+    int displacement = low3(base) == 5;
+    if (index == RSP || scale < 0 || scale > 3) fatal("内部エラー: 添字アドレスの指定が不正です");
+    b[0] = (unsigned char)(rex(1, dst, base) | (ext(index) << 1));
+    b[1] = 0x8D;
+    b[2] = (unsigned char)((displacement ? 0x40 : 0) | (low3(dst) << 3) | 4);
+    b[3] = (unsigned char)((scale << 6) | (low3(index) << 3) | low3(base));
+    b[4] = 0;
+    emit(b, displacement ? 5 : 4, "lea %s, [%s+%s*%d]", reg64_names[dst], reg64_names[base], reg64_names[index], 1 << scale);
+}
+
 /* add r/m64, r64：REX.W 01 /r */
 void x64_add(Reg dst, Reg src)
 {

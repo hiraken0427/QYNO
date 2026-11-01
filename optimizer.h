@@ -13,10 +13,22 @@ enum {
     OPT_ALL = (1u << 10) - 1
 };
 
+/* Evaluated arguments bind to independent slots in the caller's frame. */
+struct OptInline {
+    Function *owner;
+    Node *body;
+    Var **params;
+    int param_count;
+    int *roots;
+    int root_count;
+};
+
 void optimize_program(Ast *ast);
 unsigned optimizer_local_effects(const Node *node);
 unsigned optimizer_effects(const Node *node);
 unsigned optimizer_copy_effects(Type ty);
 int optimizer_integer_canonical(const Node *node);
+void optimizer_inline(Ast *ast);
+void optimizer_reachable(Ast *ast);
 
 #endif

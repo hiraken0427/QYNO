@@ -10,7 +10,7 @@
 #include "grapheme_runtime.h"
 #include <stdio.h>
 
-#define QYC_VERSION "0.28.0"
+#define QYC_VERSION "0.28.1"
 
 typedef struct SourceFile SourceFile;
 typedef struct Module Module;
@@ -22,6 +22,7 @@ typedef struct EnumMember EnumMember;
 typedef struct ModelField ModelField;
 typedef struct Interface Interface;
 typedef struct Implementation Implementation;
+typedef struct OptInline OptInline;
 
 struct SourceFile {
     const char *filename;
@@ -270,6 +271,7 @@ struct Var {
     int offset;         /* rbp からの距離（[rbp - offset] に置く）。const は 0 */
     int is_const;       /* const 定数なら 1 */
     int is_param;       /* 関数の引数なら 1（[rbp + 16 + ...] に置かれる） */
+    int opt_valid_ref;  /* hidden inline binding checked at the call site */
     int is_readonly;    /* read-only borrow; independent of nominal type */
     int is_ref;         /* ref の変数なら 1（置き場には値ではなく、使う場所が入る） */
     int is_loop;        /* for 文の繰り返しの変数なら 1 */
@@ -414,6 +416,7 @@ struct Node {
     int init_store;    /* first whole-field assignment may target an empty slot */
     int constant_value; /* canonical evaluated aggregate, not a user initializer */
     int opt_dead_store; /* effect-free scalar store with no remaining reads */
+    OptInline *opt_inline;
     Var *ref_temp;      /* const root materialized for a readonly ref call */
     ModelField *field;
     Model *access_model; /* lexical owner of user-written expressions; survives lowering */
@@ -450,6 +453,8 @@ struct Function {
     int io_caught;     /* reachable through a recovering handler */
     unsigned opt_effects; /* typed operation effects, after static checks */
     int opt_ready;
+    int opt_inline_cost;
+    int opt_reachable;
     int stack_size;     /* ローカル変数の領域（16の倍数） */
     int label;          /* コード生成で使うラベル */
 };
@@ -702,6 +707,7 @@ void x64_pop(Reg r);
 void x64_mov(Reg dst, Reg src);
 void x64_mov_imm(Reg dst, long long val);
 void x64_extend(Reg dst, int width, int unsign);
+void x64_lea_index(Reg dst, Reg base, Reg index, int scale);
 void x64_add(Reg dst, Reg src);
 void x64_sub(Reg dst, Reg src);
 void x64_imul(Reg dst, Reg src);

@@ -53,33 +53,41 @@ static void collection_shape(Type type, ArrayDim *dims, Reg to)
     buf_free(&shape);
 }
 
+static int array_bounds_failure_label;
 static void array_bounds(void)
 {
-    int bad = rt_label("array.bounds.bad");
-    int ok = rt_label("array.bounds.ok");
     x64_test(RDI, RDI);
-    x64_jcc(CC_S, bad);
+    x64_jcc(CC_S, array_bounds_failure_label);
     x64_load(RCX, RAX, 0);
     x64_cmp(RDI, RCX);
-    x64_jcc(CC_B, ok);
-    x64_bind(bad);
-    collection_fail("配列の添字が範囲外です\n");
-    x64_bind(ok);
+    x64_jcc(CC_AE, array_bounds_failure_label);
+}
+
+/* RAX=owner, RDI=index. Field identity was checked before optimization. */
+static void gen_slot_address(Node *access)
+{
+    if (access && access->field && type_is_model(access->lhs->ty)) {
+        x64_load(RAX, RAX, 24);
+        if (access->field->index) x64_lea(RAX, RAX, access->field->index * 8);
+        return;
+    }
+    array_bounds();
+    x64_load(RAX, RAX, 24);
+    x64_lea_index(RAX, RAX, RDI, 3);
 }
 
 static void gen_array_access_runtime(void)
 {
+    array_bounds_failure_label = rt_label("array.bounds.bad");
     x64_bind(array_slot_label);
-    array_bounds();
-    x64_load(RAX, RAX, 24);
-    x64_mov(RCX, RDI);
-    x64_shl_imm(RCX, 3);
-    x64_add(RAX, RCX);
+    gen_slot_address(NULL);
     x64_ret();
     x64_bind(array_get_label);
     x64_call(array_slot_label);
     x64_load(RAX, RAX, 0);
     x64_ret();
+    x64_bind(array_bounds_failure_label);
+    collection_fail("配列の添字が範囲外です\n");
 }
 
 /* rax=コピー元(0は初期配列)、rdi=代入先shape、rsi=不足分を埋めるか。 */

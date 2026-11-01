@@ -1,17 +1,17 @@
-# QYNO 0.28.0
+# QYNO 0.28.1
 
 QYNO用のVisual Studio Code拡張機能である。構文表示、名前の補完、定義への移動、引数の表示を行う。ユーザーが定義した変数や関数も対象となる。
 
 .qyファイルを開くと有効になる。Visual Studio Code 1.85以降に対応する。セミコロンの後の改行では、インデントを1段増やす。
 
-構文や型のエラー表示には、別途QYNO 0.28.0のqycが必要である。PATHにない場合はqyno.compilerPathで実行ファイルを指定する。検査は信頼済みのローカルワークスペースで行う。ユーザープログラムは実行しない。
+構文や型のエラー表示には、別途QYNO 0.28.1のqycが必要である。PATHにない場合はqyno.compilerPathで実行ファイルを指定する。検査は信頼済みのローカルワークスペースで行う。ユーザープログラムは実行しない。
 
 ## インストール
 
-拡張機能画面の「VSIXからのインストール」で、同じフォルダのQYNO-0.28.0.vsixを指定する。コマンドからもインストールできる。
+拡張機能画面の「VSIXからのインストール」で、同じフォルダのQYNO-0.28.1.vsixを指定する。コマンドからもインストールできる。
 
 ```sh
-code --install-extension "VSCode Extensions/QYNO-0.28.0.vsix" --force
+code --install-extension "VSCode Extensions/QYNO-0.28.1.vsix" --force
 ```
 
 ## ビルド
