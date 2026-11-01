@@ -559,12 +559,17 @@ int builtin_find(Token *ns, Token *name);           /* 見つからなければ 
 const char *builtin_namespace_of(const char *name, int len);  /* 標準モジュール名。見つからなければ NULL */
 
 /* main.c */
+#if defined(__GNUC__) || defined(__clang__)
+#define QYC_NORETURN __attribute__((__noreturn__))
+#else
+#define QYC_NORETURN
+#endif
 extern SourceFile *current_file;
 void select_source(SourceFile *source);
-void error_at(int line, int col, const char *fmt, ...);
-void error_tok(Token *tok, const char *fmt, ...);
+QYC_NORETURN void error_at(int line, int col, const char *fmt, ...);
+QYC_NORETURN void error_tok(Token *tok, const char *fmt, ...);
 void warning_tok(Token *tok, const char *fmt, ...);
-void fatal(const char *fmt, ...);
+QYC_NORETURN void fatal(const char *fmt, ...);
 
 /* modules.c：読み込み・モジュール単位の名前解決 */
 Ast *load_program(const char *path, const char **roots, int root_count);
