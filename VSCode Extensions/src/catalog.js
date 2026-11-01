@@ -1,5 +1,5 @@
 'use strict';
-// Reference: QYNO 0.27.9. No runtime dependency on a compiler installation.
+// Reference: QYNO 0.27.10. No runtime dependency on a compiler installation.
 const callable = (path, type, params, documentation) => ({
     kind: 'function', name: path.split('.').at(-1), path, type, rank: 0,
     params: params.map(p => typeof p === 'string' ? { name: p, type: 'value', rank: 0 } : { rank: 0, ...p }),
@@ -10,6 +10,9 @@ const IO_CODES = ['no_error','not_found','permission_denied','already_exists','i
 const IO_ERROR_CODE = {name:'ErrorCode',path:'io.ErrorCode',type:'io.ErrorCode',kind:'enum',builtin:true,members:IO_CODES.map((name,enumValue)=>({name,path:'io.ErrorCode.'+name,type:'io.ErrorCode',kind:'enumMember',readonly:true,builtin:true,enumValue,documentation:'回復可能なファイルI/Oエラー分類'}))};
 const IO_ERROR = {name:'Error',path:'io.Error',type:'io.Error',kind:'model',builtin:true,members:[['code','io.ErrorCode'],['message','str'],['operation','str'],['path','str'],['os_code','int_64'],['source','str'],['line','int'],['column','int']].map(([name,type])=>({name,type,kind:'field',rank:0,visibility:'public',builtin:true,documentation:'発生時点のI/Oエラー情報'}))};
 const enumType=(path,names)=>({name:path.split('.').at(-1),path,type:path,kind:'enum',builtin:true,members:names.map((name,enumValue)=>({name,path:path+'.'+name,type:path,kind:'enumMember',readonly:true,builtin:true,enumValue}))});
+const PATH_KIND=enumType('io.path.PathKind',['other','regular_file','directory','link']);
+const PATH_INFO={name:'PathInfo',path:'io.path.PathInfo',type:'io.path.PathInfo',kind:'model',builtin:true,
+    members:[['kind','io.path.PathKind'],['has_size','bool'],['size_bytes','int_64'],['modified_at','quadruple']].map(([name,type])=>({name,type,kind:'field',rank:0,visibility:'public',builtin:true}))};
 const SEEK_ORIGIN=enumType('io.file.SeekOrigin',['begin','current','end']);
 const WEEKDAY=enumType('time.Weekday',['monday','tuesday','wednesday','thursday','friday','saturday','sunday']);
 const DATE_TIME={name:'DateTime',path:'time.DateTime',type:'time.DateTime',kind:'model',builtin:true,members:[['year','int','1970'],['month','int','1'],['day','int','1'],['hour','int','0'],['minute','int','0'],['second','quadruple','0.0'],['offset_minutes','int','0']].map(([name,type,defaultText])=>({name,type,defaultText,kind:'field',rank:0,visibility:'public',builtin:true}))};
@@ -26,7 +29,7 @@ const RANDOM_GENERATOR={name:'Random',path:'lib.random.Random',type:'lib.random.
     initializer:{...callable('init','void',[{name:'seed',type:'unsigned int_64',defaultText:'0',optional:true}],'固定シード。省略時0。'),initializer:true,visibility:'public'},
     members:RANDOM_FUNCTIONS.map(fn=>({...fn,path:'lib.random.Random.'+fn.name,visibility:'public',readonly:false}))};
 const STANDARD = [
-    SEEK_ORIGIN, WEEKDAY, DATE_TIME, STOPWATCH, RANDOM_GENERATOR, ...RANDOM_FUNCTIONS,
+    PATH_KIND, PATH_INFO, SEEK_ORIGIN, WEEKDAY, DATE_TIME, STOPWATCH, RANDOM_GENERATOR, ...RANDOM_FUNCTIONS,
     callable('time.now', "quadruple", [], "UNIX時刻の秒数。日時用。OSによる時刻変更の影響を受けます。"),
     callable('time.monotonic', "quadruple", [], "後戻りしない時計の秒数。起点は非公開で、処理時間や期限の計測に使います。"),
     callable('time.cpu', "quadruple", [], "プロセスが使用したuser+kernelのCPU秒数。"),
@@ -81,6 +84,7 @@ const STANDARD = [
     ...['join','basename','dirname','extension','stem','is_absolute','is_relative','normalize','with_extension'].map(name=>callable('io.path.'+name, ['is_absolute','is_relative'].includes(name)?'bool':'str',
         name==='join'?[{name:'base',type:'str'},{name:'child',type:'str'}]:name==='with_extension'?[{name:'path',type:'str'},{name:'extension',type:'str'}]:[{name:'path',type:'str'}],
         ({join:'パス2個を結合します。',basename:'末尾の名前を取得します。',dirname:'親パスを取得します。',extension:'最後の拡張子をドット付きで返します。',stem:'拡張子を除いた末尾の名前を返します。',is_absolute:'完全な絶対パスか判定します。',is_relative:'完全な絶対パスでないか判定します。',normalize:'区切りと余分な . を整理します。.. は保持します。',with_extension:'拡張子を変更します。空文字なら削除します。'})[name]+' 生成先OSの規則で処理し、ファイルへはアクセスしません。')),
+    callable('io.path.info','io.path.PathInfo',[{name:'path',type:'str / char'},{name:'follow_links',type:'bool',optional:true,default:'false',defaultText:'false'}],'パスの種別、通常ファイルのサイズ、更新日時を取得する。既定では最後のリンクを追跡しない。末尾の区切りはルート以外で取り除く。'),
     callable('io.dir.exists','bool',[{name:'path',type:'str / char'}],'ディレクトリの存在を確認する。'),
     callable('io.dir.create','void',[{name:'path',type:'str / char'}],'ディレクトリを1階層作成する。既存の項目はエラーとなる。'),
     {...callable('io.dir.list','str',[{name:'path',type:'str / char'},{name:'max_entries',type:'int_64',optional:true,default:'1048576',defaultText:'1048576'},{name:'max_name_bytes',type:'int_64',optional:true,default:'67108864',defaultText:'67108864'}],'直下の名前をUTF-8のバイト順で返す。'),rank:1},

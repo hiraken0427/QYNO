@@ -4869,6 +4869,7 @@ static void gen_real_to_float(int range)
 #include "library_codegen.inc"
 #include "directory_codegen.inc"
 #include "file_mutation_runtime.inc"
+#include "path_info_runtime.inc"
 #include "arguments_codegen.inc"
 #include "random_codegen.inc"
 #include "text_codegen.inc"
@@ -6308,6 +6309,7 @@ void codegen(Ast *ast, Program *out_prog, FILE *out_text, Target out_target)
     gen_time_runtime();
     gen_directory_runtime();
     gen_file_mutation_runtime();
+    gen_path_info_runtime();
     gen_arguments_runtime();
     gen_random_runtime();
     gen_text_method_runtime();

@@ -1,4 +1,4 @@
-# QYNO 0.27.9
+# QYNO 0.27.10
 
 著作権およびライセンスに関する情報は、本ファイルの末尾に記載している。
 
@@ -42,37 +42,32 @@ make clean
 
 ## 新機能
 
-0.27.9では、ファイルの削除、コピー、移動を追加した。io.file.removeで削除、copyでコピー、moveで移動と名前変更を行う。戻り値はvoidである。
+0.27.10では、パスから情報を取得するio.path.infoを追加した。戻り値はio.path.PathInfoであり、種別、通常ファイルのサイズ、更新日時を持つ。
 
 ```text
-using io.file as fs
-using io.dir as dir
+using io.path as path
 
 int main();
-	dir.create("backup")
-	fs.write_text("report.txt", "QYNO\n")
-	fs.copy("report.txt", "backup/report.txt")
-	fs.move("report.txt", "report_old.txt")
-	fs.remove("report_old.txt")
+	try;
+		auto entry = path.info("data.txt")
+		io.print(entry.kind)
+		if(entry.has_size);
+			io.print("{entry.size_bytes} bytes")
+		io.print(time.iso_format(entry.modified_at))
+	case(io.ErrorCode.not_found);
+		io.print("ファイルが見つかりません")
 	return 0
 ```
 
-通常のファイルを対象とし、ディレクトリやリンクは扱わない。コピーと移動の出力先に既存の項目がある場合はalready_existsとなる。親ディレクトリは自動で作成しない。相対パスの起点は実行時の作業ディレクトリである。
+kindはio.path.PathKindであり、other、regular_file、directory、linkの順に0から3の値を持つ。通常ファイルだけがhas_size=trueとなり、size_bytesにバイト数を返す。空ファイルのサイズは0である。通常ファイル以外ではhas_size=false、size_bytes=0となる。
 
-copyは文字コードを変換せず、一定量ずつ読み書きする。権限や更新日時の複製は行わない。途中で失敗した場合、出力先に書き込み済みのデータが残ることがある。moveは別のファイルシステムへの移動に対応せず、unsupported_operationとなる。自動的なコピーと削除は行わない。並行して変更されるファイルの内容や名前を固定する機能ではない。
+modified_atはquadrupleのUNIX時刻である。io.file.modified_atと同じ秒単位で扱い、負の時刻も許可する。0は1970年1月1日を表す。
 
-配列の末尾への追加はaddからappendへ変更した。append(value)は値を1つ追加し、append()は要素型の初期値を1つ追加する。二次元配列では空の行を追加する。
+既定では最後のリンク自体を調べる。第2引数をtrueにするとリンク先を調べる。切れたリンクは既定ではlinkとして取得できるが、リンク先を指定した場合はnot_foundとなる。Windowsではシンボリックリンクとジャンクションをlinkとし、分類できないreparse pointはotherとする。
 
-```text
-int main();
-	int values[] = [1, 2]
-	values.append(3)
-	values.append()
-	io.print(values)
-	return 0
-```
+相対パスは実行時の作業ディレクトリを基準とする。ルート、.、..も取得できる。末尾の区切りはルート以外で取り除くため、file/はfileと同じ対象を調べる。途中の階層にあるリンクは通常のパス解決に従う。
 
-io.file.readlineはread_line、math.roundupはceil、math.rounddownはfloor、time.isoformatはiso_formatへ変更した。処理内容は変更していない。旧名称は新名称を案内するコンパイルエラーとなる。利用者が定義した関数やmodelのメソッドは改名の対象に含めない。
+結果は取得時点の値である。フィールドを書き換えてもファイルには反映されない。必要な情報を取得できない場合はio.Errorとなり、途中の結果は返さない。内部の開閉はライブラリが行う。
 
 ## 使用方法
 
@@ -150,6 +145,8 @@ io、math、lib、timeはimportなしで使用できる。名前を省略する�
 ioはコンソールとファイルの入出力を扱う。io.pathはパスの操作、io.dirはディレクトリの取得、移動、作成、一覧取得、削除に使用する。パスはstrで扱う。
 
 ファイルはio.file.openで開き、io.file.closeで明示的に閉じる。closeを確認できない経路はコンパイルエラーとなる。テキストとバイナリの読み書きに対応し、位置、サイズ、更新日時を取得できる。I/Oエラーはtry、case、finallyで処理する。パス指定の一括読み書きでは、ファイルの開閉をライブラリが行う。
+
+io.file.removeは通常ファイルの削除、copyはコピー、moveは移動と名前変更を行う。コピーと移動は既存の出力先を上書きせず、親ディレクトリを作成しない。コピーは一定量ずつ処理するが、失敗時に途中の出力が残る場合がある。別のファイルシステムへの移動はunsupported_operationとなる。
 
 io.file.read_textとread_linesは、UTF-8のファイルを文字列または行の配列として読み込む。既定の上限は64MiBであり、read_linesの行数上限は1048576である。write_textは上書き、append_textは追記、write_linesは行の配列の書き込みを行う。
 

@@ -216,7 +216,7 @@
     "calls": {
       "patterns": [
         {
-          "match": "\\b(?:print|input|sqrt|abs|round|ceil|floor|open|close|is_open|read|read_line|write|exists|current|change|absolute|append|remove_at|clear|read_text|read_lines|write_text|append_text|write_lines|create|list|remove|copy|move|iso_format)(?=\\s*\\()",
+          "match": "\\b(?:print|input|sqrt|abs|round|ceil|floor|open|close|is_open|read|read_line|write|exists|current|change|absolute|append|remove_at|clear|read_text|read_lines|write_text|append_text|write_lines|create|list|remove|copy|move|info|iso_format)(?=\\s*\\()",
           "name": "support.function.qyno"
         },
         {
