@@ -10,7 +10,7 @@
 #include "grapheme_runtime.h"
 #include <stdio.h>
 
-#define QYC_VERSION "0.27.10"
+#define QYC_VERSION "0.28.0"
 
 typedef struct SourceFile SourceFile;
 typedef struct Module Module;
@@ -413,6 +413,7 @@ struct Node {
     int explicit_value; /* user-written .value, not plain variable access */
     int init_store;    /* first whole-field assignment may target an empty slot */
     int constant_value; /* canonical evaluated aggregate, not a user initializer */
+    int opt_dead_store; /* effect-free scalar store with no remaining reads */
     Var *ref_temp;      /* const root materialized for a readonly ref call */
     ModelField *field;
     Model *access_model; /* lexical owner of user-written expressions; survives lowering */
@@ -447,6 +448,8 @@ struct Function {
     Var *locals;        /* ローカル変数（const を含み、引数は含まない） */
     int io_effect;     /* inferred recoverable I/O effect */
     int io_caught;     /* reachable through a recovering handler */
+    unsigned opt_effects; /* typed operation effects, after static checks */
+    int opt_ready;
     int stack_size;     /* ローカル変数の領域（16の倍数） */
     int label;          /* コード生成で使うラベル */
 };
@@ -698,6 +701,7 @@ void x64_push(Reg r);
 void x64_pop(Reg r);
 void x64_mov(Reg dst, Reg src);
 void x64_mov_imm(Reg dst, long long val);
+void x64_extend(Reg dst, int width, int unsign);
 void x64_add(Reg dst, Reg src);
 void x64_sub(Reg dst, Reg src);
 void x64_imul(Reg dst, Reg src);
