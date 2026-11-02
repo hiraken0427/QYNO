@@ -42,6 +42,7 @@
 
 #include "qyc.h"
 #include "optimizer.h"
+#include "machine_ir.h"
 #include "wide_blob.h"
 #include <math.h>
 
@@ -106,6 +107,10 @@ static int directory_labels[7];
 static void gen_directory_runtime(void);
 static void gen_directory_builtin(Node *node);
 static void gen_call(Node *node);
+static int machine_disabled;
+static int gen_machine(Node *node,int statements);
+static Var *machine_carry;
+static Var *machine_loop_carry(Node *loop);
 static void gen_stmts(Node *list);
 static void gen_time_runtime(void);
 static void gen_time_builtin(Node *node);
@@ -5475,7 +5480,12 @@ static void gen_call(Node *node)
 static void gen_expr_inner(Node *node);
 static void gen_expr(Node *node)
 {
-    gen_expr_inner(node);
+    if(node->opt_cached&&node->opt_cached->owner==emitting_function){
+        OptHoist *h=node->opt_cached;
+        if(node->kind==ND_INDEX)collection_context(node->tok);
+        x64_load(RAX,RBP,-h->slot);
+    }
+    else if(!gen_machine(node,0))gen_expr_inner(node);
     if(node->ty==TY_VOID)x64_xor(RAX,RAX);
     if (type_is_integer(node->ty) && !optimizer_integer_canonical(node)) gen_integer_normalize(node->ty);
 }
@@ -5815,12 +5825,18 @@ static void gen_stmts(Node *list)
 {
     Node *node;int baseline=depth;
 
-    for (node = list; node != NULL; node = node->next) {
+    for (node = list; node != NULL;) {
+        if(gen_machine(node,1)){
+            if(depth!=baseline)fatal("内部エラー: 数値ブロックのスタックが不整合です");
+            node=node->opt_machine->after;
+            continue;
+        }
         gen_stmt(node);
         if (depth != baseline) {
             fatal("内部エラー: スタックの深さが %d のままです", depth);
         }
         if (node->kind == ND_RETURN || node->kind == ND_BREAK || node->kind == ND_CONTINUE || node->kind == ND_THROW) break;
+        node=node->next;
     }
 }
 
@@ -5980,6 +5996,8 @@ static void gen_for(Node *node)
     int begin;
     int next;
     int end;
+    Var *saved_carry=machine_carry;
+    Var *carry=machine_loop_carry(node);
 
     begin = new_label("for.begin");
     next = new_label("for.next");
@@ -5988,6 +6006,25 @@ static void gen_for(Node *node)
     gen_load_var(node->init->var, node->init->tok);
     gen_for_finite(node->init->var->ty, node->init->lhs->tok, "for の開始値は有限の数値にしてください");
     if (node->for_open) gen_for_update(node, end);
+    {
+        OptHoist *h;
+        for(h=node->opt_hoists;h;h=h->next)if(h->owner==emitting_function){
+            if(h->source->kind==ND_INDEX){
+                /* A value receiver or a stable, checked parameter is known
+                 * non-null. Hoisting does not change diagnostic context. */
+                Var *v=h->root;
+                x64_comment("invariant field");
+                x64_load(RAX,RBP,-v->offset);if(v->is_ref)x64_load(RAX,RAX,0);
+                x64_load(RAX,RAX,24);x64_load(RAX,RAX,h->source->field->index*8);
+            }else gen_expr(h->source);
+            x64_store(RBP,-h->slot,RAX);
+        }
+    }
+    if(carry){
+        x64_comment("loop carried scalar");
+        x64_xmm_load(5,RBP,-carry->offset,carry->ty);
+        machine_carry=carry;
+    }
     x64_bind(begin);
     gen_for_condition(node);
     x64_test(RAX, RAX);
@@ -5999,6 +6036,7 @@ static void gen_for(Node *node)
     gen_for_update(node, end);
     x64_jmp(begin);
     x64_bind(end);
+    machine_carry=saved_carry;
 }
 
 static void gen_stmt(Node *node)
@@ -6098,11 +6136,13 @@ static void gen_stmt(Node *node)
 
 #include "recoverable_codegen.inc"
 #include "time_codegen.inc"
+#include "regalloc_codegen.inc"
 
 static void gen_function(Function *fn)
 {
     char label_name[128];
     emitting_function = fn;
+    machine_carry=NULL;
     depth = 0;io_scope=NULL;io_catch=NULL;io_function_error=rt_label("io.function.error");
 
     snprintf(label_name, sizeof(label_name), ".L.return.%d", fn->label);

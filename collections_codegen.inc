@@ -71,7 +71,7 @@ static void gen_slot_address(Node *access)
         if (access->field->index) x64_lea(RAX, RAX, access->field->index * 8);
         return;
     }
-    array_bounds();
+    if (!access || access->opt_bounds != 1 || access->opt_proof_owner != emitting_function) array_bounds();
     x64_load(RAX, RAX, 24);
     x64_lea_index(RAX, RAX, RDI, 3);
 }

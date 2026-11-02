@@ -415,5 +415,8 @@ void optimize_program(Ast *ast)
         }
     }while(changed);
     optimizer_inline(ast);
+    optimizer_memory(ast);
+    optimizer_ranges(ast);
+    optimizer_machine(ast);
     optimizer_reachable(ast);
 }

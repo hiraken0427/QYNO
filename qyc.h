@@ -10,7 +10,7 @@
 #include "grapheme_runtime.h"
 #include <stdio.h>
 
-#define QYC_VERSION "0.28.1"
+#define QYC_VERSION "0.28.2"
 
 typedef struct SourceFile SourceFile;
 typedef struct Module Module;
@@ -23,6 +23,8 @@ typedef struct ModelField ModelField;
 typedef struct Interface Interface;
 typedef struct Implementation Implementation;
 typedef struct OptInline OptInline;
+typedef struct MachineRegion MachineRegion;
+typedef struct OptHoist OptHoist;
 
 struct SourceFile {
     const char *filename;
@@ -272,6 +274,8 @@ struct Var {
     int is_const;       /* const 定数なら 1 */
     int is_param;       /* 関数の引数なら 1（[rbp + 16 + ...] に置かれる） */
     int opt_valid_ref;  /* hidden inline binding checked at the call site */
+    unsigned opt_access;
+    int opt_addressed;
     int is_readonly;    /* read-only borrow; independent of nominal type */
     int is_ref;         /* ref の変数なら 1（置き場には値ではなく、使う場所が入る） */
     int is_loop;        /* for 文の繰り返しの変数なら 1 */
@@ -417,6 +421,11 @@ struct Node {
     int constant_value; /* canonical evaluated aggregate, not a user initializer */
     int opt_dead_store; /* effect-free scalar store with no remaining reads */
     OptInline *opt_inline;
+    MachineRegion *opt_machine;
+    Function *opt_proof_owner;
+    unsigned opt_bounds; /* 1: all visited uses proved; 2: at least one unknown */
+    OptHoist *opt_hoists; /* loop entry initializations */
+    OptHoist *opt_cached;
     Var *ref_temp;      /* const root materialized for a readonly ref call */
     ModelField *field;
     Model *access_model; /* lexical owner of user-written expressions; survives lowering */
@@ -455,6 +464,10 @@ struct Function {
     int opt_ready;
     int opt_inline_cost;
     int opt_reachable;
+    int opt_unknown_memory;
+    int opt_machine_base, opt_machine_slots;
+    int opt_machine_ops;
+    int opt_hoist_checks;
     int stack_size;     /* ローカル変数の領域（16の倍数） */
     int label;          /* コード生成で使うラベル */
 };
@@ -748,6 +761,9 @@ void x64_movq_to_xmm(int xmm, Reg src);
 void x64_movq_from_xmm(Reg dst, int xmm);
 void x64_movd_to_xmm(int xmm, Reg src);
 void x64_movd_from_xmm(Reg dst, int xmm);
+void x64_xmm_move(int dst, int src);
+void x64_xmm_load(int dst, Reg base, int32_t disp, Type ty);
+void x64_xmm_store(Reg base, int32_t disp, int src, Type ty);
 void x64_sse_sd(SseOp op, int dst, int src);
 void x64_sse_ss(SseOp op, int dst, int src);
 void x64_cvtsi2sd(int dst, Reg src);
