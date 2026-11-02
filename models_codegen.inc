@@ -21,7 +21,7 @@ static void gen_model_init(Node *node)
         gen_expr(item->lhs);
         if (node->constant_value && type_is_array(item->field->ty)) {
             collection_shape(item->field->ty, item->field->dims, RDI);
-            x64_mov_imm(RSI, 1); x64_call(array_copy_label);gen_copy_check(item->field->ty);
+            x64_mov_imm(RSI, 1); x64_call(array_runtime_label(item->field->ty,AR_COPY));gen_copy_check(item->field->ty);
         }
         x64_load(RDX, RSP, 0); x64_load(RDX, RDX, 24);
         x64_store(RDX, item->field->index * 8, RAX);
@@ -62,7 +62,7 @@ static void model_copy_field(ModelField *f)
 {
     if (type_is_model(f->ty)) x64_call(type_model(f->ty)->copy_label);
     else if (type_is_array(f->ty)) {
-        collection_shape(f->ty, f->dims, RDI); x64_xor(RSI, RSI); x64_call(array_copy_label);io_rt_check();
+        collection_shape(f->ty, f->dims, RDI); x64_xor(RSI, RSI); x64_call(array_runtime_label(f->ty,AR_COPY));io_rt_check();
     }
 }
 static void gen_model_runtime(void)
@@ -91,7 +91,7 @@ static void gen_model_runtime(void)
             rt_load(RAX, 1); x64_load(RAX, RAX, 24); x64_load(RAX, RAX, f->index * 8);
             rt_load(RDI, 2); x64_load(RDI, RDI, 24); x64_load(RDI, RDI, f->index * 8);
             if (type_is_model(f->ty) || type_is_array(f->ty) || type_is_text(f->ty)) {
-                x64_call(type_is_model(f->ty) ? type_model(f->ty)->equal_label : type_is_array(f->ty) ? array_equal_label : str_eq_label);
+                x64_call(type_is_model(f->ty) ? type_model(f->ty)->equal_label : type_is_array(f->ty) ? array_runtime_label(f->ty,AR_EQUAL) : str_eq_label);
                 x64_test(RAX, RAX); x64_jcc(CC_Z, unequal);
             } else if(type_is_wide(f->ty)){gen_wide(W_CMP,f->ty,f->ty,CMP_EQ,NULL);x64_test(RAX,RAX);x64_jcc(CC_Z,unequal);
             } else if (type_is_complex(f->ty)) { x64_call(complex_equal_label); x64_test(RAX, RAX); x64_jcc(CC_Z, unequal);
@@ -114,7 +114,7 @@ static void gen_model_runtime(void)
             rt_load(RAX, 1); x64_load(RAX, RAX, 24); x64_load(RAX, RAX, f->index * 8);
             if(type_is_enum(f->ty)){x64_call(type_enum(f->ty)->name_label);x64_call(print_str_label);}
             else if (type_is_model(f->ty)) x64_call(type_model(f->ty)->print_label);
-            else if (type_is_array(f->ty)) x64_call(array_print_label);
+            else if (type_is_array(f->ty)) x64_call(array_runtime_label(f->ty,AR_PRINT));
             else if(type_is_wide(f->ty)){x64_mov_imm(RDI,10);x64_xor(RSI,RSI);gen_wide(W_FORMAT,f->ty,f->ty,0,NULL);x64_call(print_str_label);}
             else if (type_is_complex(f->ty)) x64_call(complex_print_labels[f->ty == TY_C128]);
             else if (type_is_text(f->ty)) x64_call(quoted_string_label);

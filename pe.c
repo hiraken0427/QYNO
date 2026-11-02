@@ -72,6 +72,8 @@ typedef struct {
     uint32_t iat;           /* インポートアドレステーブル（ローダが関数アドレスを書き込む） */
     uint32_t hint_name[IMP_COUNT];
     uint32_t dll_name[3];
+    int slot[IMP_COUNT],dll_index[3];
+    uint32_t descriptor_size,thunk_count;
     uint32_t size;
 } IdataLayout;
 
@@ -123,25 +125,41 @@ static void put_section(unsigned char *p, const char *name, uint32_t virtual_siz
  *   hint_name[i]         ヒント（2バイト）＋関数名＋ '\0'（偶数バイトにそろえる）
  *   dll_name             KERNEL32.dll / bcrypt.dll / ntdll.dll
  */
-static int import_slot(int index)
-{ return index+(index>=IMP_BCRYPT_GEN_RANDOM)+(index>=IMP_RTL_NTSTATUS_TO_DOS_ERROR); }
+static int import_library(int index)
+{return index>=IMP_RTL_NTSTATUS_TO_DOS_ERROR?2:index>=IMP_BCRYPT_GEN_RANDOM?1:0;}
 static const char *import_libraries[]={"KERNEL32.dll","bcrypt.dll","ntdll.dll"};
-static IdataLayout layout_idata(void)
+static IdataLayout layout_idata(const Program *prog)
 {
     IdataLayout l;
     uint32_t pos;
-    int i;
+    int i,j,dlls=0,slot=0;
+    unsigned char used[IMP_COUNT]={0};
+    memset(&l,0,sizeof(l));
+    for(i=0;i<prog->reloc_count;i++)if(prog->relocs[i].kind==RELOC_IMPORT){
+        if(prog->relocs[i].target>=IMP_COUNT)fatal("内部エラー: Import ID が範囲外です");
+        used[prog->relocs[i].target]=1;
+    }
+    for(i=0;i<IMP_COUNT;i++)l.slot[i]=-1;
+    for(i=0;i<3;i++){
+        l.dll_index[i]=-1;
+        for(j=0;j<IMP_COUNT;j++)if(used[j]&&import_library(j)==i){
+            if(l.dll_index[i]<0)l.dll_index[i]=dlls++;
+            l.slot[j]=slot++;
+        }
+        if(l.dll_index[i]>=0)slot++;
+    }
+    l.descriptor_size=(uint32_t)(dlls+1)*20;l.thunk_count=(uint32_t)slot;
 
-    pos = 80;
+    pos = align_up(l.descriptor_size,8);
     l.ilt = pos;
-    pos += (IMP_COUNT + 3) * 8;
+    pos += l.thunk_count * 8;
     l.iat = pos;
-    pos += (IMP_COUNT + 3) * 8;
-    for (i = 0; i < IMP_COUNT; i++) {
+    pos += l.thunk_count * 8;
+    for (i = 0; i < IMP_COUNT; i++) if(used[i]) {
         l.hint_name[i] = pos;
         pos += align_up(2 + (uint32_t)strlen(import_names[i]) + 1, 2);
     }
-    for(i=0;i<3;i++){l.dll_name[i]=pos;pos+=(uint32_t)strlen(import_libraries[i])+1;}
+    for(i=0;i<3;i++)if(l.dll_index[i]>=0){l.dll_name[i]=pos;pos+=(uint32_t)strlen(import_libraries[i])+1;}
     l.size = pos;
     return l;
 }
@@ -150,17 +168,17 @@ static void write_idata(unsigned char *idata, uint32_t idata_rva, const IdataLay
 {
     int i;
 
-    int starts[]={0,IMP_BCRYPT_GEN_RANDOM,IMP_RTL_NTSTATUS_TO_DOS_ERROR};
-    for(i=0;i<3;i++){
-        uint32_t slot=(uint32_t)import_slot(starts[i])*8;
-        put_u32(idata+i*20,idata_rva+l->ilt+slot);
-        put_u32(idata+i*20+12,idata_rva+l->dll_name[i]);
-        put_u32(idata+i*20+16,idata_rva+l->iat+slot);
+    for(i=0;i<3;i++)if(l->dll_index[i]>=0){
+        int j;uint32_t slot=0,descriptor=(uint32_t)l->dll_index[i]*20;
+        for(j=0;j<IMP_COUNT;j++)if(import_library(j)==i&&l->slot[j]>=0){slot=(uint32_t)l->slot[j]*8;break;}
+        put_u32(idata+descriptor,idata_rva+l->ilt+slot);
+        put_u32(idata+descriptor+12,idata_rva+l->dll_name[i]);
+        put_u32(idata+descriptor+16,idata_rva+l->iat+slot);
         memcpy(idata+l->dll_name[i],import_libraries[i],strlen(import_libraries[i])+1);
     }
-    for(i=0;i<IMP_COUNT;i++){
-        put_u64(idata+l->ilt+8*(uint32_t)import_slot(i),idata_rva+l->hint_name[i]);
-        put_u64(idata+l->iat+8*(uint32_t)import_slot(i),idata_rva+l->hint_name[i]);
+    for(i=0;i<IMP_COUNT;i++)if(l->slot[i]>=0){
+        put_u64(idata+l->ilt+8*(uint32_t)l->slot[i],idata_rva+l->hint_name[i]);
+        put_u64(idata+l->iat+8*(uint32_t)l->slot[i],idata_rva+l->hint_name[i]);
         memcpy(idata+l->hint_name[i]+2,import_names[i],strlen(import_names[i])+1);
     }
 }
@@ -179,7 +197,8 @@ static void apply_relocs(unsigned char *text, const Program *prog,
         if (r->kind == RELOC_DATA) {
             target = rdata_rva + (uint32_t)r->target;
         } else {
-            target = idata_rva + l->iat + 8 * (uint32_t)import_slot((int)r->target);
+            if(r->target>=IMP_COUNT||l->slot[r->target]<0)fatal("内部エラー: Import が出力されていません");
+            target = idata_rva + l->iat + 8 * (uint32_t)l->slot[r->target];
         }
         next = TEXT_RVA + (uint32_t)r->pos + 4;
         put_u32(text + r->pos, target - next);
@@ -204,7 +223,7 @@ void write_pe(const char *path, const Program *prog)
     unsigned char *opt;
     FILE *fp;
 
-    idl = layout_idata();
+    idl = layout_idata(prog);
 
     text_size = (uint32_t)prog->text.len;
     text_raw_size = align_up(text_size, FILE_ALIGNMENT);
@@ -258,10 +277,10 @@ void write_pe(const char *path, const Program *prog)
     put_u64(opt + 88, 0x100000);                    /* SizeOfHeapReserve */
     put_u64(opt + 96, 0x1000);                      /* SizeOfHeapCommit */
     put_u32(opt + 108, 16);                         /* NumberOfRvaAndSizes */
-    put_u32(opt + 112 + 8 * 1, idata_rva);          /* インポートディレクトリ */
-    put_u32(opt + 112 + 8 * 1 + 4, 80);
-    put_u32(opt + 112 + 8 * 12, idata_rva + idl.iat);   /* IAT */
-    put_u32(opt + 112 + 8 * 12 + 4, (IMP_COUNT + 3) * 8);
+    put_u32(opt + 112 + 8 * 1, idl.thunk_count?idata_rva:0);
+    put_u32(opt + 112 + 8 * 1 + 4, idl.thunk_count?idl.descriptor_size:0);
+    put_u32(opt + 112 + 8 * 12, idl.thunk_count?idata_rva+idl.iat:0);
+    put_u32(opt + 112 + 8 * 12 + 4, idl.thunk_count*8);
 
     /* セクションヘッダ */
     put_section(img + SECTION_OFFSET, ".text", text_size, TEXT_RVA,

@@ -418,5 +418,4 @@ void optimize_program(Ast *ast)
     optimizer_memory(ast);
     optimizer_ranges(ast);
     optimizer_machine(ast);
-    optimizer_reachable(ast);
 }
