@@ -17,6 +17,7 @@ static int rt_label(const char *kind)
 
 static void rt_enter(int label, int slots)
 {
+    x64_provide(label);
     x64_bind(label);
     x64_push(RBP);
     x64_mov(RBP, RSP);

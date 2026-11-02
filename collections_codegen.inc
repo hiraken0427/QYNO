@@ -86,13 +86,14 @@ static void gen_array_access_runtime(void)
     x64_call(array_slot_label);
     x64_load(RAX, RAX, 0);
     x64_ret();
-    x64_bind(array_bounds_failure_label);
+    x64_provide(array_bounds_failure_label);x64_bind(array_bounds_failure_label);
     collection_fail("配列の添字が範囲外です\n");
 }
 
 /* rax=コピー元(0は初期配列)、rdi=代入先shape、rsi=不足分を埋めるか。 */
-static void gen_array_copy_runtime(void)
+static void gen_array_copy_runtime(Type array_ty,int entry)
 {
+    Type element=array_ty?array_element(array_ty):TY_NONE;
     int source = rt_label("copy.source");
     int limit = rt_label("copy.limit");
     int unbounded = rt_label("copy.unbounded");
@@ -105,7 +106,7 @@ static void gen_array_copy_runtime(void)
     int scalar = rt_label("copy.scalar");
     int store = rt_label("copy.store");
     int done = rt_label("copy.done");
-    rt_enter(array_copy_label, 10);
+    rt_enter(entry, 10);
     rt_save(1, RAX); rt_save(2, RDI); rt_save(8, RSI);
     x64_load(RCX, R14, COLLECTION_CONTEXT); rt_save(10, RCX);
     x64_xor(RCX, RCX);
@@ -153,35 +154,46 @@ static void gen_array_copy_runtime(void)
     rt_load(RDX, 4);
     x64_store(RDX, 24, RAX);
     rt_set(5, 0);
+    if(array_ty&&!type_is_array(element)&&!type_is_model(element)){
+        int copied=rt_label("copy.slots.copied");
+        x64_comment("typed slot copy");
+        rt_load(RCX,7);x64_test(RCX,RCX);x64_jcc(CC_Z,copied);
+        rt_load(RSI,1);x64_load(RSI,RSI,24);rt_load(RDI,6);
+        rt_save(5,RCX);x64_shl_imm(RCX,3);x64_rep_movsb();
+        x64_bind(copied);
+    }
     x64_bind(loop);
     rt_load(RCX, 5); rt_load(RDX, 3);
     x64_cmp(RCX, RDX);
     x64_jcc(CC_AE, done);
-    rt_load(RDX, 7);
-    x64_cmp(RCX, RDX);
-    x64_jcc(CC_AE, missing);
-    rt_load(RAX, 1);
-    x64_load(RAX, RAX, 24);
-    x64_shl_imm(RCX, 3);
-    x64_add(RAX, RCX);
-    x64_load(RAX, RAX, 0);
-    x64_jmp(value);
-    x64_bind(missing);
-    x64_xor(RAX, RAX);
-    rt_load(RDX, 2);
-    x64_load(RCX, RDX, 0);
-    rt_cmp(RCX, 1);
-    x64_jcc(CC_NZ, value);
-    x64_load(RCX, RDX, 8);
-    rt_cmp(RCX, TY_STR);
-    x64_jcc(CC_NZ, default_char);
-    x64_lea_data(RAX, empty_str_offset);
-    x64_jmp(value);
-    x64_bind(default_char);
-    rt_cmp(RCX, TY_CHAR);
-    x64_jcc(CC_NZ, value);
-    x64_lea_data(RAX, zero_char_offset);
+    if(!array_ty||type_is_array(element)||type_is_model(element)){
+        rt_load(RDX,7);x64_cmp(RCX,RDX);x64_jcc(CC_AE,missing);
+        rt_load(RAX,1);x64_load(RAX,RAX,24);x64_shl_imm(RCX,3);x64_add(RAX,RCX);x64_load(RAX,RAX,0);
+        x64_jmp(value);x64_bind(missing);
+    }
+    x64_xor(RAX,RAX);
+    if(array_ty){
+        if(element==TY_STR)x64_lea_data(RAX,empty_str_offset);
+        else if(element==TY_CHAR)x64_lea_data(RAX,zero_char_offset);
+    }else{
+        rt_load(RDX,2);x64_load(RCX,RDX,0);rt_cmp(RCX,1);x64_jcc(CC_NZ,value);
+        x64_load(RCX,RDX,8);rt_cmp(RCX,TY_STR);x64_jcc(CC_NZ,default_char);
+        x64_lea_data(RAX,empty_str_offset);x64_jmp(value);x64_bind(default_char);
+        rt_cmp(RCX,TY_CHAR);x64_jcc(CC_NZ,value);x64_lea_data(RAX,zero_char_offset);
+    }
     x64_bind(value);
+    if(array_ty){
+        if(type_is_array(element)){
+            rt_load(RDI,2);x64_add_imm(RDI,24);rt_load(RSI,8);
+            rt_load(R11,10);x64_store(R14,COLLECTION_CONTEXT,R11);
+            x64_call(array_runtime_label(element,AR_COPY));io_rt_check();
+        }else if(type_is_model(element)){
+            Model *m=type_model(element);int existing=rt_label("copy.model.existing");
+            rt_load(RCX,5);rt_load(RDX,7);x64_cmp(RCX,RDX);x64_jcc(CC_B,existing);
+            rt_load(RAX,10);x64_push(RAX);x64_call(m->default_builder->label);x64_add_imm(RSP,8);io_rt_check();x64_jmp(store);
+            x64_bind(existing);x64_call(m->copy_label);io_rt_check();
+        }
+    }else{
     rt_load(RDI, 2);
     x64_load(RCX, RDI, 0);
     rt_cmp(RCX, 1);
@@ -205,6 +217,7 @@ static void gen_array_copy_runtime(void)
           x64_bind(next_model);
       }
     }
+    }
     x64_bind(store);
     rt_load(RDX, 6); rt_load(RCX, 5);
     x64_shl_imm(RCX, 3);
@@ -220,8 +233,9 @@ static void gen_array_copy_runtime(void)
 }
 
 /* rax=配列、rdi=追加する値。子配列のコピー・領域確保の成功後にだけ変更する。 */
-static void gen_array_append_runtime(void)
+static void gen_array_append_runtime(Type array_ty,int entry)
 {
+    Type element=array_ty?array_element(array_ty):TY_NONE;
     int allowed = rt_label("append.allowed");
     int scalar = rt_label("append.scalar");
     int capacity = rt_label("append.capacity");
@@ -230,7 +244,7 @@ static void gen_array_append_runtime(void)
     int allocate = rt_label("append.allocate");
     int append = rt_label("append.append");
     int model_done = rt_label("append.model.done");
-    rt_enter(array_append_label, 6);
+    rt_enter(entry, 6);
     array_require_unborrowed();
     rt_save(1, RAX); rt_save(2, RDI);
     x64_load(RCX, RAX, 0);
@@ -242,6 +256,14 @@ static void gen_array_append_runtime(void)
     x64_jcc(CC_B, allowed);
     collection_fail("配列の追加が最大要素数を超えています\n");
     x64_bind(allowed);
+    if(array_ty){
+        if(type_is_array(element)){
+            rt_load(RAX,2);x64_lea(RDI,RDX,24);x64_xor(RSI,RSI);
+            x64_call(array_runtime_label(element,AR_COPY));io_rt_check();rt_save(2,RAX);
+        }else if(type_is_model(element)){
+            rt_load(RAX,2);x64_call(type_model(element)->copy_label);io_rt_check();rt_save(2,RAX);
+        }
+    }else{
     x64_load(RCX, RDX, 0);
     rt_cmp(RCX, 1);
     x64_jcc(CC_Z, scalar);
@@ -263,6 +285,7 @@ static void gen_array_append_runtime(void)
       }
     }
     x64_bind(model_done);
+    }
     rt_load(RAX, 1);
     x64_load(RCX, RAX, 0);
     x64_load(RDX, RAX, 8);
@@ -364,8 +387,9 @@ static void gen_array_delete_runtime(void)
     x64_ret();
 }
 
-static void gen_array_equal_runtime(void)
+static void gen_array_equal_runtime(Type array_ty,int entry)
 {
+    Type element=array_ty?array_element(array_ty):TY_NONE;
     int loop = rt_label("equal.loop");
     int scalar = rt_label("equal.scalar");
     int text_value = rt_label("equal.text");
@@ -376,7 +400,7 @@ static void gen_array_equal_runtime(void)
     int yes = rt_label("equal.yes");
     int no = rt_label("equal.no");
     int done = rt_label("equal.done");
-    rt_enter(array_equal_label, 8);
+    rt_enter(entry, 8);
     rt_save(1, RAX); rt_save(2, RDI);
     x64_load(RCX, RAX, 0); x64_load(RDX, RDI, 0);
     x64_cmp(RCX, RDX);
@@ -393,6 +417,19 @@ static void gen_array_equal_runtime(void)
     x64_shl_imm(RCX, 3);
     rt_load(RAX, 1); x64_load(RAX, RAX, 24); x64_add(RAX, RCX); x64_load(RAX, RAX, 0); rt_save(7, RAX);
     rt_load(RDI, 2); x64_load(RDI, RDI, 24); x64_add(RDI, RCX); x64_load(RDI, RDI, 0); rt_save(8, RDI);
+    if(array_ty){
+        if(type_is_array(element)){x64_call(array_runtime_label(element,AR_EQUAL));x64_test(RAX,RAX);x64_jcc(CC_Z,no);}
+        else if(type_is_model(element)){x64_call(type_model(element)->equal_label);x64_test(RAX,RAX);x64_jcc(CC_Z,no);}
+        else if(type_is_text(element)){x64_call(str_eq_label);x64_test(RAX,RAX);x64_jcc(CC_Z,no);}
+        else if(type_is_complex(element)){x64_call(complex_equal_label);x64_test(RAX,RAX);x64_jcc(CC_Z,no);}
+        else if(type_is_wide(element)){gen_wide(W_CMP,element,element,CMP_EQ,NULL);x64_test(RAX,RAX);x64_jcc(CC_Z,no);}
+        else if(element==TY_FLOAT||element==TY_DOUBLE){
+            if(element==TY_FLOAT){x64_movd_to_xmm(0,RAX);x64_cvtss2sd(0,0);x64_movd_to_xmm(1,RDI);x64_cvtss2sd(1,1);}
+            else{x64_movq_to_xmm(0,RAX);x64_movq_to_xmm(1,RDI);}
+            x64_ucomisd(0,1);x64_jcc(CC_P,no);x64_jcc(CC_NZ,no);
+        }else{x64_cmp(RAX,RDI);x64_jcc(CC_NZ,no);}
+        x64_jmp(next);
+    }else{
     rt_load(RCX, 5); rt_cmp(RCX, 1);
     x64_jcc(CC_Z, scalar);
     x64_call(array_equal_label);
@@ -431,6 +468,7 @@ static void gen_array_equal_runtime(void)
     x64_movq_to_xmm(0, RAX); x64_movq_to_xmm(1, RDI);
     x64_bind(real_compare);
     x64_ucomisd(0, 1); x64_jcc(CC_P, no); x64_jcc(CC_NZ, no);
+    }
     x64_bind(next);
     rt_load(RCX, 3); x64_add_imm(RCX, 1); rt_save(3, RCX); x64_jmp(loop);
     x64_bind(yes); x64_mov_imm(RAX, 1); x64_jmp(done);
@@ -548,8 +586,9 @@ static void gen_quoted_string_runtime(void)
     x64_bind(done); gen_write_const("\""); rt_leave();
 }
 
-static void gen_array_print_runtime(void)
+static void gen_array_print_runtime(Type array_ty,int entry)
 {
+    Type element=array_ty?array_element(array_ty):TY_NONE;
     int loop = rt_label("print.array.loop");
     int value = rt_label("print.array.value");
     int scalar = rt_label("print.array.scalar");
@@ -558,7 +597,7 @@ static void gen_array_print_runtime(void)
     int primitive[TY_CHAR + 1];
     int i;
     for (i = TY_I64; i <= TY_CHAR; i++) primitive[i] = rt_label("print.array.primitive");
-    rt_enter(array_print_label, 5);
+    rt_enter(entry, 5);
     rt_save(1, RAX); rt_set(2, 0);
     x64_load(RDX, RAX, 16);
     x64_load(RCX, RDX, 0); rt_save(3, RCX);
@@ -570,6 +609,20 @@ static void gen_array_print_runtime(void)
     x64_test(RCX, RCX); x64_jcc(CC_Z, value); gen_write_const(", ");
     x64_bind(value);
     rt_load(RAX, 1); x64_load(RAX, RAX, 24); rt_load(RCX, 2); x64_shl_imm(RCX, 3); x64_add(RAX, RCX); x64_load(RAX, RAX, 0);
+    if(array_ty){
+        if(type_is_array(element))x64_call(array_runtime_label(element,AR_PRINT));
+        else if(type_is_model(element))x64_call(type_model(element)->print_label);
+        else if(type_is_enum(element)){x64_call(type_enum(element)->name_label);x64_call(print_str_label);}
+        else if(element==TY_VOID)gen_write_const("()");
+        else if(type_is_text(element))x64_call(quoted_string_label);
+        else if(type_is_complex(element))x64_call(complex_print_labels[element==TY_C128]);
+        else if(type_is_wide(element)){x64_mov_imm(RDI,10);x64_xor(RSI,RSI);gen_wide(W_FORMAT,element,element,0,NULL);x64_call(print_str_label);}
+        else if(element==TY_FLOAT){x64_movd_to_xmm(0,RAX);x64_cvtss2sd(0,0);x64_movq_from_xmm(RAX,0);x64_call(print_float_label);}
+        else if(element==TY_DOUBLE)x64_call(print_double_label);
+        else if(element==TY_BOOL)x64_call(print_bool_label);
+        else if(type_is_integer(element))x64_call(integer_unsigned(element)?print_uint_label:print_int_label);
+        /* Shared file slots retain the generic array renderer's behavior. */
+    }else{
     rt_load(RCX, 3); rt_cmp(RCX, 1); x64_jcc(CC_Z, scalar);
     x64_call(array_print_label); x64_jmp(next);
     x64_bind(scalar); rt_load(RCX, 4);
@@ -595,6 +648,7 @@ static void gen_array_print_runtime(void)
         x64_call(type_is_complex((Type)i) ? complex_print_labels[i == TY_C128] : type_is_integer((Type)i) ? (integer_unsigned((Type)i) ? print_uint_label : print_int_label) : i == TY_BOOL ? print_bool_label :
                  i == TY_FLOAT ? print_float_label : i == TY_DOUBLE ? print_double_label : quoted_string_label);
         x64_jmp(next);
+    }
     }
     x64_bind(next); rt_load(RCX, 2); x64_add_imm(RCX, 1); rt_save(2, RCX); x64_jmp(loop);
     x64_bind(done); gen_write_const("]"); rt_leave();

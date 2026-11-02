@@ -145,6 +145,10 @@ static int gc_collect_label;
 static int array_copy_label, array_slot_label, array_get_label;
 static int array_append_label, array_remove_label, array_clear_label;
 static int array_equal_label, array_print_label, quoted_string_label;
+enum { AR_COPY, AR_APPEND, AR_EQUAL, AR_PRINT };
+static int array_runtime_label(Type ty,int operation);
+static void typed_arrays_reset(void);
+static void gen_typed_arrays(void);
 static int array_ref_label, string_get_label, string_replace_label;
 static Function *emitting_function;
 static Model *emitting_models;
@@ -264,6 +268,7 @@ static void gen_entry_linux(void)
 /* rsi が指す rdx バイトを標準出力（to_err なら標準エラー出力）に書く */
 static void gen_write(int label, int to_err)
 {
+    x64_provide(label);
     x64_bind(label);
     if (!to_err) {
         int normal = x64_new_label(".L.qy_write.stdout");
@@ -1392,6 +1397,7 @@ static void gen_char_check(Token *tok, int code)
 }
 
 #include "collections_codegen.inc"
+#include "typed_arrays_codegen.inc"
 #include "recoverable_runtime.inc"
 #include "file_runtime.inc"
 #include "complex_codegen.inc"
@@ -1685,7 +1691,7 @@ static void gen_compare(Node *cmp)
     }
     if (type_is_array(ty)) {
         x64_mov(RCX, RAX); x64_mov(RAX, RDI); x64_mov(RDI, RCX);
-        x64_call(array_equal_label);
+        x64_call(array_runtime_label(ty,AR_EQUAL));
         if (kind == CMP_NE) x64_xor_imm(RAX, 1);
         return;
     }
@@ -1780,14 +1786,14 @@ static void gen_chain(Node *node)
     gen_expr(node->lhs->lhs);
     if (type_is_model(node->lhs->lhs->ty)) { x64_call(type_model(node->lhs->lhs->ty)->copy_label); gen_copy_check(node->lhs->lhs->ty); }
     if (type_is_array(node->lhs->lhs->ty)) {
-        x64_load(RDI, RAX, 16); x64_xor(RSI, RSI); x64_call(array_copy_label);gen_copy_check(node->lhs->lhs->ty);
+        x64_load(RDI, RAX, 16); x64_xor(RSI, RSI); x64_call(array_runtime_label(node->lhs->lhs->ty,AR_COPY));gen_copy_check(node->lhs->lhs->ty);
     }
     push();
     for (cmp = node->lhs; cmp != NULL; cmp = cmp->next) {
         gen_expr(cmp->rhs);
         if (cmp->next != NULL && type_is_model(cmp->rhs->ty)) { x64_call(type_model(cmp->rhs->ty)->copy_label); gen_copy_check(cmp->rhs->ty); }
         if (cmp->next != NULL && type_is_array(cmp->rhs->ty)) {
-            x64_load(RDI, RAX, 16); x64_xor(RSI, RSI); x64_call(array_copy_label);gen_copy_check(cmp->rhs->ty);
+            x64_load(RDI, RAX, 16); x64_xor(RSI, RSI); x64_call(array_runtime_label(cmp->rhs->ty,AR_COPY));gen_copy_check(cmp->rhs->ty);
         }
         pop(RDI);
         if (cmp->next != NULL) {
@@ -5520,7 +5526,7 @@ static void gen_expr_inner(Node *node)
         collection_context(node->tok);
         collection_shape(node->ty, node->dims, RDI);
         x64_mov_imm(RSI, node->kind == ND_ARRAY_NEW ? 1 : node->val);
-        x64_call(array_copy_label);gen_copy_check(node->ty);
+        x64_call(array_runtime_label(node->ty,AR_COPY));gen_copy_check(node->ty);
         return;
     case ND_METHOD:
         gen_array_method(node);
@@ -5693,7 +5699,7 @@ static void gen_print_value(Node *expr)
     if(type_is_wide(expr->ty)){x64_mov_imm(RDI,10);x64_xor(RSI,RSI);gen_wide(W_FORMAT,expr->ty,expr->ty,0,NULL);x64_call(print_str_label);return;}
     if(type_is_enum(expr->ty)){x64_call(type_enum(expr->ty)->name_label);x64_call(print_str_label);return;}
     if (type_is_complex(expr->ty)) { x64_call(complex_print_labels[expr->ty == TY_C128]); return; }
-    if (type_is_array(expr->ty)) { x64_call(array_print_label); return; }
+    if (type_is_array(expr->ty)) { x64_call(array_runtime_label(expr->ty,AR_PRINT)); return; }
     if (type_is_model(expr->ty)) { x64_call(type_model(expr->ty)->print_label); return; }
     if (type_is_integer(expr->ty)) { x64_call(integer_unsigned(expr->ty) ? print_uint_label : print_int_label); return; }
     switch (expr->ty) {
@@ -5791,8 +5797,9 @@ static void gen_print_parts(Node *list, int literal, int add_newline)
     for (part = list; part != NULL; part = part->next) {
         if (literal && part->kind == ND_STR) {
             if (add_newline && part->next == NULL) {
-                offset = prog_add_data(prog, part->str, (size_t)part->str_len);
-                prog_add_data(prog, "\n", 1);
+                Buffer line;
+                buf_init(&line);buf_add(&line,(const unsigned char *)part->str,(size_t)part->str_len);buf_add_u8(&line,'\n');
+                offset = prog_add_data(prog,(const char *)line.data,line.len);buf_free(&line);
                 gen_write_data(offset, (size_t)part->str_len + 1);
                 newline_done = 1;
             } else if (part->str_len > 0) {
@@ -6097,7 +6104,7 @@ static void gen_stmt(Node *node)
         if (type_is_model(node->var->ty)) { x64_call(type_model(node->var->ty)->copy_label); gen_copy_check(node->var->ty); }
         if (type_is_array(node->var->ty)) {
             push(); gen_load_var(node->var, node->tok); x64_load(RDI, RAX, 16); pop(RAX);
-            collection_context(node->tok); x64_xor(RSI, RSI); x64_call(array_copy_label);gen_copy_check(node->var->ty);
+            collection_context(node->tok); x64_xor(RSI, RSI); x64_call(array_runtime_label(node->var->ty,AR_COPY));gen_copy_check(node->var->ty);
         }
         gen_store_var(node->var, node->tok);
         return;
@@ -6141,6 +6148,7 @@ static void gen_stmt(Node *node)
 static void gen_function(Function *fn)
 {
     char label_name[128];
+    x64_provide(fn->label);
     emitting_function = fn;
     machine_carry=NULL;
     depth = 0;io_scope=NULL;io_catch=NULL;io_function_error=rt_label("io.function.error");
@@ -6207,7 +6215,7 @@ static void dump_data(void)
     }
 }
 
-void codegen(Ast *ast, Program *out_prog, FILE *out_text, Target out_target)
+static void codegen_pass(Ast *ast, Program *out_prog, FILE *out_text, Target out_target)
 {
     char label_name[128];
     Function *fn;
@@ -6217,8 +6225,10 @@ void codegen(Ast *ast, Program *out_prog, FILE *out_text, Target out_target)
     text = out_text;
     target = out_target;
     size_codes=size_codes_tail=NULL;
+    typed_arrays_reset();
     depth = 0;
     label_seq = 0;
+    rt_sequence=0;
     loop_depth = 0;
 
     emitting_models = ast->models;emitting_enums=ast->enums;
@@ -6340,6 +6350,7 @@ void codegen(Ast *ast, Program *out_prog, FILE *out_text, Target out_target)
     file_getc_label = x64_new_label(".L.qy_file_getc");
     file_text_label = x64_new_label(".L.qy_file_text");
     input_labels();
+    x64_code_begin();
 
     x64_directive(".intel_syntax noprefix");
     x64_directive(".text");
@@ -6375,15 +6386,15 @@ void codegen(Ast *ast, Program *out_prog, FILE *out_text, Target out_target)
     gen_utf8_next_checked();
     gen_string_scan();
     gen_array_access_runtime();
-    gen_array_copy_runtime();
-    gen_array_append_runtime();
+    gen_array_copy_runtime(TY_NONE,array_copy_label);
+    gen_array_append_runtime(TY_NONE,array_append_label);
     gen_array_delete_runtime();
-    gen_array_equal_runtime();
+    gen_array_equal_runtime(TY_NONE,array_equal_label);
     gen_array_ref_runtime();
     gen_string_get_runtime();
     gen_string_replace_runtime();
     gen_quoted_string_runtime();
-    gen_array_print_runtime();
+    gen_array_print_runtime(TY_NONE,array_print_label);
     gen_pow_int();
     gen_pow_real(0);
     gen_pow_real(1);
@@ -6411,12 +6422,22 @@ void codegen(Ast *ast, Program *out_prog, FILE *out_text, Target out_target)
 
     /* ユーザーのプログラム */
     for (fn = ast->funcs; fn != NULL; fn = fn->next) {
-        if (!fn->is_template && fn->opt_reachable) gen_function(fn);
+        if (!fn->is_template) gen_function(fn);
     }
 
     gen_enum_runtime();
+    gen_typed_arrays();
     gen_library_size_runtime();
     gen_library_path_runtime();
-    dump_data();
+    x64_provide(-1);dump_data();
     x64_end();
+}
+void codegen(Ast *ast,Program *out_prog,FILE *out_text,Target out_target)
+{
+    Program plan;
+    /* Plan against private buffers first. The second traversal emits selected
+     * providers with fresh offsets; instruction bytes are never cut or moved. */
+    prog_init(&plan);x64_plan_begin();prog_plan_begin();codegen_pass(ast,&plan,NULL,out_target);
+    x64_plan_finish();prog_plan_finish(&plan,out_prog);prog_free(&plan);
+    codegen_pass(ast,out_prog,out_text,out_target);prog_plan_end();x64_plan_end();
 }

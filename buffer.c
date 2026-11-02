@@ -38,6 +38,7 @@ static void buf_reserve(Buffer *b, size_t n)
 
 void buf_add(Buffer *b, const unsigned char *bytes, size_t n)
 {
+    if(n==0)return;
     buf_reserve(b, n);
     memcpy(b->data + b->len, bytes, n);
     b->len += n;

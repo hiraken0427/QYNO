@@ -58,7 +58,8 @@ static void gen_wide_runtime(void)
     x64_bind(restore);rt_load(RSI,1);rt_load(RDX,2);x64_load(R8,RBP,-208);rt_cmp(R8,W_READ);x64_jcc(CC_NZ,scalar=new_label("wide.no.read"));
     x64_load(RCX,RBP,-160);x64_add(RSI,RCX);x64_bind(scalar);
     x64_load(R8,RBP,-176);x64_mov(RCX,R8);x64_load(R9,RBP,-216);x64_load(R10,RBP,-160);rt_leave();
-    while(prog->text.len%16){unsigned char nop=0x90;x64_blob(&nop,1);}
+    x64_provide(wide_engine_label);
+    while(x64_output_enabled()&&prog->text.len%16){unsigned char nop=0x90;x64_blob(&nop,1);}
     x64_directive(".p2align 4");
     x64_blob(wide_blob,WIDE_ENTRY_OFFSET);x64_bind(wide_engine_label);x64_blob(wide_blob+WIDE_ENTRY_OFFSET,sizeof(wide_blob)-WIDE_ENTRY_OFFSET);
 }

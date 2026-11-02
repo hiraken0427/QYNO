@@ -19,11 +19,13 @@
 typedef struct {
     char name[LABEL_NAME_SIZE];
     long offset;            /* 未確定なら -1 */
+    int provider, exported;
 } Label;
 
 typedef struct {
     int label;
     size_t pos;             /* rel32 を書き込む位置 */
+    int provider;
 } Fixup;
 
 static Program *prog;
@@ -34,6 +36,67 @@ static int label_cap;
 static Fixup *fixups;
 static int fixup_count;
 static int fixup_cap;
+static int selection_mode, current_provider=-1, declaring_labels=1, falls_through;
+static unsigned char *selected;
+static int selected_count;
+static Label *planned_labels;
+#ifndef QYNO_RUNTIME_PLAN_BUDGET
+#define QYNO_RUNTIME_PLAN_BUDGET 4000000
+#endif
+typedef struct { int from,to; } ProviderEdge;
+static ProviderEdge *provider_edges;
+static int provider_edge_count,provider_edge_cap;
+
+int x64_output_enabled(void)
+{return selection_mode!=2||current_provider<0||(current_provider<selected_count&&selected[current_provider]);}
+int x64_current_provider(void){return current_provider;}
+int x64_provider_needed(int provider)
+{return provider<0||(provider<selected_count&&selected[provider]);}
+static void provider_edge(int from,int to)
+{
+    if(selection_mode!=1||from==to)return;
+    if(provider_edge_count==provider_edge_cap){
+        provider_edge_cap=provider_edge_cap?provider_edge_cap*2:64;
+        provider_edges=realloc(provider_edges,(size_t)provider_edge_cap*sizeof(*provider_edges));
+        if(!provider_edges)fatal("ランタイムの依存を保持できません");
+    }
+    provider_edges[provider_edge_count++]=(ProviderEdge){from,to};
+}
+void x64_plan_begin(void)
+{selection_mode=1;provider_edge_count=0;free(selected);selected=NULL;free(planned_labels);planned_labels=NULL;selected_count=0;}
+void x64_code_begin(void){declaring_labels=0;current_provider=-1;falls_through=1;}
+void x64_provide(int label)
+{
+    current_provider=label;falls_through=0;
+    if(label>=0)labels[label].exported=1;
+}
+void x64_plan_finish(void)
+{
+    int changed=1,i,from,to;
+    size_t visits=0;
+    selected_count=label_count;
+    selected=calloc((size_t)(selected_count?selected_count:1),1);
+    if(!selected)fatal("ランタイムの選別を保持できません");
+    planned_labels=malloc((size_t)(label_count?label_count:1)*sizeof(*planned_labels));
+    if(!planned_labels)fatal("ラベルの計画を保持できません");
+    memcpy(planned_labels,labels,(size_t)label_count*sizeof(*labels));
+    while(changed){
+        changed=0;
+        for(i=0;i<fixup_count;i++){
+            if(++visits>QYNO_RUNTIME_PLAN_BUDGET){memset(selected,1,(size_t)selected_count);changed=0;goto complete;}
+            from=fixups[i].provider;to=labels[fixups[i].label].provider;
+            if((from<0||selected[from])&&to>=0&&!selected[to]){selected[to]=1;changed=1;}
+        }
+        for(i=0;i<provider_edge_count;i++){
+            if(++visits>QYNO_RUNTIME_PLAN_BUDGET){memset(selected,1,(size_t)selected_count);changed=0;goto complete;}
+            from=provider_edges[i].from;to=provider_edges[i].to;
+            if((from<0||selected[from])&&to>=0&&!selected[to]){selected[to]=1;changed=1;}
+        }
+    }
+complete:
+    selection_mode=2;
+}
+void x64_plan_end(void){selection_mode=0;current_provider=-1;free(selected);selected=NULL;free(planned_labels);planned_labels=NULL;selected_count=0;}
 
 static const char *reg64_names[] = {
     "rax", "rcx", "rdx", "rbx", "rsp", "rbp", "rsi", "rdi",
@@ -56,6 +119,7 @@ void x64_begin(Program *out_prog, FILE *out_text)
     text = out_text;
     label_count = 0;
     fixup_count = 0;
+    current_provider=-1;declaring_labels=1;falls_through=1;
 }
 
 /* ラベルへのジャンプ・呼び出しの相対位置を埋める */
@@ -66,6 +130,7 @@ void x64_end(void)
     long target;
     long rel;
 
+    if(selection_mode==2&&label_count!=selected_count)fatal("内部エラー: ラベルの生成数が一致しません");
     for (i = 0; i < fixup_count; i++) {
         f = &fixups[i];
         target = labels[f->label].offset;
@@ -91,8 +156,10 @@ static void emit(const unsigned char *bytes, size_t n, const char *fmt, ...)
 {
     va_list ap;
 
+    if(!x64_output_enabled())return;
     buf_add(&prog->text, bytes, n);
-    if (text == NULL) {
+    falls_through=1;
+    if (text == NULL || !x64_output_enabled()) {
         return;
     }
     va_start(ap, fmt);
@@ -105,7 +172,7 @@ void x64_directive(const char *fmt, ...)
 {
     va_list ap;
 
-    if (text == NULL) {
+    if (text == NULL || !x64_output_enabled()) {
         return;
     }
     va_start(ap, fmt);
@@ -117,7 +184,7 @@ void x64_comment(const char *fmt, ...)
 {
     va_list ap;
 
-    if (text == NULL) {
+    if (text == NULL || !x64_output_enabled()) {
         return;
     }
     fprintf(text, "    # ");
@@ -139,14 +206,25 @@ int x64_new_label(const char *name)
         }
     }
     l = &labels[label_count];
+    if(selection_mode==2&&(label_count>=selected_count||strncmp(name,planned_labels[label_count].name,LABEL_NAME_SIZE-1)))fatal("内部エラー: ラベルの生成順が一致しません");
     strncpy(l->name, name, LABEL_NAME_SIZE - 1);
     l->name[LABEL_NAME_SIZE - 1] = '\0';
     l->offset = -1;
+    l->provider=-2;l->exported=declaring_labels;
     return label_count++;
 }
 
 void x64_bind(int label)
 {
+    if(labels[label].exported&&current_provider!=label){
+        if(falls_through)provider_edge(current_provider,label);
+        current_provider=label;
+    }
+    labels[label].provider=current_provider;
+    if(selection_mode==2&&planned_labels[label].provider!=current_provider)fatal("内部エラー: ラベルの提供元が一致しません");
+    falls_through=1;
+    if(!x64_output_enabled())return;
+    if(labels[label].offset>=0)fatal("内部エラー: ラベル %s が重複しています",labels[label].name);
     labels[label].offset = (long)prog->text.len;
     if (text != NULL) {
         fprintf(text, "%s:\n", labels[label].name);
@@ -156,6 +234,7 @@ void x64_bind(int label)
 void x64_blob(const unsigned char *bytes, size_t length)
 {
     size_t i;
+    if(!x64_output_enabled())return;
     buf_add(&prog->text, bytes, length);
     if (text) for (i=0;i<length;i++) {
         if (i%16==0) fprintf(text,"    .byte "); else fprintf(text,",");
@@ -166,6 +245,7 @@ void x64_blob(const unsigned char *bytes, size_t length)
 
 static void add_fixup(int label, size_t pos)
 {
+    if(!x64_output_enabled())return;
     if (fixup_count >= fixup_cap) {
         fixup_cap = fixup_cap == 0 ? 4096 : fixup_cap * 2;
         fixups = realloc(fixups, sizeof(Fixup) * (size_t)fixup_cap);
@@ -175,6 +255,7 @@ static void add_fixup(int label, size_t pos)
     }
     fixups[fixup_count].label = label;
     fixups[fixup_count].pos = pos;
+    fixups[fixup_count].provider=current_provider;
     fixup_count++;
 }
 
@@ -604,6 +685,7 @@ void x64_jmp(int label)
 
     add_fixup(label, prog->text.len + 1);
     emit(b, sizeof(b), "jmp %s", labels[label].name);
+    falls_through=0;
 }
 
 /* 条件コードの名前（jcc・setcc の後ろに付く部分） */
@@ -671,6 +753,7 @@ void x64_int3(void)
     static const unsigned char b[] = { 0xCC };
 
     emit(b, sizeof(b), "int3");
+    falls_through=0;
 }
 
 /* ret：C3 */
@@ -679,6 +762,7 @@ void x64_ret(void)
     static const unsigned char b[] = { 0xC3 };
 
     emit(b, sizeof(b), "ret");
+    falls_through=0;
 }
 
 /* cmp r/m64, r64：REX.W 39 /r（a - b の結果でフラグを立てる） */
@@ -745,6 +829,8 @@ static void sse_emit(unsigned char prefix, int w, unsigned char op, int reg, int
     int n;
     va_list ap;
 
+    if(!x64_output_enabled())return;
+    falls_through=1;
     n = 0;
     if (prefix != 0) {
         b[n++] = prefix;

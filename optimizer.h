@@ -29,7 +29,6 @@ unsigned optimizer_effects(const Node *node);
 unsigned optimizer_copy_effects(Type ty);
 int optimizer_integer_canonical(const Node *node);
 void optimizer_inline(Ast *ast);
-void optimizer_reachable(Ast *ast);
 enum { OA_READ = 1, OA_WRITE = 2, OA_SHAPE = 4, OA_REBIND = 8, OA_ESCAPE = 16, OA_ALL = 31 };
 struct OptHoist {
     OptHoist *next;

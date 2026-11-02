@@ -155,7 +155,7 @@ static void gen_index_store(Node *node)
                 place_load(&plan, RAX, value); x64_mov_imm(RSI, 1);
             }
             x64_bind(copy);
-            x64_call(array_copy_label);
+            x64_call(array_runtime_label(node->lhs->ty,AR_COPY));
             gen_copy_check(node->lhs->ty);
             place_save(&plan, value, RAX);
             place_resolve(&plan, plan.count);
@@ -185,7 +185,7 @@ static void gen_array_method(Node *node)
         else if (element == TY_CHAR) x64_lea_data(RDI, zero_char_offset);
         else x64_xor(RDI, RDI); /* 0 / false / 初期子配列 */
     }
-    x64_call(node->val == AM_APPEND ? array_append_label : node->val == AM_REMOVE_AT ? array_remove_label : array_clear_label);
+    x64_call(node->val == AM_APPEND ? array_runtime_label(node->lhs->ty,AR_APPEND) : node->val == AM_REMOVE_AT ? array_remove_label : array_clear_label);
     if (optimizer_local_effects(node) & OPT_RAISE) gen_io_check();
     place_release(&plan);
 }
@@ -197,7 +197,7 @@ static void gen_array_literal(Node *node)
     collection_shape(node->ty, NULL, RDI);
     x64_xor(RSI, RSI);
     collection_context(node->tok);
-    x64_call(array_copy_label);
+    x64_call(array_runtime_label(node->ty,AR_COPY));
     gen_copy_check(node->ty);
     push();
     for (item = node->lhs; item != NULL; item = item->next) {
@@ -205,7 +205,7 @@ static void gen_array_literal(Node *node)
         x64_mov(RDI, RAX);
         x64_load(RAX, RSP, 0);
         collection_context(node->tok);
-        x64_call(array_append_label);
+        x64_call(array_runtime_label(node->ty,AR_APPEND));
         gen_copy_check(node->ty);
     }
     pop(RAX);

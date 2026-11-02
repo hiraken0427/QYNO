@@ -10,7 +10,7 @@
 #include "grapheme_runtime.h"
 #include <stdio.h>
 
-#define QYC_VERSION "0.28.2"
+#define QYC_VERSION "0.28.3"
 
 typedef struct SourceFile SourceFile;
 typedef struct Module Module;
@@ -96,6 +96,7 @@ typedef struct {
     RelocKind kind;
     size_t pos;         /* text 内の disp32 の位置 */
     size_t target;      /* RELOC_DATA：data 内のオフセット、RELOC_IMPORT：Import の番号 */
+    int provider;
 } Reloc;
 
 typedef struct {
@@ -463,7 +464,6 @@ struct Function {
     unsigned opt_effects; /* typed operation effects, after static checks */
     int opt_ready;
     int opt_inline_cost;
-    int opt_reachable;
     int opt_unknown_memory;
     int opt_machine_base, opt_machine_slots;
     int opt_machine_ops;
@@ -708,6 +708,17 @@ typedef enum {
 } SseOp;
 
 void x64_begin(Program *prog, FILE *text);
+void x64_plan_begin(void);
+void x64_plan_finish(void);
+void x64_plan_end(void);
+void x64_code_begin(void);
+void x64_provide(int label);
+int x64_output_enabled(void);
+int x64_current_provider(void);
+int x64_provider_needed(int provider);
+void prog_plan_begin(void);
+void prog_plan_finish(const Program *plan,Program *output);
+void prog_plan_end(void);
 void x64_end(void);
 void x64_directive(const char *fmt, ...);
 void x64_comment(const char *fmt, ...);
