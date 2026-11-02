@@ -106,6 +106,7 @@ static int directory_labels[7];
 static void gen_directory_runtime(void);
 static void gen_directory_builtin(Node *node);
 static void gen_call(Node *node);
+static void gen_stmts(Node *list);
 static void gen_time_runtime(void);
 static void gen_time_builtin(Node *node);
 static void gen_file_builtin(Node *node);
@@ -5293,8 +5294,9 @@ static void gen_ref_place(Var *v, Token *tok, Reg r)
     int ok;
     char msg[256];
 
-    ok = new_label("ref.ok");
     x64_load(r, RBP, -v->offset);
+    if (v->opt_valid_ref) return;
+    ok = new_label("ref.ok");
     x64_test(r, r);
     x64_jcc(CC_NZ, ok);
     snprintf(msg, sizeof(msg), "ref の変数 %.*s が何も指していません", v->name_len, v->name);
@@ -5365,6 +5367,28 @@ static void gen_io_check(void)
     x64_bind(ok);
 }
 
+/* Leaf returns belong to this invocation, never to the caller's finally. */
+static void gen_invoke(Node *node)
+{
+    OptInline *plan = node->opt_inline;
+    IoScope *saved_scope;
+    Node *saved_catch;
+    int saved_return, i;
+    if (!plan || plan->owner != emitting_function) { x64_call(node->func->label); return; }
+    for (i = 0; i < plan->param_count; i++) {
+        x64_load(RAX, RSP, (plan->param_count - 1 - i) * 8);
+        x64_store(RBP, -plan->params[i]->offset, RAX);
+    }
+    saved_scope = io_scope; saved_catch = io_catch; saved_return = return_label;
+    io_scope = NULL; io_catch = NULL; return_label = new_label("inline.return");
+    gen_stmts(plan->body);
+    x64_mov_imm(RAX, 0);
+    x64_bind(return_label);
+    /* These places cannot escape the leaf; keep only the result live in RAX. */
+    for (i = 0; i < plan->root_count; i++) x64_store_imm(RBP, -plan->roots[i], 0);
+    return_label = saved_return; io_scope = saved_scope; io_catch = saved_catch;
+}
+
 /* 関数呼び出し：引数を左から順に積み、呼び出した後に取り除く */
 static void gen_call(Node *node)
 {
@@ -5390,7 +5414,7 @@ static void gen_call(Node *node)
             char operation[128];snprintf(operation,sizeof(operation),"Stopwatch.%.*s",node->func->name_len,node->func->name);gen_os_context(node->tok,"time",operation);
         }
         if(node->kind==ND_TEXT_METHOD)collection_context(node->tok);
-        x64_call(node->func->label);
+        gen_invoke(node);
         if (node->nargs) {
             x64_add_imm(RSP, 8 * node->nargs);
             depth -= node->nargs;
@@ -5423,7 +5447,7 @@ static void gen_call(Node *node)
     if(node->kind==ND_CALL&&node->func->model&&node->func->tok->source->module->builtin&&!strcmp(node->func->tok->source->module->name,"time")&&!node->tok->source->module->builtin){
         char operation[128];snprintf(operation,sizeof(operation),"Stopwatch.%.*s",node->func->name_len,node->func->name);gen_os_context(node->tok,"time",operation);
     }
-    x64_call(node->func->label);
+    gen_invoke(node);
     if (node->nargs) {
         x64_add_imm(RSP, 8 * node->nargs);
         depth -= node->nargs;
@@ -5515,9 +5539,12 @@ static void gen_expr_inner(Node *node)
         if (type_is_array(node->lhs->ty) || type_is_model(node->lhs->ty)) {
             gen_expr(node->lhs);
             if (node->kind == ND_LENGTH) x64_load(RAX, RAX, 0);
+            else if (node->field && type_is_model(node->lhs->ty)) {
+                collection_context(node->tok); gen_slot_address(node); x64_load(RAX, RAX, 0);
+            }
             else {
                 push(); gen_expr(node->rhs); x64_mov(RDI, RAX); pop(RAX);
-                collection_context(node->tok); x64_call(array_get_label);
+                collection_context(node->tok); gen_slot_address(node); x64_load(RAX, RAX, 0);
             }
         } else gen_text_operation(node);
         return;
@@ -6087,7 +6114,13 @@ static void gen_function(Function *fn)
     x64_push(RBP);
     x64_mov(RBP, RSP);
     if (fn->stack_size > 0) {
-        x64_sub_imm(RSP, fn->stack_size);
+        if (target == TARGET_WINDOWS && fn->stack_size > 4096) {
+            int probe = new_label("stack.probe");
+            x64_mov_imm(R11, fn->stack_size / 4096);
+            x64_bind(probe); x64_sub_imm(RSP, 4096); x64_store_imm(RSP, 0, 0);
+            x64_dec(R11); x64_jcc(CC_NZ, probe);
+            if (fn->stack_size % 4096) x64_sub_imm(RSP, fn->stack_size % 4096);
+        } else x64_sub_imm(RSP, fn->stack_size);
     }
 
     gen_stmts(fn->body);
@@ -6338,7 +6371,7 @@ void codegen(Ast *ast, Program *out_prog, FILE *out_text, Target out_target)
 
     /* ユーザーのプログラム */
     for (fn = ast->funcs; fn != NULL; fn = fn->next) {
-        if (!fn->is_template) gen_function(fn);
+        if (!fn->is_template && fn->opt_reachable) gen_function(fn);
     }
 
     gen_enum_runtime();

@@ -2,7 +2,7 @@ CC = gcc
 CFLAGS = -std=c99 -O2 -g -Wall -Wextra -pedantic
 LDLIBS = -lm
 
-SRCS = main.c modules.c tokenize.c parse.c type.c optimizer.c opt_effects.c codegen.c x64.c buffer.c program.c builtin.c pe.c elf.c unicode.c types.c integer_bases.c wide_runtime.c grapheme_runtime.c
+SRCS = main.c modules.c tokenize.c parse.c type.c optimizer.c opt_effects.c opt_inline.c opt_reach.c codegen.c x64.c buffer.c program.c builtin.c pe.c elf.c unicode.c types.c integer_bases.c wide_runtime.c grapheme_runtime.c
 OBJS = $(SRCS:.c=.o)
 DEPS = $(OBJS:.o=.d)
 

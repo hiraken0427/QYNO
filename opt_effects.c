@@ -68,7 +68,8 @@ unsigned optimizer_local_effects(const Node *n)
         return OPT_TRAP | ((type_is_text(n->ty) || type_is_wide(n->ty) || type_is_complex(n->ty)) ? OPT_ALLOCATE : 0);
     case ND_COMPLEX: return OPT_ALLOCATE | OPT_TRAP;
     case ND_INDEX: case ND_LENGTH:
-        return OPT_READ | OPT_TRAP | (n->kind == ND_INDEX && n->lhs && type_is_text(n->lhs->ty) ? OPT_ALLOCATE : 0);
+        return OPT_READ | OPT_TRAP | (n->kind == ND_INDEX && n->lhs ?
+            (type_is_text(n->lhs->ty) ? OPT_ALLOCATE : OPT_CONTEXT) : 0);
     case ND_CALL: case ND_CONSTRUCT:
         return function_effects(n->func);
     case ND_MODEL_NEW:
@@ -86,6 +87,7 @@ unsigned optimizer_local_effects(const Node *n)
         return OPT_WRITE | (n->var ? optimizer_copy_effects(n->var->ty) : OPT_ALL);
     case ND_STORE:
         return OPT_WRITE | OPT_READ | OPT_TRAP | OPT_CONTEXT |
+            (n->lhs && n->lhs->kind == ND_INDEX && type_is_text(n->lhs->lhs->ty) ? OPT_ALLOCATE : 0) |
             (n->lhs ? optimizer_copy_effects(n->lhs->ty) : OPT_ALL);
     case ND_ADDR: return OPT_ESCAPE | OPT_TRAP;
     case ND_ADDR_ASSIGN: return OPT_ESCAPE | OPT_WRITE | OPT_TRAP;

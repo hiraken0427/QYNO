@@ -4,6 +4,7 @@
 typedef struct {
     Node *target;
     Node *indices[MAX_PLACE_DEPTH];
+    Node *access[MAX_PLACE_DEPTH];
     int count;
     int bytes;
     int base;
@@ -41,9 +42,12 @@ static PlacePlan place_capture(Node *target)
     gen_var_addr(root->var, root->tok, 1);
     place_save(&plan, 0, RAX);
     for (i = 0; i < plan.count; i++) {
-        plan.indices[i] = path[plan.count - 1 - i]->rhs;
-        gen_expr(plan.indices[i]);
-        place_save(&plan, i + 1, RAX);
+        plan.access[i] = path[plan.count - 1 - i];
+        plan.indices[i] = plan.access[i]->rhs;
+        if (!plan.access[i]->field) {
+            gen_expr(plan.indices[i]);
+            place_save(&plan, i + 1, RAX);
+        }
     }
     return plan;
 }
@@ -61,8 +65,8 @@ static void place_resolve(PlacePlan *plan, int count)
     place_load(plan, RAX, 0);
     for (i = 0; i < count; i++) {
         x64_load(RAX, RAX, 0);
-        place_load(plan, RDI, i + 1);
-        x64_call(array_slot_label);
+        if (!plan->access[i]->field) place_load(plan, RDI, i + 1);
+        gen_slot_address(plan->access[i]);
     }
 }
 
@@ -83,16 +87,18 @@ static void gen_element_ref(Node *node)
     int i;
     collection_context(node->tok);
     for (i = 0; i < plan.count; i++) {
-        place_resolve(&plan, i);
+        if (i == 0) place_load(&plan, RAX, 0);
+        else place_load(&plan, RAX, plan.count + 1);
         x64_load(RAX, RAX, 0);
         x64_store(RBP, -(int)node->val + i * 8, RAX);
         x64_load(RCX, RAX, 32);
         x64_add_imm(RCX, 1);
         x64_store(RAX, 32, RCX);
-        place_load(&plan, RDI, i + 1);
-        x64_call(array_slot_label); /* 範囲検査を後続の引数より先に行う */
+        if (!plan.access[i]->field) place_load(&plan, RDI, i + 1);
+        gen_slot_address(plan.access[i]); /* 検査は後続引数より先に行う */
+        place_save(&plan, plan.count + 1, RAX);
     }
-    place_resolve(&plan, plan.count);
+    place_load(&plan, RAX, plan.count + 1);
     place_release(&plan);
 }
 

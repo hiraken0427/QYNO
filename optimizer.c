@@ -414,4 +414,6 @@ void optimize_program(Ast *ast)
             if((effects|fn->opt_effects)!=fn->opt_effects){fn->opt_effects|=effects;changed=1;}
         }
     }while(changed);
+    optimizer_inline(ast);
+    optimizer_reachable(ast);
 }
