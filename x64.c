@@ -792,6 +792,29 @@ void x64_movd_from_xmm(Reg dst, int xmm)
     sse_emit(0x66, 0, 0x7E, xmm, dst, "movd %s, %s", reg32_names[dst], xmm_names[xmm]);
 }
 
+void x64_xmm_move(int dst, int src)
+{
+    check_xmm(dst); check_xmm(src);
+    sse_emit(0x66,0,0x28,dst,src,"movapd %s, %s",xmm_names[dst],xmm_names[src]);
+}
+static void xmm_memory(int store, int xmm, Reg base, int32_t disp, Type ty)
+{
+    unsigned char b[16];
+    char mem[64];
+    int n=0;
+    check_xmm(xmm);
+    b[n++]=ty==TY_FLOAT?0xF3:0xF2;
+    if(ext(base))b[n++]=rex(0,(Reg)xmm,base);
+    b[n++]=0x0F;b[n++]=store?0x11:0x10;
+    n+=modrm_mem(b+n,(Reg)xmm,base,disp);
+    if(store)emit(b,(size_t)n,"mov%s %s ptr %s, %s",ty==TY_FLOAT?"ss":"sd",ty==TY_FLOAT?"dword":"qword",mem_text(mem,sizeof(mem),base,disp),xmm_names[xmm]);
+    else emit(b,(size_t)n,"mov%s %s, %s ptr %s",ty==TY_FLOAT?"ss":"sd",xmm_names[xmm],ty==TY_FLOAT?"dword":"qword",mem_text(mem,sizeof(mem),base,disp));
+}
+void x64_xmm_load(int dst, Reg base, int32_t disp, Type ty)
+{xmm_memory(0,dst,base,disp,ty);}
+void x64_xmm_store(Reg base, int32_t disp, int src, Type ty)
+{xmm_memory(1,src,base,disp,ty);}
+
 static const char *sse_name(SseOp op)
 {
     switch (op) {
