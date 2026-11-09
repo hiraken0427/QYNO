@@ -257,6 +257,7 @@ static MachineRegion *finish(Builder *b)
     if(!r->statements)r->inst[r->result].last=r->count;
     if(!machine_region_valid(r))fatal("内部エラー: 機械命令の値が不整合です");
     if(r->count>r->owner->opt_machine_slots)r->owner->opt_machine_slots=r->count;
+    r->next=r->owner->machine_regions;r->owner->machine_regions=r;
     return r;
 }
 static void lower(Function *fn,Node *list,int depth,int *budget)
@@ -297,7 +298,6 @@ void optimizer_machine(Ast *ast)
     int budget;
     for(fn=ast->funcs;fn;fn=fn->next)if(!fn->is_template){
         budget=65536;lower(fn,fn->body,0,&budget);
-        fn->opt_machine_base=fn->stack_size;
-        fn->stack_size=(fn->stack_size+fn->opt_machine_slots*8+15)/16*16;
+        machine_plan_function(fn);
     }
 }

@@ -10,7 +10,7 @@
 #include "grapheme_runtime.h"
 #include <stdio.h>
 
-#define QYC_VERSION "0.28.3"
+#define QYC_VERSION "0.28.4"
 
 typedef struct SourceFile SourceFile;
 typedef struct Module Module;
@@ -467,6 +467,8 @@ struct Function {
     int opt_unknown_memory;
     int opt_machine_base, opt_machine_slots;
     int opt_machine_ops;
+    int opt_machine_fixed;
+    MachineRegion *machine_regions;
     int opt_hoist_checks;
     int stack_size;     /* ローカル変数の領域（16の倍数） */
     int label;          /* コード生成で使うラベル */
