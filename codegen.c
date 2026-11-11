@@ -143,6 +143,7 @@ static int raw_free_label;
 static int gc_mark_label;
 static int gc_collect_label;
 static int array_copy_label, array_slot_label, array_get_label;
+static int array_adopt_label;
 static int array_append_label, array_remove_label, array_clear_label;
 static int array_equal_label, array_print_label, quoted_string_label;
 enum { AR_COPY, AR_APPEND, AR_EQUAL, AR_PRINT };
@@ -6081,7 +6082,13 @@ static void gen_stmt(Node *node)
             return;             /* const は値を直接埋め込むので領域を使わない */
         }
         if (node->lhs != NULL) {
-            gen_expr(node->lhs);
+            if(node->opt_transfer){
+                if(!optimizer_transfer_valid(node->opt_transfer,emitting_function))fatal("内部エラー: 配列転送の計画が不整合です");
+                gen_expr(node->opt_transfer->producer);
+                collection_context(node->opt_transfer->copy->tok);
+                collection_shape(node->var->ty,node->var->dims,RDI);
+                x64_comment("adopt fresh scalar array");x64_call(array_adopt_label);
+            }else gen_expr(node->lhs);
             if (node->var->is_ref && type_is_array(node->var->ty)) {
                 collection_context(node->tok);
                 collection_shape(node->var->ty, node->var->dims, RDI);
@@ -6100,11 +6107,15 @@ static void gen_stmt(Node *node)
         return;
     case ND_ASSIGN:
         if (node->opt_dead_store) return;
+        if(node->opt_transfer&&!optimizer_transfer_valid(node->opt_transfer,emitting_function))fatal("内部エラー: 配列転送の計画が不整合です");
         gen_expr(node->lhs);
         if (type_is_model(node->var->ty)) { x64_call(type_model(node->var->ty)->copy_label); gen_copy_check(node->var->ty); }
         if (type_is_array(node->var->ty)) {
             push(); gen_load_var(node->var, node->tok); x64_load(RDI, RAX, 16); pop(RAX);
-            collection_context(node->tok); x64_xor(RSI, RSI); x64_call(array_runtime_label(node->var->ty,AR_COPY));gen_copy_check(node->var->ty);
+            collection_context(node->tok); x64_xor(RSI, RSI);
+            if(node->opt_transfer){x64_comment("adopt fresh scalar array");x64_call(array_adopt_label);}
+            else x64_call(array_runtime_label(node->var->ty,AR_COPY));
+            gen_copy_check(node->var->ty);
         }
         gen_store_var(node->var, node->tok);
         return;
@@ -6289,6 +6300,7 @@ static void codegen_pass(Ast *ast, Program *out_prog, FILE *out_text, Target out
     gc_mark_label = x64_new_label(".L.qy_gc_mark");
     gc_collect_label = x64_new_label(".L.qy_gc_collect");
     array_copy_label = x64_new_label(".L.qy_array_copy");
+    array_adopt_label = x64_new_label(".L.qy_array_adopt");
     array_slot_label = x64_new_label(".L.qy_array_slot");
     array_get_label = x64_new_label(".L.qy_array_get");
     array_append_label = x64_new_label(".L.qy_array_append");
@@ -6387,6 +6399,7 @@ static void codegen_pass(Ast *ast, Program *out_prog, FILE *out_text, Target out
     gen_string_scan();
     gen_array_access_runtime();
     gen_array_copy_runtime(TY_NONE,array_copy_label);
+    gen_array_adopt_runtime();
     gen_array_append_runtime(TY_NONE,array_append_label);
     gen_array_delete_runtime();
     gen_array_equal_runtime(TY_NONE,array_equal_label);
