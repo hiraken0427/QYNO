@@ -1,8 +1,8 @@
 {
   "name": "qyno-vscode",
-  "displayName": "QYNO 0.28.2",
+  "displayName": "QYNO 0.28.4",
   "description": "QYNOの構文表示、補完、定義参照とコンパイラ診断を行う拡張機能。",
-  "version": "0.28.2",
+  "version": "0.28.4",
   "publisher": "hiraken0427",
   "author": "hiraken0427",
   "license": "BSD-2-Clause",
@@ -108,7 +108,7 @@
           "default": "qyc",
           "scope": "machine-overridable",
           "restricted": true,
-          "description": "QYNO 0.28.2のqyc実行ファイルのパス。相対パスはワークスペースを基準とする。"
+          "description": "QYNO 0.28.4のqyc実行ファイルのパス。相対パスはワークスペースを基準とする。"
         },
         "qyno.diagnostics.delay": {
           "type": "integer",
@@ -128,7 +128,7 @@
   },
   "scripts": {
     "check": "node --check src/extension.js && node --check src/analysis.js && node --check src/catalog.js && node --check src/language.js && node --check src/initialization.js && node --check src/diagnostics.js",
-    "package": "vsce package --no-dependencies --out QYNO-0.28.2.vsix"
+    "package": "vsce package --no-dependencies --out QYNO-0.28.4.vsix"
   },
   "devDependencies": {
     "@vscode/vsce": "4.0.0"

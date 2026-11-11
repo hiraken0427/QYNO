@@ -1,59 +1,7 @@
-/* Linear scan over scalar SSA regions. Every opaque edge spills its live
- * set before the legacy evaluator runs; that evaluator owns all GC roots. */
-typedef struct {
-    MachineRegion *region;
-    int location[512],written[512];
-    int gp[7],fp[6],at;
-} MachineState;
+/* Emit a verified allocation plan. Opaque evaluation retains all of its
+ * ordinary GC roots, and cannot reenter this function's scalar regions. */
 static const Reg machine_gprs[7]={RAX,RCX,RDX,RSI,RDI,R8,R9};
-static int machine_float(Type ty){return ty==TY_FLOAT||ty==TY_DOUBLE;}
-static int machine_home(MachineState *s,int value)
-{return -(s->region->owner->opt_machine_base+(value+1)*8);}
-static void machine_spill(MachineState *s,int value)
-{
-    MachineInst *p=&s->region->inst[value];
-    int reg=s->location[value];
-    if(reg<0)return;
-    if(!s->written[value]){
-        if(machine_float(p->ty))x64_xmm_store(RBP,machine_home(s,value),reg,p->ty);
-        else x64_store(RBP,machine_home(s,value),machine_gprs[reg]);
-        s->written[value]=1;
-    }
-    (machine_float(p->ty)?s->fp:s->gp)[reg]=-1;s->location[value]=-1;
-}
-static void machine_flush(MachineState *s)
-{
-    int i;
-    for(i=0;i<s->at;i++)if(s->location[i]>=0){
-        if(s->region->inst[i].last>=s->at)machine_spill(s,i);
-        else{(machine_float(s->region->inst[i].ty)?s->fp:s->gp)[s->location[i]]=-1;s->location[i]=-1;}
-    }
-}
-static int machine_register(MachineState *s,int fp,int avoid_a,int avoid_b)
-{
-    int *owners=fp?s->fp:s->gp;
-    int count=fp?(machine_carry?5:6):7,i,victim=-1;
-    for(i=0;i<count;i++){
-        int value=owners[i];
-        if(value>=0&&value!=avoid_a&&value!=avoid_b&&s->region->inst[value].last<s->at){s->location[value]=-1;owners[i]=-1;}
-        if(owners[i]<0)return i;
-        if(value!=avoid_a&&value!=avoid_b&&(victim<0||s->region->inst[value].last>s->region->inst[owners[victim]].last))victim=i;
-    }
-    if(victim<0)fatal("内部エラー: 数値レジスタを割り当てられません");
-    machine_spill(s,owners[victim]);return victim;
-}
-static int machine_operand(MachineState *s,int value,int other)
-{
-    int reg;
-    MachineInst *p;
-    if(value<0)return -1;
-    if(s->location[value]>=0)return s->location[value];
-    if(!s->written[value])fatal("内部エラー: 退避されていない値です");
-    p=&s->region->inst[value];reg=machine_register(s,machine_float(p->ty),value,other);
-    if(machine_float(p->ty))x64_xmm_load(reg,RBP,machine_home(s,value),p->ty);
-    else x64_load(machine_gprs[reg],RBP,machine_home(s,value));
-    (machine_float(p->ty)?s->fp:s->gp)[reg]=value;s->location[value]=reg;return reg;
-}
+static int machine_float(Type ty){return machine_is_float(ty);}
 static void machine_root(Var *v,Token *tok,Reg reg)
 {
     if(v->is_ref){gen_ref_place(v,tok,reg);x64_load(reg,reg,0);}
@@ -116,57 +64,52 @@ static Var *machine_loop_carry(Node *loop)
     }
     return stores==1?v:NULL;
 }
-static int gen_machine(Node *node,int statements)
+
+typedef struct { MachineRegion *region; } MachineEmitter;
+static int machine_slot(MachineRegion *r,int slot)
 {
-    MachineRegion *r=node->opt_machine;
-    MachineState state,*s=&state;
-    MachineInst *p;
-    int i,a,b,d,reg,base_depth=depth;
+    if(slot<0||slot>=r->owner->opt_machine_slots)fatal("内部エラー: 数値退避先がフレーム外です");
+    return -(r->owner->opt_machine_base+(slot+1)*8);
+}
+static int machine_emit(void *context,const MachineEvent *event)
+{
+    MachineRegion *r=((MachineEmitter *)context)->region;
+    const MachineEvent *e=event;
+    MachineInst *p=&r->inst[e->value];
+    int a=e->a,b=e->b,d=e->d;
     Reg dst,left,right;
     Cond cc;
-    if(machine_disabled||!r||r->owner!=emitting_function||r->statements!=statements)return 0;
-    if(!machine_region_valid(r))fatal("内部エラー: 不正な数値命令です");
-    x64_comment("scalar region: %d operations",r->count);
-    memset(s,0,sizeof(*s));s->region=r;
-    for(i=0;i<512;i++)s->location[i]=-1;
-    for(i=0;i<7;i++)s->gp[i]=-1;
-    for(i=0;i<6;i++)s->fp[i]=-1;
-    for(i=0;i<r->count;i++){
-        s->at=i;p=&r->inst[i];
-        if(p->op==MI_CONTEXT){collection_context(p->source->tok);continue;}
-        if(p->op==MI_REF_CHECK){if(p->root->is_ref)gen_ref_place(p->root,p->source->lhs->tok,R10);continue;}
-        if(p->op==MI_OPAQUE||(p->op==MI_STORE&&p->root->is_ref)||
-            (p->op==MI_BINARY&&type_is_integer(p->ty)&&(p->source->kind==ND_DIV||p->source->kind==ND_MOD))){
-            machine_flush(s);
-            if(p->op==MI_OPAQUE){
-                machine_disabled++;gen_expr(p->source);machine_disabled--;
-            }else if(p->op==MI_STORE){
-                x64_load(RAX,RBP,machine_home(s,p->a));gen_store_var(p->root,p->source->tok);continue;
-            }else{
-                x64_load(RAX,RBP,machine_home(s,p->a));x64_load(RDI,RBP,machine_home(s,p->b));
-                gen_div_check(p->source);
-                if(integer_unsigned(p->ty)){x64_xor(RDX,RDX);x64_div(RDI);}else{x64_cqo();x64_idiv(RDI);}
-                if(p->source->kind==ND_MOD)x64_mov(RAX,RDX);
-                gen_integer_normalize(p->ty);
-            }
-            d=machine_register(s,machine_float(p->ty),-1,-1);machine_from_rax(p->ty,d);
-            (machine_float(p->ty)?s->fp:s->gp)[d]=i;s->location[i]=d;continue;
+    if(e->kind==ME_SPILL){machine_store(p->ty,e->reg,RBP,machine_slot(r,e->slot));return 1;}
+    if(e->kind==ME_RELOAD){machine_load(p->ty,e->reg,RBP,machine_slot(r,e->slot));return 1;}
+    if(e->kind==ME_FORGET||e->kind==ME_EXPIRE)return 1;
+    if(e->kind==ME_RESULT){machine_result_rax(p->ty,e->reg);return 1;}
+    if(e->kind!=ME_STEP)fatal("内部エラー: 数値退避イベントが不正です");
+    if(p->op==MI_CONTEXT){collection_context(p->source->tok);return 1;}
+    if(p->op==MI_REF_CHECK){if(p->root->is_ref)gen_ref_place(p->root,p->source->lhs->tok,R10);return 1;}
+    if(machine_is_barrier(p)){
+        if(p->op==MI_OPAQUE){machine_disabled++;gen_expr(p->source);machine_disabled--;}
+        else if(p->op==MI_STORE){
+            x64_load(RAX,RBP,machine_slot(r,e->sa));gen_store_var(p->root,p->source->tok);return 1;
+        }else{
+            x64_load(RAX,RBP,machine_slot(r,e->sa));x64_load(RDI,RBP,machine_slot(r,e->sb));
+            gen_div_check(p->source);
+            if(integer_unsigned(p->ty)){x64_xor(RDX,RDX);x64_div(RDI);}else{x64_cqo();x64_idiv(RDI);}
+            if(p->source->kind==ND_MOD)x64_mov(RAX,RDX);
+            gen_integer_normalize(p->ty);
         }
-        a=machine_operand(s,p->a,p->b);b=machine_operand(s,p->b,p->a);
-        if(p->op==MI_STORE){
-            if(p->root==machine_carry)x64_xmm_move(5,a);
-            machine_store(r->inst[p->a].ty,a,RBP,-p->root->offset);continue;
-        }
-        if(p->op==MI_FIELD_STORE){
-            /* Only a direct, unescaped value receiver and an effect-free
-             * numeric RHS reach this instruction. Re-resolve after the RHS. */
-            x64_load(R11,RBP,-p->root->offset);x64_load(R11,R11,24);
-            machine_store(r->inst[p->a].ty,a,R11,(int)p->bits*8);continue;
-        }
-        d=machine_register(s,machine_float(p->ty),p->a,p->b);
-        dst=machine_float(p->ty)?R10:machine_gprs[d];
-        left=p->a>=0&&!machine_float(r->inst[p->a].ty)?machine_gprs[a]:R10;
-        right=p->b>=0&&!machine_float(r->inst[p->b].ty)?machine_gprs[b]:R11;
+        machine_from_rax(p->ty,d);return 1;
+    }
+    if(p->op==MI_STORE){
+        if(p->root==machine_carry)x64_xmm_move(5,a);
+        machine_store(r->inst[p->a].ty,a,RBP,-p->root->offset);return 1;
+    }
+    if(p->op==MI_FIELD_STORE){
+        x64_load(R11,RBP,-p->root->offset);x64_load(R11,R11,24);
+        machine_store(r->inst[p->a].ty,a,R11,(int)p->bits*8);return 1;
+    }
+    dst=machine_float(p->ty)?R10:machine_gprs[d];
+    left=p->a>=0&&!machine_float(r->inst[p->a].ty)?machine_gprs[a]:R10;
+    right=p->b>=0&&!machine_float(r->inst[p->b].ty)?machine_gprs[b]:R11;
         switch(p->op){
         case MI_CONSTANT:
             if(machine_float(p->ty)){x64_mov_imm(R10,integer_bits(p->bits));if(p->ty==TY_DOUBLE)x64_movq_to_xmm(d,R10);else x64_movd_to_xmm(d,R10);}
@@ -221,10 +164,30 @@ static int gen_machine(Node *node,int statements)
             x64_cmp(left,right);x64_setcc(cc,dst);x64_movzx8(dst,dst);break;
         default:fatal("内部エラー: 数値命令が未対応です");
         }
-        (machine_float(p->ty)?s->fp:s->gp)[d]=i;s->location[i]=d;
-    }
-    if(!statements){s->at=r->count;reg=machine_operand(s,r->result,-1);machine_result_rax(r->inst[r->result].ty,reg);}
-    if(depth!=base_depth)fatal("内部エラー: 数値命令のスタックが不整合です");
-    x64_comment("end scalar region");
+
     return 1;
+}
+static int gen_machine(Node *node,int statements)
+{
+    MachineRegion *r=node->opt_machine;
+    MachinePlan *plan;
+    MachineEmitter emitter;
+    int i,peak,base_depth=depth,profile=machine_carry!=NULL;
+    if(machine_disabled||!r||r->owner!=emitting_function||r->statements!=statements)return 0;
+    if(!machine_region_valid(r))fatal("内部エラー: 不正な数値命令です");
+    emitter.region=r;
+    x64_comment("scalar region: %d operations",r->count);
+    if(r->owner->opt_machine_fixed){
+        x64_comment("scalar spill slots: %d (fixed)",r->owner->opt_machine_slots);
+        if(!machine_allocate(r,profile,1,machine_emit,&emitter,&peak)||peak>r->owner->opt_machine_slots)
+            fatal("内部エラー: 固定数値退避領域が不整合です");
+    }else{
+        plan=r->plans[profile];
+        if(!plan||plan->profile!=profile||!machine_plan_valid(r,plan)||plan->spill_count>r->owner->opt_machine_slots)
+            fatal("内部エラー: 数値退避計画が不整合です");
+        x64_comment("scalar spill slots: %d",plan->spill_count);
+        for(i=0;i<plan->count;i++)machine_emit(&emitter,&plan->events[i]);
+    }
+    if(depth!=base_depth)fatal("内部エラー: 数値命令のスタックが不整合です");
+    x64_comment("end scalar region");return 1;
 }

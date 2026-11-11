@@ -35,6 +35,7 @@ static void gen_library_size_runtime(void)
     SizeCode *p;
     for(p=size_codes;p;p=p->next){
         int bits=value_bit_width(p->ty);
+        x64_provide(p->label);
         if(bits>=0){x64_bind(p->label);x64_mov_imm(RAX,bits);x64_ret();continue;}
         if(type_is_text(p->ty)){
             int ok=new_label("lib.size.text.ok");
