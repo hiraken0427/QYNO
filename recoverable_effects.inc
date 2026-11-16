@@ -8,9 +8,9 @@ static void io_controls(Node *list,int caught,int final_loop,int loops)
             for(arm=n->els;arm;arm=arm->next)io_controls(arm->then,1,final_loop,loops);
             if(n->rhs)io_controls(n->rhs,0,loops+1,loops);
         }else{
-            if(n->kind==ND_THROW&&!caught)error_tok(n->tok,"throw; は case の本体でだけ使えます");
+            if(n->kind==ND_THROW&&!caught)error_tok(n->tok,QMSG_0337);
             if(final_loop&&(n->kind==ND_RETURN||((n->kind==ND_BREAK||n->kind==ND_CONTINUE)&&loops<final_loop)))
-                error_tok(n->tok,"finally の外へ return・break・continue できません");
+                error_tok(n->tok,QMSG_0185);
             if(n->kind==ND_IF){io_controls(n->then,caught,final_loop,loops);io_controls(n->els,caught,final_loop,loops);}
             if(n->kind==ND_FOR||n->kind==ND_WHILE)io_controls(n->then,caught,final_loop,loops+1);
         }

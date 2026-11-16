@@ -67,9 +67,9 @@ const char *type_name(Type ty)
     case TY_VOID:
         return "void";
     case TY_ADDR:
-        return "場所";
+        return QMSG_0600;
     default:
-        return "（型なし）";
+        return QMSG_0791;
     }
 }
 
@@ -203,7 +203,7 @@ static Node *new_cast(Node *expr, Type ty)
 
     node = calloc(1, sizeof(Node));
     if (node == NULL) {
-        fatal("メモリを確保できません");
+        fatal(QMSG_0437);
     }
     node->kind = ND_CAST;
     node->lhs = expr;
@@ -252,7 +252,7 @@ static Node *convert(Node *expr, Type to)
     if(type_is_enum(to)&&type_is_integer(from)&&is_const_expr(expr)){
         Value v=eval_const(expr);
         if(type_is_wide(v.ty))v=wide_calculate(expr,W_CONVERT,v,(Value){0},TY_I32,0);
-        if(!integer_fits(v.i,v.ty,TY_I32)||!enum_value_member(to,v.i))error_tok(expr->tok,"enum に宣言されていない数値です");
+        if(!integer_fits(v.i,v.ty,TY_I32)||!enum_value_member(to,v.i))error_tok(expr->tok,QMSG_0142);
         return new_cast(expr,to);
     }
     if (type_is_complex(to) && is_number(from)) {
@@ -298,9 +298,9 @@ static Node *coerce(Node *expr, Type to, Token *where, const char *what)
     result = convert(expr, to);
     if (result == NULL) {
         if (expr->ty == TY_DOUBLE && to == TY_FLOAT) {
-            error_tok(where, "%s：double の値は float に自動変換できません（リテラルだけでできた式なら変換できます）", what);
+            error_tok(where, QMSG_0064, what);
         }
-        error_tok(where, "%s：%s の値は %s に変換できません", what, type_name(expr->ty), type_name(to));
+        error_tok(where, QMSG_0063, what, type_name(expr->ty), type_name(to));
     }
     return result;
 }
@@ -318,7 +318,7 @@ static Type binary_type(Node *lhs, Node *rhs)
         return l;
     }
     if (type_is_complex(l) || type_is_complex(r)) {
-        if(l==TY_QUAD||r==TY_QUAD)error_tok(lhs->tok,"quadruple と複素数を混ぜる場合は成分の型を明示して変換してください");
+        if(l==TY_QUAD||r==TY_QUAD)error_tok(lhs->tok,QMSG_0310);
         if (l == TY_C64 && is_float_literal(rhs)) return TY_C64;
         if (r == TY_C64 && is_float_literal(lhs)) return TY_C64;
         return complex_common(l, r);
@@ -328,7 +328,7 @@ static Type binary_type(Node *lhs, Node *rhs)
         if (integer_literal(rhs) && integer_constant_fits(rhs, l)) return l;
         if (integer_literal(lhs) && integer_constant_fits(lhs, r)) return r;
         common = integer_common(l, r);
-        if (common == TY_NONE) error_tok(lhs->tok, "整数の型 %s と %s は安全に統一できません。明示的に変換してください", type_name(l), type_name(r));
+        if (common == TY_NONE) error_tok(lhs->tok, QMSG_0659, type_name(l), type_name(r));
         return common;
     }
     if (type_is_integer(l)) return r;
@@ -382,27 +382,27 @@ static void check_cmp(Node *cmp)
         check_expr(cmp->lhs);
         check_expected(cmp->rhs, cmp->lhs->ty);
     }
-    if(type_is_enum(cmp->lhs->ty)&&type_is_integer(cmp->rhs->ty))cmp->rhs=coerce(cmp->rhs,cmp->lhs->ty,cmp->rhs->tok,"enum の比較");
-    if(type_is_enum(cmp->rhs->ty)&&type_is_integer(cmp->lhs->ty))cmp->lhs=coerce(cmp->lhs,cmp->rhs->ty,cmp->lhs->tok,"enum の比較");
+    if(type_is_enum(cmp->lhs->ty)&&type_is_integer(cmp->rhs->ty))cmp->rhs=coerce(cmp->rhs,cmp->lhs->ty,cmp->rhs->tok,QMSG_0161);
+    if(type_is_enum(cmp->rhs->ty)&&type_is_integer(cmp->lhs->ty))cmp->lhs=coerce(cmp->lhs,cmp->rhs->ty,cmp->lhs->tok,QMSG_0161);
     l = cmp->lhs->ty;
     r = cmp->rhs->ty;
     kind = (CmpKind)cmp->val;
     cmp->ty = TY_BOOL;
-    if(type_is_enum(l)||type_is_enum(r)){if(l!=r||(kind!=CMP_EQ&&kind!=CMP_NE))error_tok(cmp->tok,"enum は同じ型で == / != を使って比較してください");cmp->cmp_ty=l;return;}
+    if(type_is_enum(l)||type_is_enum(r)){if(l!=r||(kind!=CMP_EQ&&kind!=CMP_NE))error_tok(cmp->tok,QMSG_0163);cmp->cmp_ty=l;return;}
     if (type_is_model(l) || type_is_model(r)) {
-        if (l != r || (kind != CMP_EQ && kind != CMP_NE)) error_tok(cmp->tok, "モデルは同じ型で == または != を使って比較してください");
+        if (l != r || (kind != CMP_EQ && kind != CMP_NE)) error_tok(cmp->tok, QMSG_0457);
         cmp->cmp_ty = l; return;
     }
     if (type_is_array(l) || type_is_array(r)) {
         if (l != r || (kind != CMP_EQ && kind != CMP_NE)) {
-            error_tok(cmp->tok, "配列は同じ要素型・次元数で == または != を使って比較してください");
+            error_tok(cmp->tok, QMSG_0770);
         }
         cmp->cmp_ty = l;
         return;
     }
 
     if ((type_is_complex(l) || type_is_complex(r)) && is_number(l) && is_number(r)) {
-        if (kind != CMP_EQ && kind != CMP_NE) error_tok(cmp->tok, "複素数は == / != で比較してください");
+        if (kind != CMP_EQ && kind != CMP_NE) error_tok(cmp->tok, QMSG_0735);
         cmp->cmp_ty = binary_type(cmp->lhs, cmp->rhs); return;
     }
     if (is_numeric(l) && is_numeric(r)) {
@@ -411,10 +411,10 @@ static void check_cmp(Node *cmp)
     }
     if (l == TY_ADDR && r == TY_ADDR) {
         if (kind != CMP_EQ && kind != CMP_NE) {
-            error_tok(cmp->tok, "場所は == と != でしか比べられません（%s は使えません）", cmp_name(kind));
+            error_tok(cmp->tok, QMSG_0602, cmp_name(kind));
         }
         if (cmp->lhs->cmp_ty != TY_NONE && cmp->rhs->cmp_ty != TY_NONE && cmp->lhs->cmp_ty != cmp->rhs->cmp_ty) {
-            error_tok(cmp->tok, "%s の変数の場所と %s の変数の場所は比べられません",
+            error_tok(cmp->tok, QMSG_0033,
                      type_name(cmp->lhs->cmp_ty), type_name(cmp->rhs->cmp_ty));
         }
         cmp->cmp_ty = TY_ADDR;
@@ -422,19 +422,19 @@ static void check_cmp(Node *cmp)
     }
     if ((l == r && (l == TY_BOOL || l == TY_FILE || l == TY_VOID)) || (type_is_text(l) && type_is_text(r))) {
         if (kind != CMP_EQ && kind != CMP_NE) {
-            error_tok(cmp->tok, "%s は == と != でしか比べられません（%s は使えません）",
+            error_tok(cmp->tok, QMSG_0042,
                      type_name(l), cmp_name(kind));
         }
         cmp->cmp_ty = type_is_text(l) ? TY_STR : l;
         return;
     }
-    error_tok(cmp->tok, "%s と %s は比べられません", type_name(l), type_name(r));
+    error_tok(cmp->tok, QMSG_0018, type_name(l), type_name(r));
 }
 
 static void require_bool(Node *node, const char *what)
 {
     if (node->ty != TY_BOOL) {
-        error_tok(node->tok, "%sは bool にしてください（%s が指定されています）",
+        error_tok(node->tok, QMSG_0061,
                  what, type_name(node->ty));
     }
 }
@@ -469,61 +469,61 @@ static void check_file_builtin(Node *node)
     if(b==BI_FILE_TRY_OPEN){check_try_open(node);return;}
     if(b>=BI_FILE_TELL){
         Node *offset=second,*origin=offset?offset->next:NULL;
-        if((b==BI_FILE_SEEK&&(node->nargs<2||node->nargs>3))||(b!=BI_FILE_SEEK&&node->nargs!=1))error_tok(node->tok,"io.file.%sの引数が不正です",builtin_name(b));
-        check_expr(first);if(first->ty!=TY_FILE)error_tok(first->tok,"fileが必要です");
+        if((b==BI_FILE_SEEK&&(node->nargs<2||node->nargs>3))||(b!=BI_FILE_SEEK&&node->nargs!=1))error_tok(node->tok,QMSG_0273,builtin_name(b));
+        check_expr(first);if(first->ty!=TY_FILE)error_tok(first->tok,QMSG_0184);
         if(b==BI_FILE_SEEK){Type e=standard_type(cur_ast,"io.file","SeekOrigin");
-            if(readonly_place(first))error_tok(first->tok,"readonlyのfileでseekできません");
-            check_expected(offset,TY_I64);if(!type_is_integer(offset->ty))error_tok(offset->tok,"seekのoffsetはint_64にしてください");offset=coerce(offset,TY_I64,offset->tok,"seek offset");first->next=offset;
-            if(!origin){origin=calloc(1,sizeof(*origin));if(!origin)fatal("SeekOriginを確保できません");origin->kind=ND_NUM;origin->ty=e;origin->tok=node->tok;offset->next=origin;node->nargs=3;}
+            if(readonly_place(first))error_tok(first->tok,QMSG_0321);
+            check_expected(offset,TY_I64);if(!type_is_integer(offset->ty))error_tok(offset->tok,QMSG_0330);offset=coerce(offset,TY_I64,offset->tok,QMSG_0852);first->next=offset;
+            if(!origin){origin=calloc(1,sizeof(*origin));if(!origin)fatal(QMSG_0090);origin->kind=ND_NUM;origin->ty=e;origin->tok=node->tok;offset->next=origin;node->nargs=3;}
             check_expected(origin,e);origin=coerce(origin,e,origin->tok,"SeekOrigin");offset->next=origin;
-            if(is_const_expr(origin)&&eval_const(origin).i==0&&is_const_expr(offset)&&eval_const(offset).i<0)error_tok(offset->tok,"beginからのoffsetは非負にしてください");
+            if(is_const_expr(origin)&&eval_const(origin).i==0&&is_const_expr(offset)&&eval_const(offset).i<0)error_tok(offset->tok,QMSG_0103);
         }
         node->ty=b==BI_FILE_MODIFIED_AT?TY_QUAD:TY_I64;return;
     }
     if (node->nargs != expected && !(b == BI_FILE_OPEN && node->nargs == 2))
-        error_tok(node->tok, "io.file.%s の引数の数が不正です（%d 個）", builtin_name(b), node->nargs);
+        error_tok(node->tok, QMSG_0272, builtin_name(b), node->nargs);
     if ((b == BI_FILE_READ_BYTES || b == BI_FILE_WRITE_BYTES) && first->kind == ND_REFARG)
-        error_tok(first->tok, "バイナリI/Oの呼び出しに ref は付けません");
+        error_tok(first->tok, QMSG_0404);
     check_expr(first);
     if (b == BI_FILE_OPEN || b == BI_FILE_EXISTS) {
-        if (!type_is_text(first->ty)) error_tok(first->tok, "ファイルのパスは str・char にしてください");
+        if (!type_is_text(first->ty)) error_tok(first->tok, QMSG_0410);
     } else {
-        if (first->ty != TY_FILE) error_tok(first->tok, "io.file.%s には file が必要です", builtin_name(b));
+        if (first->ty != TY_FILE) error_tok(first->tok, QMSG_0271, builtin_name(b));
         if (b != BI_FILE_IS_OPEN && readonly_place(first) && place_root(first)->var->is_readonly)
-            error_tok(first->tok, "readonly の file に %s は使えません（共有状態が変化します）", builtin_name(b));
+            error_tok(first->tok, QMSG_0317, builtin_name(b));
     }
     if (b == BI_FILE_OPEN) {
         if (second == NULL) {
             second = calloc(1, sizeof(*second));
-            if (!second) fatal("既定モードを確保できません");
+            if (!second) fatal(QMSG_0692);
             second->kind = ND_STRLIT; second->ty = TY_STR; second->tok = node->tok;
             second->str = "r"; second->str_len = 1; first->next = second; node->nargs = 2;
         }
         check_expr(second);
-        if (!type_is_text(second->ty)) error_tok(second->tok, "ファイルのモードは str・char にしてください");
+        if (!type_is_text(second->ty)) error_tok(second->tok, QMSG_0412);
         if (is_const_expr(second)) {
             Value mode = eval_const(second);
             if ((mode.len != 1 && (mode.len != 2 || mode.s[1] != 'b')) || (mode.s[0] != 'r' && mode.s[0] != 'w' && mode.s[0] != 'a'))
-                error_tok(second->tok, "ファイルのモードは r・w・a・rb・wb・ab のいずれかです");
+                error_tok(second->tok, QMSG_0411);
         }
         node->ty = TY_FILE;
     } else if (b == BI_FILE_READ_BYTES || b == BI_FILE_WRITE_BYTES) {
-        if (second->kind == ND_REFARG) error_tok(second->tok, "バイナリI/Oの呼び出しに ref は付けません");
+        if (second->kind == ND_REFARG) error_tok(second->tok, QMSG_0404);
         if (b == BI_FILE_READ_BYTES) {
             check_expected(second, TY_I64);
-            if (!type_is_integer(second->ty)) error_tok(second->tok, "read_bytes の count は非負の int_64 にしてください");
-            second = coerce(second, TY_I64, second->tok, "read_bytes の count"); first->next = second;
-            if (is_const_expr(second) && eval_const(second).i < 0) error_tok(second->tok, "read_bytes の count は非負にしてください");
+            if (!type_is_integer(second->ty)) error_tok(second->tok, QMSG_0315);
+            second = coerce(second, TY_I64, second->tok, QMSG_0313); first->next = second;
+            if (is_const_expr(second) && eval_const(second).i < 0) error_tok(second->tok, QMSG_0314);
             node->ty = array_type(TY_U8);
         } else {
             check_expected(second, array_type(TY_U8));
-            if (second->ty != array_type(TY_U8)) error_tok(second->tok, "write_bytes の data は unsigned int_8 の1次元配列にしてください");
+            if (second->ty != array_type(TY_U8)) error_tok(second->tok, QMSG_0373);
             node->ty = TY_I64;
         }
     } else if (b == BI_FILE_READ_LINE) {
         Var target = {0};
         target.ty = TY_STR;
-        if (second->kind != ND_REFARG) error_tok(second->tok, "read_line の出力先は ref str を指定してください");
+        if (second->kind != ND_REFARG) error_tok(second->tok, QMSG_0316);
         check_ref_arg(second, &target, 2);
         node->ty = TY_BOOL;
     } else if (b == BI_FILE_WRITE) {
@@ -532,12 +532,12 @@ static void check_file_builtin(Node *node)
             check_print_parts(second->lhs);
             for (part = second->lhs; part; part = part->next)
                 if (part->kind != ND_STR && !is_number(part->ty) && !type_is_enum(part->ty) && part->ty != TY_BOOL && part->ty != TY_VOID && !type_is_text(part->ty))
-                    error_tok(part->tok, "write の埋め込みは int・float・double・bool・str・char にしてください");
+                    error_tok(part->tok, QMSG_0372);
         }
         else {
             check_expr(second);
             if (!is_number(second->ty) && !type_is_enum(second->ty) && second->ty != TY_BOOL && second->ty != TY_VOID && !type_is_text(second->ty))
-                error_tok(second->tok, "write できるのは int・float・double・bool・str・char です");
+                error_tok(second->tok, QMSG_0370);
         }
         node->ty = TY_I64;
     } else if (b == BI_FILE_CLOSE) {
@@ -571,8 +571,8 @@ static void check_builtin(Node *node)
     if(node->lhs&&(b==BI_INT||b==BI_STR)){
         check_expr(node->lhs);
         if(type_is_enum(node->lhs->ty)){
-            if(node->nargs!=1)error_tok(node->tok,"enum の変換には値を1個だけ指定してください");
-            if(node->lhs->arg_name)error_tok(node->lhs->arg_name,"enum からの変換に名前付き引数は指定できません");
+            if(node->nargs!=1)error_tok(node->tok,QMSG_0156);
+            if(node->lhs->arg_name)error_tok(node->lhs->arg_name,QMSG_0140);
             node->kind=ND_CAST;node->ty=b==BI_STR?TY_STR:node->cmp_ty?node->cmp_ty:TY_INT;
             if(is_const_expr(node))(void)eval_const(node);
             return;
@@ -591,13 +591,13 @@ static void check_builtin(Node *node)
     max_args = (b == BI_ROUND || b == BI_CEIL || b == BI_FLOOR) ? 2 : 1;
     if (node->nargs < min_args || node->nargs > max_args) {
         if (max_args == 2) {
-            error_tok(node->tok, "%s の引数は 1 個か 2 個（値, 桁数）です（%d 個渡しています）",
+            error_tok(node->tok, QMSG_0035,
                      builtin_name(b), node->nargs);
         }
-        error_tok(node->tok, "%s の引数は 1 個です（%d 個渡しています）", builtin_name(b), node->nargs);
+        error_tok(node->tok, QMSG_0036, builtin_name(b), node->nargs);
     }
     x = node->lhs;
-    if (x->arg_name) error_tok(x->arg_name, "変換する値を位置引数で指定してください");
+    if (x->arg_name) error_tok(x->arg_name, QMSG_0607);
     digits = x->next;
     check_expr(x);
     if ((b==BI_HALF || b==BI_QUAD) && type_is_text(x->ty)) { node->ty=b==BI_HALF?TY_HALF:TY_QUAD;if(is_const_expr(x))(void)wide_read_value(node,eval_const(x),node->ty,0);return; }
@@ -605,7 +605,7 @@ static void check_builtin(Node *node)
     if(b==BI_STR&&x->ty==TY_VOID){node->ty=TY_STR;return;}
     if (b == BI_CHAR || b == BI_STR) {
         if (!type_is_text(x->ty)) {
-            error_tok(x->tok, "%s() に渡せるのは str・char です", builtin_name(b));
+            error_tok(x->tok, QMSG_0052, builtin_name(b));
         }
         node->ty = b == BI_CHAR ? TY_CHAR : TY_STR;
         if (b == BI_CHAR && is_const_expr(x)) {
@@ -616,13 +616,13 @@ static void check_builtin(Node *node)
     if (b == BI_SQRT && type_is_complex(x->ty)) { node->ty = x->ty; return; }
     if (b == BI_ABS && type_is_complex(x->ty)) { node->ty = complex_component(x->ty); return; }
     if (!is_numeric(x->ty)) {
-        error_tok(x->tok, "%s に渡せるのは数値（int・float・double）です（%s が渡されています）",
+        error_tok(x->tok, QMSG_0029,
                  builtin_name(b), type_name(x->ty));
     }
     if (digits != NULL) {
         check_expr(digits);
         if (!type_is_integer(digits->ty)) {
-            error_tok(digits->tok, "%s の桁数は int にしてください（%s が渡されています）",
+            error_tok(digits->tok, QMSG_0039,
                      builtin_name(b), type_name(digits->ty));
         }
     }
@@ -641,7 +641,7 @@ static void check_builtin(Node *node)
         if (is_const_expr(x)) {
             v = eval_const(x);
             if ((type_is_wide(x->ty)||type_is_wide(node->ty)) ? !wide_fits(v,node->ty) : type_is_integer(x->ty) ? !integer_fits(v.i, x->ty, node->ty) : !real_fits_integer(v.d, node->ty)) {
-                error_tok(node->tok, "int() に int の範囲外の値（または NaN）が渡されています");
+                error_tok(node->tok, QMSG_0243);
             }
         }
         return;
@@ -684,7 +684,7 @@ static void check_input(Node *node)
             check_expr(node->lhs);
             ty = node->lhs->ty;
             if (!is_number(ty) && !type_is_enum(ty) && ty != TY_BOOL && ty != TY_VOID && !type_is_text(ty))
-                error_tok(node->lhs->tok, "input のプロンプトは int・float・double・bool・str・char にしてください");
+                error_tok(node->lhs->tok, QMSG_0237);
         }
         node->ty = TY_STR;
         return;
@@ -694,9 +694,9 @@ static void check_input(Node *node)
         check_expr(f->var);
         check_place(f->var);
         ty = f->var->ty;
-        if (f->base && !type_is_integer(ty)) error_tok(f->var->tok, "基数指定の入力先は int にしてください");
+        if (f->base && !type_is_integer(ty)) error_tok(f->var->tok, QMSG_0597);
         if (!is_number(ty) && !type_is_enum(ty) && ty != TY_BOOL && ty != TY_VOID && !type_is_text(ty))
-            error_tok(f->var->tok, "%s には直接入力できません。変数または末端の配列要素を指定してください", type_name(ty));
+            error_tok(f->var->tok, QMSG_0024, type_name(ty));
         /* 文字列内の1文字への入力も1スカラー値に制限する。 */
         f->temp->ty = f->var->kind == ND_INDEX && type_is_text(f->var->lhs->ty) ? TY_CHAR : ty;
     }
@@ -714,21 +714,21 @@ static void check_ref_target(Var *v, Node *e, const char *what)
 
     check_expr(e);
     if (e->ty != TY_ADDR) {
-        error_tok(e->tok, "%s：ref の変数には場所（x.addr か none）を入れてください（%s が指定されています）",
+        error_tok(e->tok, QMSG_0065,
                  what, type_name(e->ty));
     }
     if (e->kind == ND_NONE) {
         return;
     }
     if (e->cmp_ty != v->ty) {
-        error_tok(e->tok, "%s：%s の ref の変数には、%s の変数の場所を入れてください（%s の変数の場所が指定されています）",
+        error_tok(e->tok, QMSG_0062,
                  what, type_name(v->ty), type_name(v->ty), type_name(e->cmp_ty));
     }
     if (e->kind == ND_ADDR) {
         target = e->lhs->var;
         check_ref_limits(v, target, e->tok);
         if (target->depth > v->depth) {
-            error_tok(e->tok, "%s：内側のブロックの変数 %.*s は指せません（ブロックを抜けると消えるため）",
+            error_tok(e->tok, QMSG_0066,
                      what, target->name_len, target->name);
         }
     }
@@ -747,16 +747,16 @@ static void check_ref_arg(Node *arg, Var *param, int index)
     root = arg->lhs;
     while (root->kind == ND_INDEX) {
         if (!type_is_array(root->lhs->ty) && !type_is_model(root->lhs->ty))
-            error_tok(root->tok, "文字列内の文字は ref で渡せません。char 配列の要素を指定してください");
+            error_tok(root->tok, QMSG_0691);
         rank++;
         root = root->lhs;
     }
-    if (v->is_loop) error_tok(arg->tok, "%d 番目の引数：for 文の繰り返しの変数は ref で渡せません", index);
+    if (v->is_loop) error_tok(arg->tok, QMSG_0015, index);
     if (type_is_interface(param->ty)) {
         if (!implements_type(arg->lhs->ty, param->ty))
-            error_tok(arg->tok, "%s は interface %s を implements していません。同じ契約の ref を渡してください", type_name(arg->lhs->ty), type_name(param->ty));
+            error_tok(arg->tok, QMSG_0044, type_name(arg->lhs->ty), type_name(param->ty));
     } else if (arg->lhs->ty != param->ty)
-        error_tok(arg->tok, "%d 番目の引数：ref の引数の型は %s です（%s は渡せません。ref では型を変換しません）",
+        error_tok(arg->tok, QMSG_0016,
                   index, type_name(param->ty), type_name(arg->lhs->ty));
     if (rank == 0) check_ref_limits(param, v, arg->tok);
     if (param->is_readonly && v->is_const) materialize_const_ref(arg, v);
@@ -795,10 +795,10 @@ static void check_call(Node *node)
     }
     fn = node->func;
     if (!fn->model && !fn->contract && same_name(fn->name, fn->name_len, "main", 4)) {
-        error_tok(node->tok, "main は呼び出せません");
+        error_tok(node->tok, QMSG_0290);
     }
     if (node->nargs != fn->param_count) {
-        error_tok(node->tok, "関数 %.*s の引数は %d 個です（%d 個渡しています）",
+        error_tok(node->tok, QMSG_0779,
                  fn->name_len, fn->name, fn->param_count, node->nargs);
     }
     if (fn->is_generic) fn = node->func = specialize_generic_call(node);
@@ -813,17 +813,17 @@ static void check_call(Node *node)
         arg->next = NULL;
         if (param->is_ref) {
             if (arg->kind != ND_REFARG) {
-                error_tok(arg->tok, "%d 番目の引数は ref の引数です。呼び出し側にも ref を書いてください（例：f(ref x)）", i);
+                error_tok(arg->tok, QMSG_0013, i);
             }
             check_ref_arg(arg, param, i);
             cur = cur->next = arg;
         } else {
             if (arg->kind == ND_REFARG) {
-                error_tok(arg->tok, "%d 番目の引数は値渡しの引数なので、ref は付けられません", i);
+                error_tok(arg->tok, QMSG_0014, i);
             }
             check_expected(arg, param->ty);
             check_value_transfer(arg);
-            snprintf(what, sizeof(what), "%d 番目の引数", i);
+            snprintf(what, sizeof(what), QMSG_0012, i);
             cur = cur->next = coerce(arg, param->ty, arg->tok, what);
             if (type_is_model(param->ty)) {
                 Node *converted = copy_model(cur); Node *before = &head;
@@ -857,7 +857,7 @@ static void check_expr(Node *node)
 
     if (node->kind == ND_VAR && node->var && type_is_interface(node->var->ty) &&
         (allowed_interface_use != node || node->explicit_value))
-        error_tok(node->tok, "interface 引数は契約メソッドの呼び出しと同じ契約への ref 転送にだけ使用できます");
+        error_tok(node->tok, QMSG_0269);
 
     /* 比較の連鎖では同じ式を2つの比較から参照するので、確認済みなら何もしない */
     if (node->ty != TY_NONE) {
@@ -895,7 +895,7 @@ static void check_expr(Node *node)
         if (type_is_complex(node->lhs->ty)) {
             if (!strcmp(node->name, "real")) node->kind = ND_CREAL;
             else if (!strcmp(node->name, "imag")) node->kind = ND_CIMAG;
-            else error_tok(node->tok, "複素数の成分は real / imag です");
+            else error_tok(node->tok, QMSG_0734);
             node->ty = complex_component(node->lhs->ty); return;
         }
         check_model_field(node); return;
@@ -914,19 +914,19 @@ static void check_expr(Node *node)
     case ND_INDEX:
         check_expr(node->lhs);
         if (!type_is_text(node->lhs->ty) && !type_is_array(node->lhs->ty)) {
-            error_tok(node->tok, "添字と length は str・char に使えます（%s が指定されています）", type_name(node->lhs->ty));
+            error_tok(node->tok, QMSG_0710, type_name(node->lhs->ty));
         }
         node->ty = node->kind == ND_LENGTH ? TY_I64 :
             type_is_array(node->lhs->ty) ? array_element(node->lhs->ty) : TY_STR;
         if (node->kind == ND_INDEX) {
             check_expr(node->rhs);
-            if (!type_is_integer(node->rhs->ty)) error_tok(node->rhs->tok, "添字は整数型にしてください");
+            if (!type_is_integer(node->rhs->ty)) error_tok(node->rhs->tok, QMSG_0712);
             node->rhs = new_cast(node->rhs, TY_I64);
             if (is_const_expr(node->rhs)) {
                 long long index = eval_const(node->rhs).i;
                 long long maximum = expression_max_length(node->lhs);
                 if (index < 0 || (maximum >= 0 && index >= maximum)) {
-                    error_tok(node->rhs->tok, "%sの添字が範囲外です", type_is_array(node->lhs->ty) ? "配列" : "文字列");
+                    error_tok(node->rhs->tok, QMSG_0060, type_is_array(node->lhs->ty) ? QMSG_0748 : QMSG_0670);
                 }
             }
         }
@@ -947,7 +947,7 @@ static void check_expr(Node *node)
         check_builtin(node);
         return;
     case ND_FORMAT:
-        error_tok(node->tok, "文字列の {式} は print または io.file.write の出力に使ってください");
+        error_tok(node->tok, QMSG_0672);
         return;
     case ND_INPUT:
         check_input(node);
@@ -955,9 +955,9 @@ static void check_expr(Node *node)
     case ND_ADDR:
         check_expr(node->lhs);
         if (node->lhs->var->is_readonly)
-            error_tok(node->tok, "readonly の参照から addr を取り出せません");
+            error_tok(node->tok, QMSG_0319);
         if (node->lhs->var->is_const) {
-            error_tok(node->tok, "定数 %.*s は場所（addr）を持ちません",
+            error_tok(node->tok, QMSG_0613,
                      node->lhs->var->name_len, node->lhs->var->name);
         }
         node->ty = TY_ADDR;
@@ -968,12 +968,12 @@ static void check_expr(Node *node)
         node->cmp_ty = TY_NONE;
         return;
     case ND_REFARG:
-        error_tok(node->tok, "ref は、自分で定義した関数の引数にだけ書けます");
+        error_tok(node->tok, QMSG_0325);
         return;
     case ND_ABS:
         check_expr(node->lhs);
         if (!is_number(node->lhs->ty)) {
-            error_tok(node->tok, "絶対値 |x| の中は数値（int・float・double）にしてください（%s が指定されています）",
+            error_tok(node->tok, QMSG_0727,
                      type_name(node->lhs->ty));
         }
         node->ty = type_is_complex(node->lhs->ty) ? complex_component(node->lhs->ty) : node->lhs->ty;
@@ -992,54 +992,54 @@ static void check_expr(Node *node)
         check_expr(node->lhs); check_expr(node->rhs);
         if (type_is_integer(node->lhs->ty) && type_is_integer(node->rhs->ty)) {
             ty = binary_type(node->lhs, node->rhs);
-            node->lhs = coerce(node->lhs, ty, node->tok, "ビット演算");
-            node->rhs = coerce(node->rhs, ty, node->tok, "ビット演算");
+            node->lhs = coerce(node->lhs, ty, node->tok, QMSG_0409);
+            node->rhs = coerce(node->rhs, ty, node->tok, QMSG_0409);
         }
         if (node->lhs->ty != node->rhs->ty || (node->lhs->ty != TY_BOOL && !type_is_integer(node->lhs->ty)))
-            error_tok(node->tok, "and / or / xor は bool 同士または int 同士にしてください。型を混在できません");
+            error_tok(node->tok, QMSG_0093);
         node->ty = node->lhs->ty;
         if (type_is_integer(node->ty)) node->kind = node->kind == ND_AND ? ND_BIT_AND : node->kind == ND_OR ? ND_BIT_OR : ND_BIT_XOR;
         return;
     case ND_BIT_NOT:
         check_expr(node->lhs);
-        if (!type_is_integer(node->lhs->ty)) error_tok(node->tok, "bnot は int にだけ使用できます");
+        if (!type_is_integer(node->lhs->ty)) error_tok(node->tok, QMSG_0104);
         node->ty = node->lhs->ty; return;
     case ND_SHL:
     case ND_SHR:
         check_expr(node->lhs); check_expr(node->rhs);
-        if (!type_is_integer(node->lhs->ty) || !type_is_integer(node->rhs->ty)) error_tok(node->tok, "シフトの値と量は int にしてください");
+        if (!type_is_integer(node->lhs->ty) || !type_is_integer(node->rhs->ty)) error_tok(node->tok, QMSG_0397);
         node->ty = node->lhs->ty;
         node->rhs = new_cast(node->rhs,TY_I64);
         if (is_const_expr(node->rhs)) {
             long long amount = eval_const(node->rhs).i;
-            if ((uint64_t)amount >= (unsigned)integer_width(node->ty)) error_tok(node->tok, "シフト量は0以上%d以下にしてください", integer_width(node->ty) - 1);
+            if ((uint64_t)amount >= (unsigned)integer_width(node->ty)) error_tok(node->tok, QMSG_0398, integer_width(node->ty) - 1);
         }
         return;
     case ND_NOT:
         check_expr(node->lhs);
-        require_bool(node->lhs, "not の対象");
+        require_bool(node->lhs, QMSG_0305);
         node->ty = TY_BOOL;
         return;
     case ND_MOD:
         check_expr(node->lhs);
         check_expr(node->rhs);
         if (!type_is_integer(node->lhs->ty) || !type_is_integer(node->rhs->ty)) {
-            error_tok(node->tok, "%% は int 同士でのみ使えます（%s と %s）",
+            error_tok(node->tok, QMSG_0008,
                      type_name(node->lhs->ty), type_name(node->rhs->ty));
         }
         node->ty = binary_type(node->lhs, node->rhs);
-        node->lhs = coerce(node->lhs, node->ty, node->tok, "余り");
-        node->rhs = coerce(node->rhs, node->ty, node->tok, "余り");
+        node->lhs = coerce(node->lhs, node->ty, node->tok, QMSG_0510);
+        node->rhs = coerce(node->rhs, node->ty, node->tok, QMSG_0510);
         return;
     case ND_POW:
         check_expr(node->lhs);
         check_expr(node->rhs);
         if (!is_number(node->lhs->ty)) {
-            error_tok(node->tok, "^ の底は数値（int・float・double）にしてください（%s が指定されています）",
+            error_tok(node->tok, QMSG_0091,
                      type_name(node->lhs->ty));
         }
         if (!type_is_integer(node->rhs->ty)) {
-            error_tok(node->tok, "^ の指数は int にしてください（%s の指数は未対応です）",
+            error_tok(node->tok, QMSG_0092,
                      type_name(node->rhs->ty));
         }
         node->rhs = new_cast(node->rhs, TY_I64);
@@ -1049,7 +1049,7 @@ static void check_expr(Node *node)
     case ND_NEG:
         check_expr(node->lhs);
         if (!is_number(node->lhs->ty)) {
-            error_tok(node->tok, "単項 - は数値（int・float・double）にしか使えません（%s には使えません）",
+            error_tok(node->tok, QMSG_0582,
                      type_name(node->lhs->ty));
         }
         node->ty = node->lhs->ty;
@@ -1065,24 +1065,24 @@ static void check_expr(Node *node)
                 node->ty = TY_STR;
                 return;
             }
-            error_tok(node->tok, "文字列は + で str 同士を連結することしかできません（%s と %s）",
+            error_tok(node->tok, QMSG_0679,
                      type_name(node->lhs->ty), type_name(node->rhs->ty));
         }
         if (!is_number(node->lhs->ty) || !is_number(node->rhs->ty)) {
-            error_tok(node->tok, "%s と %s は計算できません",
+            error_tok(node->tok, QMSG_0019,
                      type_name(node->lhs->ty), type_name(node->rhs->ty));
         }
         ty = binary_type(node->lhs, node->rhs);
-        node->lhs = coerce(node->lhs, ty, node->tok, "計算");
-        node->rhs = coerce(node->rhs, ty, node->tok, "計算");
+        node->lhs = coerce(node->lhs, ty, node->tok, QMSG_0739);
+        node->rhs = coerce(node->rhs, ty, node->tok, QMSG_0739);
         node->ty = ty;
         if (node->kind == ND_DIV && type_is_complex(ty) && is_const_expr(node->rhs)) {
             Value divisor = eval_const(node->rhs);
-            if (divisor.d == 0 && divisor.imag == 0) error_tok(node->tok, "0 の複素数では割れません");
+            if (divisor.d == 0 && divisor.imag == 0) error_tok(node->tok, QMSG_0077);
         }
         return;
     default:
-        fatal("内部エラー: 型検査で未対応の式です");
+        fatal(QMSG_0554);
     }
 }
 
@@ -1097,7 +1097,7 @@ static void const_error(Node *node, const char *msg)
 static long long string_info(Node *node, Value v, long long index, int *offset, int *length)
 {
     uint64_t off,width,count;
-    if(grapheme_scan((const unsigned char *)v.s,(uint64_t)v.len,index,&off,&width,&count))const_error(node,"不正な UTF-8 文字列です");
+    if(grapheme_scan((const unsigned char *)v.s,(uint64_t)v.len,index,&off,&width,&count))const_error(node,QMSG_0486);
     *offset=off==UINT64_MAX?-1:(int)off;*length=(int)width;return (long long)count;
 }
 
@@ -1121,16 +1121,16 @@ static Value convert_value(Node *node, Value v, Type to)
     }
     if (type_is_text(v.ty) && type_is_text(to)) {
         if (to == TY_CHAR && string_info(node, v, -1, &offset, &length) != 1) {
-            const_error(node, "char には 書記素クラスタをちょうど1つ含む文字列が必要です");
+            const_error(node, QMSG_0112);
         }
         v.ty = to;
         return v;
     }
     if (type_is_integer(to)) {
         if (type_is_integer(v.ty)) {
-            if (!integer_fits(v.i, v.ty, to)) const_error(node, "整数変換の結果が対象型の範囲外です");
+            if (!integer_fits(v.i, v.ty, to)) const_error(node, QMSG_0665);
         } else {
-            if (!real_fits_integer(v.d, to)) const_error(node, "整数変換の結果が対象型の範囲外です");
+            if (!real_fits_integer(v.d, to)) const_error(node, QMSG_0665);
             v.i = integer_unsigned(to) ? integer_bits((uint64_t)v.d) : (long long)v.d;
         }
     } else if (type_is_integer(v.ty)) {
@@ -1212,15 +1212,15 @@ static void validate_pow(Node *node, Value base, long long exponent)
         return;
     }
     if (type_is_complex(base.ty)) {
-        if (base.d == 0 && base.imag == 0) const_error(node, "0 の負の累乗は定義されていません");
+        if (base.d == 0 && base.imag == 0) const_error(node, QMSG_0079);
         return;
     }
     if ((type_is_integer(base.ty) && base.i == 0) ||
         (!type_is_integer(base.ty) && base.d == 0.0)) {
-        const_error(node, "0 の負の累乗は定義されていません");
+        const_error(node, QMSG_0079);
     }
     if (type_is_integer(base.ty) && base.i != 1 && (integer_unsigned(base.ty) || base.i != -1)) {
-        const_error(node, "負の累乗の結果を int で表せません（2.0^(-1) のように底を小数にしてください）");
+        const_error(node, QMSG_0744);
     }
 }
 
@@ -1331,7 +1331,7 @@ static Value eval_binary(Node *node, Value l, Value r)
         v.len = l.len + r.len;
         v.s = malloc((size_t)v.len + 1);
         if (v.s == NULL) {
-            fatal("メモリを確保できません");
+            fatal(QMSG_0437);
         }
         if (l.len != 0) {
             memcpy(v.s, l.s, (size_t)l.len);
@@ -1354,16 +1354,16 @@ static Value eval_binary(Node *node, Value l, Value r)
             break;
         case ND_MOD:
             if (r.i == 0) {
-                const_error(node, "const の計算で 0 で割った余りを求めています");
+                const_error(node, QMSG_0132);
             }
             v.i = integer_unsigned(node->ty) ? integer_bits((uint64_t)l.i % (uint64_t)r.i) : r.i == -1 ? 0 : l.i % r.i;
             break;
         default:
             if (r.i == 0) {
-                const_error(node, "const の計算で 0 で割っています");
+                const_error(node, QMSG_0133);
             }
             if (!integer_unsigned(node->ty) && l.i == -(INT64_C(1) << (integer_width(node->ty) - 2)) * 2 && r.i == -1) {
-                const_error(node, "const の計算が int の範囲を超えます");
+                const_error(node, QMSG_0131);
             }
             v.i = integer_unsigned(node->ty) ? integer_bits((uint64_t)l.i / (uint64_t)r.i) : l.i / r.i;
             break;
@@ -1495,7 +1495,7 @@ static long long round_integer(Node *node, long long x, long long digits, Builti
     if (digits < -19) {
         /* 10^20 以上では、四捨五入は必ず 0。非0方向の天井・床は範囲外。 */
         if ((mode == BI_CEIL && (unsign || x > 0)) || (mode == BI_FLOOR && !unsign && x < 0)) {
-            const_error(node, "整数の丸め結果が int の範囲を超えます");
+            const_error(node, QMSG_0658);
         }
         return 0;
     }
@@ -1512,7 +1512,7 @@ static long long round_integer(Node *node, long long x, long long digits, Builti
     limit = integer_width(node->ty) == 64 ? UINT64_MAX : (UINT64_C(1) << integer_width(node->ty)) - 1;
     if (!unsign) limit = (limit >> 1) + (x < 0);
     if (quotient > limit / scale) {
-        const_error(node, "整数の丸め結果が int の範囲を超えます");
+        const_error(node, QMSG_0658);
     }
     result = quotient * scale;
     if (unsign || x >= 0) {
@@ -1534,11 +1534,11 @@ static Value eval_builtin(Node *node)
     Builtin b;
 
     b = (Builtin)node->val;
-    if(builtin_is_random(b))const_error(node,"乱数は const の初期値に使えません");
-    if(builtin_is_directory(b))const_error(node,"作業ディレクトリ操作は const の初期値に使えません");
+    if(builtin_is_random(b))const_error(node,QMSG_0503);
+    if(builtin_is_directory(b))const_error(node,QMSG_0517);
     if(builtin_is_time(b))return eval_time_builtin(node);
     if(b>=BI_LIB_SIZE&&b<BI_FILE_OPEN)return eval_library_builtin(node);
-    if (b >= BI_FILE_OPEN) const_error(node, "ファイル操作は const の初期値に使えません");
+    if (b >= BI_FILE_OPEN) const_error(node, QMSG_0419);
     if (b == BI_COMPLEX) {
         Node *arg; Value result = {0}; result.ty = node->ty;
         for (arg = node->lhs; arg; arg = arg->next) {
@@ -1628,7 +1628,7 @@ static Value eval_const_inner(Node *node)
         else if (node->kind == ND_BIT_XOR || node->kind == ND_XOR) v.i = integer_bits((uint64_t)l.i ^ (uint64_t)r.i);
         else {
             uint64_t bits = (uint64_t)l.i; int amount = (int)r.i;
-            if ((uint64_t)r.i >= (unsigned)integer_width(node->ty)) const_error(node, "シフト量は0以上63以下にしてください");
+            if ((uint64_t)r.i >= (unsigned)integer_width(node->ty)) const_error(node, QMSG_0399);
             if (node->kind == ND_SHL) bits <<= amount;
             else if (amount) { bits >>= amount; if (!integer_unsigned(l.ty) && l.i < 0) bits |= UINT64_MAX << (64 - amount); }
             v.i = integer_bits(bits);
@@ -1670,7 +1670,7 @@ static Value eval_const_inner(Node *node)
         return v;
     case ND_VAR:
         if (!node->var->is_const) {
-            const_error(node, "const の初期値には、リテラルと他の const だけを使った式を書いてください（変数は使えません）");
+            const_error(node, QMSG_0127);
         }
         ensure_const(node->var);
         return eval_const(node->var->const_val);
@@ -1685,20 +1685,20 @@ static Value eval_const_inner(Node *node)
         l = eval_const(node->lhs);
         r = eval_const(node->rhs);
         if (type_is_model(l.ty)) {
-            if (r.i < 0 || r.i >= l.len) const_error(node, "モデルのフィールド番号が範囲外です");
+            if (r.i < 0 || r.i >= l.len) const_error(node, QMSG_0451);
             cmp = l.items;
             while (r.i-- > 0) cmp = cmp->next;
             return eval_const(cmp->lhs);
         }
         if (type_is_array(l.ty)) {
-            if (r.i < 0 || r.i >= l.len) const_error(node, "配列の添字が範囲外です");
+            if (r.i < 0 || r.i >= l.len) const_error(node, QMSG_0761);
             cmp = l.items;
             while (r.i-- > 0) cmp = cmp->next;
             return eval_const(cmp);
         }
         string_info(node, l, r.i, &offset, &length);
         if (r.i < 0 || offset < 0) {
-            const_error(node, "文字列の添字が範囲外です");
+            const_error(node, QMSG_0675);
         }
         v.s = l.s + offset;
         v.len = length;
@@ -1758,7 +1758,7 @@ static Value eval_const_inner(Node *node)
         v.i = !eval_const(node->lhs).i;
         return v;
     default:
-        const_error(node, "const の初期値に使えない式です");
+        const_error(node, QMSG_0129);
         return v;
     }
 }
@@ -1856,7 +1856,7 @@ static Node *value_node(Value v, Token *tok)
 
     node = calloc(1, sizeof(Node));
     if (node == NULL) {
-        fatal("メモリを確保できません");
+        fatal(QMSG_0437);
     }
     node->ty = v.ty;
     node->tok = tok;
@@ -1909,7 +1909,7 @@ static void check_for_finite_constant(Node *expr, Type ty, const char *part)
     Value v;
     if (type_is_integer(ty) || !is_const_expr(expr)) return;
     v = convert_value(expr, eval_const(expr), ty);
-    if (type_is_wide(ty)?!wide_finite(v):!isfinite(v.d)) error_tok(expr->tok, "for の%sは有限の数値にしてください", part);
+    if (type_is_wide(ty)?!wide_finite(v):!isfinite(v.d)) error_tok(expr->tok, QMSG_0187, part);
 }
 
 /* 増分はループ変数の型でも有限・非0の定数で、方向が一致すること。 */
@@ -1921,26 +1921,26 @@ static void check_for_step(Node *node)
 
     if (!is_const_expr(node->inc)) {
         error_tok(node->inc->tok,
-                 "for の増分の量は定数（リテラルや const）にしてください（向きと 0 をコンパイル時に確かめるため）");
+                 QMSG_0195);
     }
     v = convert_value(node->inc, eval_const(node->inc), ty);
     if (type_is_wide(ty)) {
         int sign=wide_sign(v);
-        if(!wide_finite(v))error_tok(node->inc->tok,"for の増分は有限の数値にしてください");
-        if(!sign)error_tok(node->inc->tok,"for の増分が 0 です");
-        if(sign*node->inc_sign!=node->val)error_tok(node->inc->tok,"増分の向きが範囲の向きと逆です");
+        if(!wide_finite(v))error_tok(node->inc->tok,QMSG_0197);
+        if(!sign)error_tok(node->inc->tok,QMSG_0191);
+        if(sign*node->inc_sign!=node->val)error_tok(node->inc->tok,QMSG_0605);
         node->for_amount=value_node(v,node->inc->tok);return;
     }
     if (!type_is_integer(ty) && !isfinite(v.d)) {
-        error_tok(node->inc->tok, "for の増分は有限の数値にしてください");
+        error_tok(node->inc->tok, QMSG_0197);
     }
     if (type_is_integer(ty) ? v.i == 0 : v.d == 0) {
-        error_tok(node->inc->tok, "for の増分が 0 です（ループが終わりません）");
+        error_tok(node->inc->tok, QMSG_0192);
     }
     direction = (type_is_integer(ty) ? (integer_unsigned(ty) || v.i > 0 ? 1 : -1) : (v.d > 0 ? 1 : -1)) * node->inc_sign;
     if (direction != node->val) {
-        error_tok(node->inc->tok, "増分の向きが範囲の向きと逆です（%s範囲なので、ループ変数を%sしてください）",
-                 node->val > 0 ? "増やしていく" : "減らしていく", node->val > 0 ? "増や" : "減ら");
+        error_tok(node->inc->tok, QMSG_0606,
+                 node->val > 0 ? QMSG_0604 : QMSG_0714, node->val > 0 ? QMSG_0603 : QMSG_0713);
     }
     node->for_amount = value_node(v, node->inc->tok);
 }
@@ -1950,17 +1950,17 @@ static void check_for_header(Node *node)
     Type ty = node->init->var->ty;
     Node *limit = node->cond->lhs->rhs;
     if (node->for_open && type_is_integer(ty) && (!type_is_integer(limit->ty) || !type_is_integer(node->inc->ty))) {
-        error_tok(limit->tok, "開始側が開いた int の for は、境界・増分も int にしてください");
+        error_tok(limit->tok, QMSG_0777);
     }
-    check_for_finite_constant(node->init->lhs, ty, "開始値");
-    check_for_finite_constant(limit, node->cond->lhs->cmp_ty, "終了境界");
+    check_for_finite_constant(node->init->lhs, ty, QMSG_0776);
+    check_for_finite_constant(limit, node->cond->lhs->cmp_ty, QMSG_0726);
     if (node->for_open && !type_is_integer(ty) && is_const_expr(node->init->lhs)) {
         Value start = eval_const(node->init->lhs);
         Value amount = eval_const(node->for_amount);
         double next;
         if(type_is_wide(ty)){Value candidate=wide_calculate(node,node->inc_sign>0?W_ADD:W_SUB,start,amount,ty,0);
-            if(!wide_finite(candidate))error_tok(node->inc->tok,"for の初回の更新結果が有限ではありません");
-            if(!compare_values(candidate,start,node->val>0?CMP_GT:CMP_LT))error_tok(node->inc->tok,"for の増分では値が前進しません");
+            if(!wide_finite(candidate))error_tok(node->inc->tok,QMSG_0190);
+            if(!compare_values(candidate,start,node->val>0?CMP_GT:CMP_LT))error_tok(node->inc->tok,QMSG_0193);
             return;}
         if (ty == TY_FLOAT) {
             next = node->inc_sign > 0 ? (float)((float)start.d + (float)amount.d) :
@@ -1968,9 +1968,9 @@ static void check_for_header(Node *node)
         } else {
             next = node->inc_sign > 0 ? start.d + amount.d : start.d - amount.d;
         }
-        if (!isfinite(next)) error_tok(node->inc->tok, "for の初回の更新結果が有限ではありません");
+        if (!isfinite(next)) error_tok(node->inc->tok, QMSG_0190);
         if (node->val > 0 ? !(next > start.d) : !(next < start.d)) {
-            error_tok(node->inc->tok, "for の増分では値が前進しません（丸め後の値を確認してください）");
+            error_tok(node->inc->tok, QMSG_0194);
         }
     }
 }
@@ -1985,9 +1985,9 @@ static void check_print_parts(Node *list)
             continue;
         }
         check_expr(part);
-        if (part->format_base && !type_is_integer(part->ty)) error_tok(part->tok, "基数指定は int の式にだけ使えます");
+        if (part->format_base && !type_is_integer(part->ty)) error_tok(part->tok, QMSG_0598);
         if (part->ty == TY_FILE || (type_is_array(part->ty) && array_base(part->ty) == TY_FILE))
-            error_tok(part->tok, "file は出力・文字列埋め込みに使えません");
+            error_tok(part->tok, QMSG_0180);
     }
 }
 
@@ -2066,16 +2066,16 @@ static void check_stmt(Node *node)
         if (node->var->is_const) {
             if (node->var->const_state == 2) return;
             if (node->var->const_state == 1)
-                error_tok(node->var->tok, "const %.*s の定義が循環しています",
+                error_tok(node->var->tok, QMSG_0121,
                     node->var->name_len, node->var->name);
             if (++const_check_depth > MAX_CONST_DEPTH)
-                error_tok(node->var->tok, "const の依存は %d 段以下にしてください", MAX_CONST_DEPTH);
+                error_tok(node->var->tok, QMSG_0126, MAX_CONST_DEPTH);
             node->var->const_state = 1;
         }
         if (node->var->is_inferred && node->var->ty == TY_NONE) {
             check_expr(node->lhs);
             if (node->lhs->ty == TY_NONE || node->lhs->ty == TY_ADDR) {
-                error_tok(node->lhs->tok, "auto の初期値には具体的な値型が必要です（addr は使用できません）");
+                error_tok(node->lhs->tok, QMSG_0098);
             }
             concrete_only(node->lhs->ty, node->lhs->tok);
             node->var->ty = node->lhs->ty;
@@ -2083,20 +2083,20 @@ static void check_stmt(Node *node)
         if (node->var->is_ref) {
             check_dims(node->var->dims);
             if (node->lhs != NULL) {
-                check_ref_target(node->var, node->lhs, "初期値");
+                check_ref_target(node->var, node->lhs, QMSG_0576);
             }
             return;
         }
         if (node->var->is_const) {
-            if (contains_initializer(node->var->ty)) error_tok(node->tok, "init を含むモデルは const にできません");
+            if (contains_initializer(node->var->ty)) error_tok(node->tok, QMSG_0231);
             if (type_is_model(array_base(node->var->ty)) && contains_file(node->var->ty))
-                error_tok(node->tok, "file を含むモデルは const にできません");
+                error_tok(node->tok, QMSG_0182);
         }
         check_dims(node->var->dims);
         if (node->lhs != NULL) {
             check_expected(node->lhs, node->var->ty);
             check_value_transfer(node->lhs);
-            node->lhs = coerce(node->lhs, node->var->ty, node->lhs->tok, "初期値");
+            node->lhs = coerce(node->lhs, node->var->ty, node->lhs->tok, QMSG_0576);
             if (type_is_array(node->var->ty)) node->lhs = copy_array(node->lhs, node->var->dims, 1);
             if (type_is_model(node->var->ty)) node->lhs = copy_model(node->lhs);
         } else if (type_is_model(node->var->ty)) {
@@ -2116,14 +2116,14 @@ static void check_stmt(Node *node)
         return; /* 読み込み後に全スコープを検証済み */
     case ND_ADDR_ASSIGN:
         if (!node->var->is_ref) {
-            error_tok(node->tok, "%.*s は ref の変数ではないので、場所（addr）は変えられません",
+            error_tok(node->tok, QMSG_0010,
                      node->var->name_len, node->var->name);
         }
         if (node->var->is_param) {
-            error_tok(node->tok, "ref の引数 %.*s の指す先は変えられません（呼び出し側の変数に固定されます）",
+            error_tok(node->tok, QMSG_0323,
                      node->var->name_len, node->var->name);
         }
-        check_ref_target(node->var, node->lhs, "場所の代入");
+        check_ref_target(node->var, node->lhs, QMSG_0601);
         return;
     case ND_EXPR_STMT:
         allow_void = 1;
@@ -2132,13 +2132,13 @@ static void check_stmt(Node *node)
         return;
     case ND_IF:
         check_expr(node->cond);
-        require_bool(node->cond, "if の条件");
+        require_bool(node->cond, QMSG_0206);
         check_stmts(node->then);
         check_stmts(node->els);
         return;
     case ND_WHILE:
         check_expr(node->cond);
-        require_bool(node->cond, "while の条件");
+        require_bool(node->cond, QMSG_0368);
         check_stmts(node->then);
         return;
     case ND_FOR:
@@ -2151,7 +2151,7 @@ static void check_stmt(Node *node)
             }
         }
         if (!is_numeric(node->init->var->ty)) {
-            error_tok(node->init->var->tok, "for のループ変数は int・float・double にしてください（%s は使えません）",
+            error_tok(node->init->var->tok, QMSG_0188,
                       type_name(node->init->var->ty));
         }
         check_stmt(node->init);
@@ -2165,12 +2165,12 @@ static void check_stmt(Node *node)
     case ND_CONTINUE:
         return;
     case ND_ASSIGN:
-        if (type_is_interface(node->var->ty)) error_tok(node->tok, "interface 引数全体には代入できません");
+        if (type_is_interface(node->var->ty)) error_tok(node->tok, QMSG_0270);
         if (node->var->is_const || node->var->is_readonly)
-            error_tok(node->tok, "const / readonly の値は変更できません");
+            error_tok(node->tok, QMSG_0124);
         check_expected(node->lhs, node->var->ty);
         check_value_transfer(node->lhs);
-        node->lhs = coerce(node->lhs, node->var->ty, node->lhs->tok, "代入");
+        node->lhs = coerce(node->lhs, node->var->ty, node->lhs->tok, QMSG_0507);
         if (type_is_array(node->var->ty) && is_const_expr(node->lhs)) {
             validate_const_array(node, eval_const(node->lhs), node->var->dims);
         }
@@ -2185,21 +2185,21 @@ static void check_stmt(Node *node)
                 check_value_transfer(node->lhs);
                 concrete_only(node->lhs->ty, node->lhs->tok);
                 if (node->lhs->ty == TY_NONE || array_base(node->lhs->ty) == TY_ADDR)
-                    error_tok(node->lhs->tok, "推論する戻り値には具体的な値型が必要です（addr は値として返せません）");
+                    error_tok(node->lhs->tok, QMSG_0647);
             }
             return;
         }
         if (cur_func->ret == TY_VOID) {
-            if(node->lhs){check_expr(node->lhs);if(node->lhs->ty!=TY_VOID)error_tok(node->lhs->tok,"void の戻り値は () にしてください");}
+            if(node->lhs){check_expr(node->lhs);if(node->lhs->ty!=TY_VOID)error_tok(node->lhs->tok,QMSG_0366);}
             return;
         }
         if (node->lhs == NULL) {
-            error_tok(node->tok, "return に値が必要です（関数 %.*s の戻り値の型は %s）",
+            error_tok(node->tok, QMSG_0328,
                      cur_func->name_len, cur_func->name, type_name(cur_func->ret));
         }
         check_expected(node->lhs, cur_func->ret);
         check_value_transfer(node->lhs);
-        node->lhs = coerce(node->lhs, cur_func->ret, node->lhs->tok, "戻り値");
+        node->lhs = coerce(node->lhs, cur_func->ret, node->lhs->tok, QMSG_0636);
         if (type_is_array(cur_func->ret)) node->lhs = copy_array(node->lhs, cur_func->return_dims, 0);
         if (type_is_model(cur_func->ret)) node->lhs = copy_model(node->lhs);
         return;
@@ -2207,7 +2207,7 @@ static void check_stmt(Node *node)
         check_print(node);
         return;
     default:
-        fatal("内部エラー: 型検査で未対応の文です");
+        fatal(QMSG_0555);
     }
 }
 
@@ -2255,26 +2255,26 @@ static void check_names(Ast *ast)
         for (other = ast->funcs; other != fn; other = other->next) {
             if (fn->model == other->model && fn->tok->source->module == other->tok->source->module &&
                 same_name(fn->name, fn->name_len, other->name, other->name_len)) {
-                error_tok(fn->tok, "関数 %.*s は %d 行目ですでに定義されています",
+                error_tok(fn->tok, QMSG_0781,
                          fn->name_len, fn->name, other->tok->line);
             }
         }
         g = find_global(fn->tok->source->module, fn->name, fn->name_len);
         if (g != NULL && !fn->model) {
-            error_tok(fn->tok, "関数 %.*s は %d 行目の const と同じ名前です",
+            error_tok(fn->tok, QMSG_0782,
                      fn->name_len, fn->name, g->tok->line);
         }
         for (v = fn->params; v != NULL; v = v->next) {
             g = find_global(fn->tok->source->module, v->name, v->name_len);
             if (g != NULL) {
-                error_tok(v->tok, "引数 %.*s は %d 行目の const と同じ名前です",
+                error_tok(v->tok, QMSG_0628,
                          v->name_len, v->name, g->tok->line);
             }
         }
         for (v = fn->locals; v != NULL; v = v->next) {
             g = find_global(fn->tok->source->module, v->name, v->name_len);
             if (g != NULL) {
-                error_tok(v->tok, "%.*s は %d 行目の const と同じ名前です",
+                error_tok(v->tok, QMSG_0009,
                          v->name_len, v->name, g->tok->line);
             }
         }
@@ -2283,14 +2283,14 @@ static void check_names(Ast *ast)
         }
     }
     if (main_fn == NULL) {
-        fatal("main 関数がありません（int main(); が必要です）");
+        fatal(QMSG_0291);
     }
-    if(main_fn->is_private)error_tok(main_fn->tok,"main 関数は private にできません");
+    if(main_fn->is_private)error_tok(main_fn->tok,QMSG_0293);
     v=main_fn->params;
     if (main_fn->infer_return || main_fn->ret != TY_INT || main_fn->is_generic ||
         (main_fn->param_count!=0 && (main_fn->param_count!=1 || v->is_ref || v->is_readonly ||
         v->ty!=array_type(TY_STR) || !v->dims || v->dims->bound || v->default_arg))) {
-        error_tok(main_fn->tok, "main 関数は int main();、int main(void);、int main(str args[]); の形で定義してください（引数はstrの可変長1次元配列）");
+        error_tok(main_fn->tok, QMSG_0292);
     }
 }
 
@@ -2319,9 +2319,9 @@ void typecheck(Ast *ast, Target out_target)
     { Model *m, *other; Function *f;
       for (m = ast->models; m; m = m->next) {
           for (other = ast->models; other != m; other = other->next)
-              if (m->tok->source->module == other->tok->source->module && !strcmp(m->name, other->name)) error_tok(m->tok, "モデル %s が重複しています", m->name);
-          if (find_global(m->tok->source->module, m->name, (int)strlen(m->name))) error_tok(m->tok, "モデル名が const と重複しています");
-          for (f = ast->funcs; f; f = f->next) if (!f->model && f->tok->source->module == m->tok->source->module && same_name(f->name, f->name_len, m->name, (int)strlen(m->name))) error_tok(m->tok, "モデル名が関数と重複しています");
+              if (m->tok->source->module == other->tok->source->module && !strcmp(m->name, other->name)) error_tok(m->tok, QMSG_0444, m->name);
+          if (find_global(m->tok->source->module, m->name, (int)strlen(m->name))) error_tok(m->tok, QMSG_0459);
+          for (f = ast->funcs; f; f = f->next) if (!f->model && f->tok->source->module == m->tok->source->module && same_name(f->name, f->name_len, m->name, (int)strlen(m->name))) error_tok(m->tok, QMSG_0461);
           check_model_definition(m);
       }
       finish_builders(ast);

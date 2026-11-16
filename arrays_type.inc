@@ -7,12 +7,12 @@ static void check_dims(ArrayDim *dims)
             Value v;
             check_expr(dims->bound);
             if (!type_is_integer(dims->bound->ty) || !is_const_expr(dims->bound)) {
-                error_tok(dims->tok, "配列の上限はコンパイル時に確定する非負の int にしてください");
+                error_tok(dims->tok, QMSG_0753);
             }
             v = eval_const(dims->bound);
             if(type_is_wide(v.ty))v=wide_calculate(dims->bound,W_CONVERT,v,(Value){0},TY_I64,0);
             if (v.i < 0 || v.i > (LLONG_MAX - 64) / 8) {
-                error_tok(dims->tok, "配列の上限が負か、必要な領域が int の範囲を超えます");
+                error_tok(dims->tok, QMSG_0752);
             }
             dims->limit = v.i;
         }
@@ -37,15 +37,15 @@ static void check_array_literal(Node *node, Type expected)
                     if(type_is_real(element)||type_is_real(item->ty))element=real_common(element,item->ty);
                     else {
                         Type common = integer_common(element, item->ty);
-                        if (common == TY_NONE) error_tok(item->tok, "配列の整数要素型を安全に統一できません");
+                        if (common == TY_NONE) error_tok(item->tok, QMSG_0756);
                         element = common;
                     }
                 } else if (type_is_text(element) && type_is_text(item->ty)) element = TY_STR;
-                else error_tok(item->tok, "配列の要素型と次元数をそろえてください");
+                else error_tok(item->tok, QMSG_0764);
             }
         }
         if (element == TY_NONE) {
-            error_tok(node->tok, "空の配列リテラルには、宣言や引数などの要素型の文脈が必要です");
+            error_tok(node->tok, QMSG_0721);
         }
     }
     for (item = node->lhs; item != NULL; item = next) {
@@ -53,12 +53,12 @@ static void check_array_literal(Node *node, Type expected)
         item->next = NULL;
         check_expected(item, element);
         check_value_transfer(item);
-        tail = tail->next = coerce(item, element, item->tok, "配列の要素");
+        tail = tail->next = coerce(item, element, item->tok, QMSG_0763);
     }
     node->lhs = head.next;
     node->ty = array_type(element);
     if (array_rank(node->ty) > MAX_ARRAY_RANK) {
-        error_tok(node->tok, "配列の次元数が上限を超えています");
+        error_tok(node->tok, QMSG_0759);
     }
 }
 
@@ -106,7 +106,7 @@ static void check_ref_limits(Var *view, Var *target, Token *where)
     while (required != NULL && actual != NULL) {
         if (required->checked && actual->checked && required->limit >= 0 &&
             (actual->limit < 0 || actual->limit > required->limit)) {
-            error_tok(where, "ref 配列の上限が宣言された条件を満たしません");
+            error_tok(where, QMSG_0326);
         }
         required = required->next;
         actual = actual->next;
@@ -117,7 +117,7 @@ static void validate_const_array(Node *where, Value source, ArrayDim *dims)
 {
     Node *item;
     if (dims != NULL && dims->limit >= 0 && source.len > dims->limit) {
-        const_error(where, "配列の要素数が代入先の上限を超えています");
+        const_error(where, QMSG_0765);
     }
     if (type_is_array(array_element(source.ty))) {
         for (item = source.items; item != NULL; item = item->next) {
@@ -129,7 +129,7 @@ static void validate_const_array(Node *where, Value source, ArrayDim *dims)
 static Node *copy_array(Node *source, ArrayDim *dims, int pad)
 {
     Node *node = calloc(1, sizeof(*node));
-    if (node == NULL) fatal("配列のコピーを作成できません");
+    if (node == NULL) fatal(QMSG_0751);
     node->kind = ND_ARRAY_COPY;
     node->lhs = source;
     node->ty = source->ty;
@@ -147,15 +147,15 @@ static Var *check_read_place(Node *place)
     Node *root = place;
     int depth = 0;
     while (root->kind == ND_INDEX) {
-        if (++depth > MAX_PLACE_DEPTH) error_tok(root->tok, "参照・更新先のパスが深すぎます");
+        if (++depth > MAX_PLACE_DEPTH) error_tok(root->tok, QMSG_0583);
         if (root != place && type_is_text(root->lhs->ty)) {
-            error_tok(root->tok, "文字列の添字は更新先の最後に1回だけ書けます");
+            error_tok(root->tok, QMSG_0677);
         }
         root = root->lhs;
     }
-    if (root->kind == ND_CREAL || root->kind == ND_CIMAG) error_tok(root->tok, "複素数の real / imag は読み取り専用です");
+    if (root->kind == ND_CREAL || root->kind == ND_CIMAG) error_tok(root->tok, QMSG_0733);
     if (root->kind != ND_VAR) {
-        error_tok(root->tok, "更新先は変数、または変数から始まる添字にしてください");
+        error_tok(root->tok, QMSG_0698);
     }
     check_expr(root);
     return root->var;
@@ -165,7 +165,7 @@ static Var *check_place(Node *place)
 {
     Var *v = check_read_place(place);
     if (v->is_const || v->is_readonly)
-        error_tok(place->tok, "const の定数・readonly の値・配列・文字列とその要素は変更できません");
+        error_tok(place->tok, QMSG_0130);
     return v;
 }
 
@@ -175,27 +175,27 @@ static void check_method(Node *node)
     allow_void = 0;
     check_expr(node->lhs);
     if (!type_is_array(node->lhs->ty)) {
-        error_tok(node->tok, "append・remove_at・clear は配列に使ってください");
+        error_tok(node->tok, QMSG_0094);
     }
     check_place(node->lhs);
     if (node->val == AM_APPEND && expression_max_length(node->lhs) == 0) {
-        const_error(node, "上限0の配列には追加できません");
+        const_error(node, QMSG_0482);
     }
     if (node->val == AM_APPEND && node->nargs == 0) expected = 0;
     if (node->nargs != expected) {
-        error_tok(node->tok, "この配列操作の引数は %d 個です", expected);
+        error_tok(node->tok, QMSG_0389, expected);
     }
     if (expected) {
         Type to = node->val == AM_APPEND ? array_element(node->lhs->ty) : TY_I64;
         check_expected(node->rhs, to);
         if (node->val == AM_APPEND) check_value_transfer(node->rhs);
-        node->rhs = node->val == AM_REMOVE_AT && type_is_integer(node->rhs->ty) ? new_cast(node->rhs, TY_I64) : coerce(node->rhs, to, node->rhs->tok, "配列操作の引数");
+        node->rhs = node->val == AM_REMOVE_AT && type_is_integer(node->rhs->ty) ? new_cast(node->rhs, TY_I64) : coerce(node->rhs, to, node->rhs->tok, QMSG_0773);
         if (node->val == AM_REMOVE_AT && is_const_expr(node->rhs) && eval_const(node->rhs).i < 0) {
-            const_error(node, "配列の添字が範囲外です");
+            const_error(node, QMSG_0761);
         }
         if (node->val == AM_REMOVE_AT && is_const_expr(node->rhs)) {
             long long limit = expression_max_length(node->lhs);
-            if (limit >= 0 && eval_const(node->rhs).i >= limit) const_error(node, "配列の添字が範囲外です");
+            if (limit >= 0 && eval_const(node->rhs).i >= limit) const_error(node, QMSG_0761);
         }
     }
     if (node->val == AM_APPEND && node->nargs == 0 &&
@@ -211,24 +211,24 @@ static void check_store(Node *node)
     Type destination;
     check_expr(node->lhs);
     if (node->lhs->kind == ND_LENGTH) {
-        error_tok(node->tok, "length は読み取り専用です");
+        error_tok(node->tok, QMSG_0281);
     }
     check_place(node->lhs);
     if (node->lhs->kind != ND_INDEX) {
-        error_tok(node->tok, "length は読み取り専用です。代入できる添字を指定してください");
+        error_tok(node->tok, QMSG_0282);
     }
     destination = type_is_text(node->lhs->lhs->ty) ? TY_CHAR : node->lhs->ty;
     if (node->val == UPDATE_SET) {
         check_expected(node->rhs, destination);
         check_value_transfer(node->rhs);
-        node->rhs = coerce(node->rhs, destination, node->rhs->tok, "要素への代入");
+        node->rhs = coerce(node->rhs, destination, node->rhs->tok, QMSG_0737);
         if (type_is_array(destination) && is_const_expr(node->rhs)) {
             validate_const_array(node, eval_const(node->rhs), expression_dims(node->lhs));
         }
     } else {
         Node *saved = calloc(1, sizeof(Node));
         Node *operation = calloc(1, sizeof(Node));
-        if (saved == NULL || operation == NULL) fatal("添字の複合更新を作成できません");
+        if (saved == NULL || operation == NULL) fatal(QMSG_0711);
         saved->kind = ND_SAVED;
         saved->ty = node->lhs->ty;
         saved->tok = node->lhs->tok;
@@ -237,7 +237,7 @@ static void check_store(Node *node)
         operation->rhs = node->rhs;
         operation->tok = node->tok;
         check_expr(operation);
-        node->cond = coerce(operation, destination, node->tok, "要素の複合更新");
+        node->cond = coerce(operation, destination, node->tok, QMSG_0736);
         node->init = saved;
     }
 }
@@ -253,10 +253,10 @@ static Value constant_array_build(Node *where, Value source, Type ty, ArrayDim *
     long long i;
     Type element = array_element(ty);
     if (dims != NULL && dims->limit >= 0) {
-        if (n > dims->limit) const_error(where, "配列の要素数が代入先の上限を超えています");
+        if (n > dims->limit) const_error(where, QMSG_0765);
         if (pad) n = dims->limit;
     }
-    if (n > *budget) const_error(where, "const 配列の展開が100万要素を超えています");
+    if (n > *budget) const_error(where, QMSG_0135);
     *budget -= n;
     result.ty = ty;
     result.len = (int)n;

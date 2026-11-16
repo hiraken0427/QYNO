@@ -109,7 +109,7 @@ static void walk(Function *fn,Node *n,int depth,TransferBudget *budget,ArrayTran
         if(!visit(budget,depth))return;
         if(candidate(fn,n,budget,&value)){
             if(*count>=QYNO_ARRAY_TRANSFER_LIMIT){budget->exhausted=1;return;}
-            p=malloc(sizeof(*p));if(!p)fatal("配列転送の計画を確保できません");
+            p=malloc(sizeof(*p));if(!p)fatal(QMSG_0775);
             *p=value;
             for(prior=*plans;prior;prior=prior->next)if(prior->site==p->site||prior->producer==p->producer){prior->conflict=1;p->conflict=1;}
             p->next=*plans;*plans=p;++*count;
@@ -134,7 +134,7 @@ void optimizer_transfers(Ast *ast)
             else{
                 p->next=NULL;
                 p->site->opt_transfer=p;
-                if(!optimizer_transfer_valid(p,fn))fatal("内部エラー: 配列転送の計画が不整合です");
+                if(!optimizer_transfer_valid(p,fn))fatal(QMSG_0573);
             }
         }
     }

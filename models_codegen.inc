@@ -77,7 +77,7 @@ static void gen_model_runtime(void)
         depth = 0;
         rt_enter(m->copy_label, 4); rt_save(1, RAX);
         x64_test(RAX, RAX); x64_jcc(CC_NZ, from_value);
-        collection_fail("未完了のモデルはコピーできません\n");
+        collection_fail(QMSG_0703);
         x64_bind(from_value);
         gen_model_allocate(m); rt_save(2, RAX);
         for (f = m->fields; f; f = f->next) {

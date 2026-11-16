@@ -71,12 +71,12 @@ static void gen_file_error_runtime(void)
     x64_bind(no_context);
     rt_load(RAX, 1); x64_load(RDX, RAX, 0); x64_lea(RSI, RAX, 8); x64_call(write_err_label);
     x64_load(RAX, R14, FILE_PATH); x64_test(RAX, RAX); x64_jcc(CC_Z, no_path);
-    file_emit_err(" [path: ");
+    file_emit_err(QMSG_0836);
     x64_load(RAX, R14, FILE_PATH); x64_load(RDX, RAX, 0); x64_lea(RSI, RAX, 8); x64_call(write_err_label);
     file_emit_err("]");
     x64_bind(no_path);
     x64_load(RAX, R14, FILE_OS_ERROR); x64_test(RAX, RAX); x64_jcc(CC_Z, no_os);
-    file_emit_err(" (OS error ");
+    file_emit_err(QMSG_0837);
     x64_load(RAX, R14, FILE_OS_ERROR); x64_lea(RDI, RBP, -16);
     x64_mov_imm(RCX, 10);
     x64_bind(digits);
@@ -87,7 +87,8 @@ static void gen_file_error_runtime(void)
     file_emit_err(")");
     x64_bind(no_os);
     rt_load(R8, 2); x64_lea_data(RSI, newline_offset); x64_mov_imm(RDX, 1);
-    x64_call(write_err_label);rt_leave();
+    x64_call(write_err_label);
+    x64_load(RAX,R14,FILE_CONTEXT);x64_call(diagnostic_tail_label);rt_leave();
 }
 
 /* rax=str -> same str, strictly validated. */
@@ -97,7 +98,7 @@ static void gen_file_validate_runtime(void)
     rt_enter(file_validate_label, 1); rt_save(1, RAX);
     x64_mov_imm(RDI, -1); x64_call(string_scan_label);
     x64_test(R8, R8); x64_jcc(CC_Z, valid);
-    file_fail(EX_DATAERR, "不正な UTF-8 です");
+    file_fail(EX_DATAERR, QMSG_0485);
     x64_bind(valid); rt_load(RAX, 1); rt_leave();
 }
 
@@ -113,7 +114,7 @@ static void gen_file_path_runtime(void)
     x64_bind(loop); x64_cmp(RCX, RDX); x64_jcc(CC_AE, checked);
     x64_mov(RDI, RSI); x64_add(RDI, RCX); x64_load8(R8, RDI, 0);
     x64_test(R8, R8); x64_jcc(CC_NZ, no_nul);
-    file_fail(EX_SOFTWARE, "パスに NUL は使用できません");
+    file_fail(EX_SOFTWARE, QMSG_0406);
     x64_bind(no_nul); x64_add_imm(RCX, 1); x64_jmp(loop);
     x64_bind(checked);
     if (target == TARGET_LINUX) {
@@ -124,14 +125,14 @@ static void gen_file_path_runtime(void)
         int length_ok = rt_label("file.path.length");
         int converted = rt_label("file.path.converted");
         rt_cmp(RDX, 0x7FFFFFFF); x64_jcc(CC_BE, length_ok);
-        file_fail(EX_SOFTWARE, "パスが長すぎます");
+        file_fail(EX_SOFTWARE, QMSG_0405);
         x64_bind(length_ok);
         x64_mov_imm(RCX, 65001); x64_mov_imm(RDX, 8); rt_load(R8, 1);
         x64_load(R9, R8, 0); x64_add_imm(R8, 8);
         file_win_begin(); x64_store_imm(RSP, 32, 0); x64_store_imm(RSP, 40, 0);
         file_win_end(IMP_MULTI_BYTE_TO_WIDE_CHAR);
         x64_test(RAX, RAX); x64_jcc(CC_NZ, converted);
-        file_windows_error(); file_os_fail("パスを UTF-16 に変換できません");
+        file_windows_error(); file_os_fail(QMSG_0408);
         x64_bind(converted); rt_save(3, RAX);
         x64_mov(RDI, RAX); x64_shl_imm(RDI, 1); x64_add_imm(RDI, 2); x64_call(alloc_label); rt_save(2, RAX);
         x64_mov_imm(RCX, 65001); x64_mov_imm(RDX, 8); rt_load(R8, 1);
@@ -141,7 +142,7 @@ static void gen_file_path_runtime(void)
         file_win_end(IMP_MULTI_BYTE_TO_WIDE_CHAR);
         converted = rt_label("file.path.converted.again");
         x64_test(RAX, RAX); x64_jcc(CC_NZ, converted);
-        file_windows_error(); file_os_fail("パスを UTF-16 に変換できません");
+        file_windows_error(); file_os_fail(QMSG_0408);
         x64_bind(converted); rt_load(RAX, 2); rt_load(RCX, 3); x64_shl_imm(RCX, 1); x64_add(RCX, RAX);
         x64_store8_imm(RCX, 0, 0); x64_store8_imm(RCX, 1, 0);
     }
@@ -271,10 +272,10 @@ static void gen_file_open_runtime(void)
       x64_load8(RCX, RAX, 9); rt_cmp(RCX, 'b'); x64_jcc(CC_NZ, binary);
       rt_set(6, 4); x64_jmp(mode_length);
       x64_bind(binary); }
-    file_fail(EX_SOFTWARE, "モードは r・w・a・rb・wb・ab のいずれかです");
+    file_fail(EX_SOFTWARE, QMSG_0468);
     x64_bind(mode_length); x64_load8(RCX, RAX, 8);
     rt_cmp(RCX, 'r'); x64_jcc(CC_Z, r); rt_cmp(RCX, 'w'); x64_jcc(CC_Z, w); rt_cmp(RCX, 'a'); x64_jcc(CC_Z, a);
-    file_fail(EX_SOFTWARE, "モードは r・w・a・rb・wb・ab のいずれかです");
+    file_fail(EX_SOFTWARE, QMSG_0468);
     x64_bind(r); rt_set(2, 1); x64_jmp(mode);
     x64_bind(w); rt_set(2, 2); x64_jmp(mode);
     x64_bind(a); rt_set(2, 3);
@@ -284,7 +285,7 @@ static void gen_file_open_runtime(void)
     x64_mov_imm(RDI, FILE_BUFFER_SIZE); x64_call(alloc_label);
     rt_load(RCX, 4); x64_store(RCX, 40, RAX);
     rt_load(RAX, 3); rt_load(RDI, 2); x64_and_imm(RDI, 3); x64_call(file_raw_open_label);
-    x64_test(RAX, RAX); x64_jcc(CC_NS, opened); file_os_fail("ファイルを開けません");
+    x64_test(RAX, RAX); x64_jcc(CC_NS, opened); file_os_fail(QMSG_0416);
     x64_bind(opened); rt_save(5, RAX); x64_call(file_kind_label);
     rt_cmp(RAX, 1); x64_jcc(CC_Z, regular);
     x64_test(RAX, RAX);
@@ -294,7 +295,7 @@ static void gen_file_open_runtime(void)
         x64_bind(no_error);
     }
     rt_load(RAX, 5); x64_call(file_raw_close_label);
-    x64_lea_data(RAX,prog_add_str(prog,"通常ファイルではありません、またはファイル情報を取得できません",strlen("通常ファイルではありません、またはファイル情報を取得できません")));
+    x64_lea_data(RAX,prog_add_str(prog,QMSG_0747,strlen(QMSG_0747)));
     x64_mov_imm(RDI,5);x64_call(io_raise_label);rt_leave();
     x64_bind(regular); rt_load(RAX, 4); rt_load(RCX, 5); x64_store(RAX, 0, RCX);
     rt_load(RCX, 2); x64_store(RAX, 8, RCX);
@@ -303,7 +304,7 @@ static void gen_file_open_runtime(void)
      x64_load(RAX,RAX,0);x64_xor(RDI,RDI);x64_mov_imm(RSI,2);x64_call(file_raw_seek_label);
      x64_test(RAX,RAX);x64_jcc(CC_NS,append_ok);x64_neg(RAX);x64_store(R14,FILE_OS_ERROR,RAX);
      rt_load(RAX,4);x64_store_imm(RAX,8,0);x64_load(RAX,RAX,0);x64_call(file_raw_close_label);
-     file_fail(EX_IOERR,"追記の初期位置を取得できません");x64_bind(append_ok);x64_bind(not_append);}
+     file_fail(EX_IOERR,QMSG_0746);x64_bind(append_ok);x64_bind(not_append);}
     rt_load(RAX,4);rt_leave();
 }
 
@@ -315,16 +316,16 @@ static void gen_file_check_runtime(void)
     int good = rt_label("file.check.good");
     int writing = rt_label("file.check.writing");
     x64_bind(file_check_label);
-    x64_test(RAX, RAX); x64_jcc(CC_NZ, nonnull); file_fail(EX_SOFTWARE, "file が未オープンです");
+    x64_test(RAX, RAX); x64_jcc(CC_NZ, nonnull); file_fail(EX_SOFTWARE, QMSG_0179);
     x64_bind(nonnull); x64_load(RCX, RAX, 16); x64_store(R14, FILE_PATH, RCX);
     x64_load(RCX, RAX, 8); x64_test(RCX, RCX); x64_jcc(CC_NZ, opened);
-    file_fail(EX_SOFTWARE, "file は閉じられています");
+    file_fail(EX_SOFTWARE, QMSG_0181);
     x64_bind(opened); x64_test(RDI, RDI); x64_jcc(CC_Z, good);
     rt_cmp(RDI, 2); x64_jcc(CC_Z, writing); rt_cmp(RDI, 6); x64_jcc(CC_Z, writing);
-    x64_cmp(RCX, RDI); x64_jcc(CC_Z, good); file_fail(EX_SOFTWARE, "この file は指定モードの読み取り用ではありません");
+    x64_cmp(RCX, RDI); x64_jcc(CC_Z, good); file_fail(EX_SOFTWARE, QMSG_0386);
     x64_bind(writing); x64_cmp(RCX, RDI); x64_jcc(CC_Z, good);
     x64_mov(R8, RDI); x64_add_imm(R8, 1); x64_cmp(RCX, R8); x64_jcc(CC_Z, good);
-    file_fail(EX_SOFTWARE, "この file は指定モードの書き込み用ではありません");
+    file_fail(EX_SOFTWARE, QMSG_0385);
     x64_bind(good); x64_ret();
 }
 
@@ -337,7 +338,7 @@ static void gen_file_close_runtime(void)
     x64_load(RCX, RAX, 16); x64_store(R14, FILE_PATH, RCX);
     x64_load(RCX, RAX, 8); x64_test(RCX, RCX); x64_jcc(CC_Z, done);
     x64_store_imm(RAX, 8, 0); x64_load(RAX, RAX, 0); x64_call(file_raw_close_label);
-    x64_test(RAX, RAX); x64_jcc(CC_NS, good); file_os_fail("close に失敗しました");
+    x64_test(RAX, RAX); x64_jcc(CC_NS, good); file_os_fail(QMSG_0113);
     x64_bind(good); x64_bind(done); x64_xor(RAX, RAX); rt_leave();
     {
         int end = rt_label("file.is.open.done");
@@ -357,7 +358,7 @@ static void gen_file_buffer_runtime(void)
     int length_ok = rt_label("file.buffer.length.ok");
     rt_enter(file_append_label, 6); rt_save(1, RAX); rt_save(2, RSI); rt_save(3, RDX);
     x64_load(RCX, RAX, 0); x64_add(RCX, RDX); x64_jcc(CC_NS, length_ok);
-    file_fail(EX_SOFTWARE, "ファイルの文字列が大きすぎます");
+    file_fail(EX_SOFTWARE, QMSG_0414);
     x64_bind(length_ok); rt_save(4, RCX); x64_load(RDX, RAX, 8);
     x64_cmp(RCX, RDX); x64_jcc(CC_BE, room);
     x64_mov(RDI, RDX); x64_add(RDI, RDI); x64_jcc(CC_NS, capacity_ok);
@@ -374,7 +375,7 @@ static void gen_file_buffer_runtime(void)
     rt_load(RCX, 4); x64_store(RAX, 0, RCX); rt_leave();
     rt_enter(file_string_label, 2); rt_save(1, RAX);
     x64_load(RDI, RAX, 0); x64_add_imm(RDI, 8); x64_jcc(CC_NS, length_ok = rt_label("file.string.length.ok"));
-    file_fail(EX_SOFTWARE, "ファイルの文字列が大きすぎます");
+    file_fail(EX_SOFTWARE, QMSG_0414);
     x64_bind(length_ok); x64_call(alloc_label); rt_save(2, RAX);
     rt_load(RDX, 1); x64_load(RCX, RDX, 0); x64_store(RAX, 0, RCX);
     x64_load(RSI, RDX, 16); x64_lea(RDI, RAX, 8); x64_rep_movsb();
@@ -415,7 +416,7 @@ static void gen_file_getc_runtime(void)
         x64_bind(read_ok); rt_load(RAX, 3);
     }
     x64_bind(done); x64_test(RAX, RAX); x64_jcc(CC_NS, read_ok = rt_label("file.getc.not.error"));
-    file_os_fail("read に失敗しました");
+    file_os_fail(QMSG_0312);
     x64_bind(read_ok); rt_load(RDX, 1); x64_store(RDX, 32, RAX); x64_store_imm(RDX, 24, 0);
     x64_test(RAX, RAX); x64_jcc(CC_Z, eof); x64_mov(RAX, RDX); x64_xor(RCX, RCX);
     x64_bind(available); x64_load(RDX, RAX, 40); x64_add(RDX, RCX); x64_load8(RDX, RDX, 0);
@@ -483,9 +484,9 @@ static void gen_file_write_runtime(void)
         x64_test(RAX, RAX); x64_jcc(CC_NZ, good); file_windows_error(); x64_jmp(result);
         x64_bind(good); rt_load(RAX, 6); x64_bind(result);
     }
-    x64_test(RAX, RAX); x64_jcc(CC_NS, good = rt_label("file.write.not.error")); file_os_fail("write に失敗しました");
+    x64_test(RAX, RAX); x64_jcc(CC_NS, good = rt_label("file.write.not.error")); file_os_fail(QMSG_0371);
     x64_bind(good); x64_test(RAX, RAX); x64_jcc(CC_NZ, good = rt_label("file.write.progress"));
-    file_fail(EX_IOERR, "write が進みません");
+    file_fail(EX_IOERR, QMSG_0369);
     x64_bind(good); rt_load(RCX, 4); x64_add(RCX, RAX); rt_save(4, RCX); x64_jmp(loop);
     x64_bind(done); rt_load(RAX, 4); rt_leave();
 
@@ -511,18 +512,18 @@ static void gen_file_exists_runtime(void)
         x64_xor(R10, R10); x64_mov_imm(RAX, 262); x64_syscall();
         rt_cmp(RAX, -4); x64_jcc(CC_Z, retry);
         rt_cmp(RAX, -2); x64_jcc(CC_Z, missing); rt_cmp(RAX, -20); x64_jcc(CC_Z, missing);
-        x64_test(RAX, RAX); x64_jcc(CC_NS, good); file_os_fail("exists に失敗しました");
+        x64_test(RAX, RAX); x64_jcc(CC_NS, good); file_os_fail(QMSG_0177);
         x64_bind(good); x64_load(RCX, RBP, -152); x64_and_imm(RCX, 0xF000); rt_cmp(RCX, 0x8000);
         x64_setcc(CC_Z, RAX); x64_movzx8(RAX, RAX); x64_jmp(done);
     } else {
         x64_xor(RDI, RDI); x64_call(file_raw_open_label);
         rt_cmp(RAX, -2); x64_jcc(CC_Z, missing); rt_cmp(RAX, -3); x64_jcc(CC_Z, missing);
         rt_cmp(RAX, -267); x64_jcc(CC_Z, missing);
-        x64_test(RAX, RAX); x64_jcc(CC_NS, good); file_os_fail("exists に失敗しました");
+        x64_test(RAX, RAX); x64_jcc(CC_NS, good); file_os_fail(QMSG_0177);
         x64_bind(good); rt_save(1, RAX); x64_call(file_kind_label); rt_save(2, RAX);
         rt_load(RAX, 1); x64_call(file_raw_close_label); rt_load(RAX, 2);
         { int known = rt_label("file.exists.kind.known"); x64_test(RAX, RAX); x64_jcc(CC_NS, known);
-          file_os_fail("exists のファイル情報を取得できません"); x64_bind(known); }
+          file_os_fail(QMSG_0178); x64_bind(known); }
         x64_jmp(done);
     }
     x64_bind(missing); x64_xor(RAX, RAX);

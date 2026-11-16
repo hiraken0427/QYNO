@@ -8,7 +8,7 @@ static InterfaceSpec *interface_specs;
 static int interface_spec_count;
 static void *interface_alloc(size_t size)
 {
-    void *p = calloc(1, size); if (!p) fatal("interface の特殊化を確保できません"); return p;
+    void *p = calloc(1, size); if (!p) fatal(QMSG_0256); return p;
 }
 static void *clone_lookup(InterfaceClone *map, const void *old)
 {
@@ -52,14 +52,14 @@ static Function *specialize_interface_call(Ast *ast, Node *call)
     for (p = origin->params, arg = call->lhs, i = 0; p; p = p->next, arg = arg->next, i++)
         if (type_is_interface(p->ty)) {
             types[i] = arg->lhs->ty;
-            if (!type_is_model(types[i])) error_tok(call->tok, "interface の特殊化に具体的なモデル型が必要です");
+            if (!type_is_model(types[i])) error_tok(call->tok, QMSG_0254);
         }
     for (spec = interface_specs; spec; spec = spec->next)
         if (spec->origin == origin && !memcmp(spec->types, types, (size_t)origin->param_count * sizeof(*types))) { free(types); return spec->fn; }
     if (++interface_spec_count > 4096) {
         for (p = origin->params, i = 0; p; p = p->next, i++) if (types[i])
-            fprintf(stderr, "  interface 引数 %.*s: %s\n", p->name_len, p->name, type_name(types[i]));
-        error_tok(call->tok, "interface の特殊化はプログラム全体で4096件までです（展開元: %.*s）", origin->name_len, origin->name);
+            fprintf(stderr, QMSG_0007, p->name_len, p->name, type_name(types[i]));
+        error_tok(call->tok, QMSG_0255, origin->name_len, origin->name);
     }
     fn = interface_alloc(sizeof(*fn)); *fn = *origin; fn->next = NULL;
     fn->is_template = 0; fn->template_origin = origin; fn->label = 0;
@@ -97,9 +97,9 @@ static void resolve_interface_calls(Ast *ast, Node *n)
     if (n->kind == ND_CALL) {
         if (n->func->contract) {
             Function *actual;
-            if (!type_is_model(n->lhs->lhs->ty)) error_tok(n->tok, "interface メソッドの具体型がありません");
+            if (!type_is_model(n->lhs->lhs->ty)) error_tok(n->tok, QMSG_0261);
             actual = interface_implementation(type_model(n->lhs->lhs->ty), n->func);
-            if (!actual) error_tok(n->tok, "interface の実装メソッドがありません");
+            if (!actual) error_tok(n->tok, QMSG_0253);
             n->func = actual;
         }
         if (n->func->is_template) n->func = specialize_interface_call(ast, n);

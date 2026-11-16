@@ -48,7 +48,7 @@ static void gen_time_clock_runtime(void)
         int supported=rt_label("time.clock.supported"),retry=rt_label("time.clock.retry");
         rt_cmp(RDI,3);x64_jcc(CC_NZ,supported);x64_mov_imm(RDI,1);x64_bind(supported);
         rt_save(2,RDI);x64_bind(retry);rt_load(RDI,2);x64_lea(RSI,RBP,-64);x64_mov_imm(RAX,228);x64_syscall();
-        rt_cmp(RAX,-4);x64_jcc(CC_Z,retry);x64_test(RAX,RAX);x64_jcc(CC_NS,normal);time_os_failure("時計を取得できません");x64_bind(normal);
+        rt_cmp(RAX,-4);x64_jcc(CC_Z,retry);x64_test(RAX,RAX);x64_jcc(CC_NS,normal);time_os_failure(QMSG_0695);x64_bind(normal);
         x64_load(RAX,RBP,-64);x64_load(RDI,RBP,-56);rt_load(RCX,1);rt_cmp(RCX,3);x64_jcc(CC_Z,mono);
         x64_call(time_timespec_label);rt_leave();
         x64_bind(mono);rt_save(3,RDI);gen_wide(W_CONVERT,TY_I128,TY_I64,0,NULL);time_i128_integer(1000000000,RDI);gen_wide(W_MUL,TY_I128,TY_I128,0,NULL);rt_save(4,RAX);
@@ -59,18 +59,18 @@ static void gen_time_clock_runtime(void)
         x64_bind(normal);x64_lea(RCX,RBP,-16);file_win_begin();file_win_end(IMP_GET_SYSTEM_TIME_PRECISE_AS_FILE_TIME);
         rt_load(RAX,2);x64_call(time_filetime_label);rt_leave();
         x64_bind(mono);x64_lea(RCX,RBP,-16);file_win_begin();file_win_end(IMP_QUERY_PERFORMANCE_COUNTER);
-        {int good=rt_label("time.qpc.ok");x64_test(RAX,RAX);x64_jcc(CC_NZ,good);file_windows_error();time_os_failure("単調時計を取得できません");x64_bind(good);}
+        {int good=rt_label("time.qpc.ok");x64_test(RAX,RAX);x64_jcc(CC_NZ,good);file_windows_error();time_os_failure(QMSG_0581);x64_bind(good);}
         rt_load(RCX,1);rt_cmp(RCX,3);
         {int as_quad=rt_label("time.qpc.quad");x64_jcc(CC_NZ,as_quad);rt_load(RAX,2);gen_wide(W_CONVERT,TY_I128,TY_I64,0,NULL);rt_leave();x64_bind(as_quad);}
         rt_load(RAX,2);gen_wide(W_CONVERT,TY_QUAD,TY_I64,0,NULL);rt_save(3,RAX);
         x64_mov_imm(RDI,4);x64_call(time_clock_label);io_rt_check();gen_wide(W_CONVERT,TY_QUAD,TY_I64,0,NULL);x64_mov(RDI,RAX);rt_load(RAX,3);gen_wide(W_DIV,TY_QUAD,TY_QUAD,0,NULL);rt_leave();
         x64_bind(frequency);x64_lea(RCX,RBP,-16);file_win_begin();file_win_end(IMP_QUERY_PERFORMANCE_FREQUENCY);
-        {int good=rt_label("time.qpf.ok");x64_test(RAX,RAX);x64_jcc(CC_NZ,good);file_windows_error();time_os_failure("時計の周波数を取得できません");x64_bind(good);}
+        {int good=rt_label("time.qpf.ok");x64_test(RAX,RAX);x64_jcc(CC_NZ,good);file_windows_error();time_os_failure(QMSG_0694);x64_bind(good);}
         rt_load(RAX,2);rt_leave();
         x64_bind(cpu);file_win_begin();file_win_end(IMP_GET_CURRENT_PROCESS);x64_mov(RCX,RAX);
         x64_lea(RDX,RBP,-32);x64_lea(R8,RBP,-40);x64_lea(R9,RBP,-48);x64_lea(R10,RBP,-56);
         file_win_begin();x64_store(RSP,32,R10);file_win_end(IMP_GET_PROCESS_TIMES);
-        {int good=rt_label("time.cpu.ok");x64_test(RAX,RAX);x64_jcc(CC_NZ,good);file_windows_error();time_os_failure("CPU時間を取得できません");x64_bind(good);}
+        {int good=rt_label("time.cpu.ok");x64_test(RAX,RAX);x64_jcc(CC_NZ,good);file_windows_error();time_os_failure(QMSG_0083);x64_bind(good);}
         rt_load(RAX,6);gen_wide(W_CONVERT,TY_QUAD,TY_U64,0,NULL);rt_save(3,RAX);
         rt_load(RAX,7);gen_wide(W_CONVERT,TY_QUAD,TY_U64,0,NULL);rt_load(RDI,3);gen_wide(W_ADD,TY_QUAD,TY_QUAD,0,NULL);
         time_quad_integer(10000000,RDI);gen_wide(W_DIV,TY_QUAD,TY_QUAD,0,NULL);rt_leave();
@@ -103,10 +103,10 @@ static void gen_time_sleep_runtime(void)
     x64_bind(absolute);x64_bind(loop);x64_mov_imm(RDI,1);x64_call(time_clock_label);io_rt_check();x64_mov(RDI,RAX);rt_load(RAX,1);gen_wide(W_SUB,TY_QUAD,TY_QUAD,0,NULL);rt_save(2,RAX);
     time_quad_integer(0,RDI);gen_wide(W_CMP,TY_QUAD,TY_QUAD,CMP_LE,NULL);x64_test(RAX,RAX);x64_jcc(CC_NZ,done);
     time_request_init(T_WAIT_PARTS);rt_load(RAX,2);x64_load(RCX,RAX,0);x64_store(RBP,TQ+(int)offsetof(TimeRequest,args),RCX);x64_load(RCX,RAX,8);x64_store(RBP,TQ+(int)offsetof(TimeRequest,args)+8,RCX);time_engine_call();
-    {int valid=rt_label("time.wait.valid");x64_load(RAX,RBP,TQ+(int)offsetof(TimeRequest,status));x64_test(RAX,RAX);x64_jcc(CC_Z,valid);file_fail(EX_SOFTWARE,"待機時間がint_64の範囲外です");x64_bind(valid);}
+    {int valid=rt_label("time.wait.valid");x64_load(RAX,RBP,TQ+(int)offsetof(TimeRequest,status));x64_test(RAX,RAX);x64_jcc(CC_Z,valid);file_fail(EX_SOFTWARE,QMSG_0632);x64_bind(valid);}
     if(target==TARGET_LINUX){
         x64_lea(RDI,RBP,TQ+(int)offsetof(TimeRequest,out));x64_xor(RSI,RSI);x64_mov_imm(RAX,35);x64_syscall();rt_cmp(RAX,-4);x64_jcc(CC_Z,loop);
-        x64_test(RAX,RAX);x64_jcc(CC_NS,loop);time_os_failure("待機に失敗しました");
+        x64_test(RAX,RAX);x64_jcc(CC_NS,loop);time_os_failure(QMSG_0631);
     }else{
         x64_load(RCX,RBP,TQ+(int)offsetof(TimeRequest,used));file_win_begin();file_win_end(IMP_SLEEP);x64_jmp(loop);
     }
@@ -136,12 +136,12 @@ static void gen_time_pure_entry(int op)
     }
     /* A bounded expansion for date format tokens; raw strings remain GC rooted. */
     x64_load(RAX,RBP,TQ+(int)offsetof(TimeRequest,length));x64_load(RCX,RBP,TQ+(int)offsetof(TimeRequest,pattern_length));x64_add(RAX,RCX);
-    {int capacity_ok=rt_label("time.capacity.ok");x64_mov_imm(RCX,(INT64_MAX-264)/8);x64_cmp(RAX,RCX);x64_jcc(CC_BE,capacity_ok);file_fail(EX_SOFTWARE,"timeの文字列が大きすぎます");x64_bind(capacity_ok);}
+    {int capacity_ok=rt_label("time.capacity.ok");x64_mov_imm(RCX,(INT64_MAX-264)/8);x64_cmp(RAX,RCX);x64_jcc(CC_BE,capacity_ok);file_fail(EX_SOFTWARE,QMSG_0347);x64_bind(capacity_ok);}
     x64_shl_imm(RAX,3);x64_add_imm(RAX,256);x64_store(RBP,TQ+(int)offsetof(TimeRequest,capacity),RAX);x64_mov(RDI,RAX);x64_add_imm(RDI,8);x64_call(alloc_label);rt_save(4,RAX);x64_add_imm(RAX,8);x64_store(RBP,TQ+(int)offsetof(TimeRequest,buffer),RAX);
     time_engine_call();
     {int valid=rt_label("time.argument.valid");x64_load(RAX,RBP,TQ+(int)offsetof(TimeRequest,status));x64_test(RAX,RAX);x64_jcc(CC_Z,valid);
      if(op==T_TRY_PARSE){x64_xor(RAX,RAX);rt_leave();}
-     else {file_fail(op==T_PARSE?EX_DATAERR:EX_SOFTWARE,"timeの引数・日時・形式・範囲が不正です");}
+     else {file_fail(op==T_PARSE?EX_DATAERR:EX_SOFTWARE,QMSG_0346);}
      x64_bind(valid);}
     if(op==T_SLEEP||op==T_SLEEP_UNTIL){x64_load(RAX,RBP,16);x64_mov_imm(RDI,op==T_SLEEP_UNTIL);x64_call(time_sleep_label);io_rt_check();rt_leave();return;}
     if(op==T_ELAPSED){x64_mov_imm(RDI,1);x64_call(time_clock_label);io_rt_check();x64_load(RDI,RBP,16);gen_wide(W_SUB,TY_QUAD,TY_QUAD,0,NULL);rt_leave();return;}

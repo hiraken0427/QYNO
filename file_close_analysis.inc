@@ -44,7 +44,7 @@ static void fc_error(FcContext *ctx,FcState *s,Node *site,unsigned codes)
 static void *fc_new(size_t size)
 {
     void *p = calloc(1, size);
-    if (!p) fatal("close の解析領域を確保できません");
+    if (!p) fatal(QMSG_0116);
     return p;
 }
 static char *fc_join(const char *a, const char *b)
@@ -70,7 +70,7 @@ static int fc_id(FcContext *ctx, Node *site, int parameter, const char *path)
     int i;
     if (parameter > 0) for (i = 1; i < ctx->count; i++)
         if (ctx->resources[i].parameter == parameter && strcmp(ctx->resources[i].path, path) == 0) return i;
-    if (ctx->count >= FC_MAX_RESOURCES) error_tok(site ? site->tok : ctx->info->fn->tok, "close の解析が複雑すぎます。関数を分割してください");
+    if (ctx->count >= FC_MAX_RESOURCES) error_tok(site ? site->tok : ctx->info->fn->tok, QMSG_0114);
     i = ctx->count++; ctx->resources[i].site = site;
     ctx->resources[i].parameter = parameter; ctx->resources[i].path = fc_join(path, ""); return i;
 }
@@ -106,7 +106,7 @@ static Var *fc_reference_target(FcState *s, Var *v)
 {
     int limit = 0;
     while (fc_env(s, v)->alias) {
-        if (++limit > 256) error_tok(v->tok, "ref の循環により close を確認できません");
+        if (++limit > 256) error_tok(v->tok, QMSG_0324);
         v = fc_env(s, v)->alias;
     }
     return v;
@@ -115,7 +115,7 @@ static FcMap *fc_value(FcState *s, Var *v)
 {
     int limit = 0; FcEnv *e = fc_env(s, v);
     while (e->alias) {
-        if (++limit > 256) error_tok(v->tok, "ref の循環により close を確認できません");
+        if (++limit > 256) error_tok(v->tok, QMSG_0324);
         e = fc_env(s, e->alias);
     }
     return e->value;
@@ -124,7 +124,7 @@ static void fc_set(FcState *s, Var *v, FcMap *m)
 {
     int limit = 0; FcEnv *e = fc_env(s, v);
     while (e->alias) {
-        if (++limit > 256) error_tok(v->tok, "ref の循環により close を確認できません");
+        if (++limit > 256) error_tok(v->tok, QMSG_0324);
         e = fc_env(s, e->alias);
     }
     e->value = m;
@@ -292,7 +292,7 @@ static FcMap *fc_call(FcContext *ctx, FcState *s, Node *n)
         args[i++] = fc_eval(ctx, s, arg->kind == ND_REFARG ? arg->lhs : arg);
     }
     if (!callee->relevant) return fc_empty();
-    if (callee->status == 1) error_tok(n->tok, "再帰する file 関数の close を証明できません。ファイル操作を再帰の外へ分離してください");
+    if (callee->status == 1) error_tok(n->tok, QMSG_0574);
     fc_analyze(callee);
     for(f=callee->errors;f;f=f->next){
         FcState *failed=fc_clone(s);FcFlow *saved_exits=callee->exits,*saved_next=f->next;FcMap *moved=fc_empty();
@@ -354,11 +354,11 @@ static FcMap *fc_array_padding(FcContext *ctx, FcState *s, Node *site, Type ty, 
     if (syntax && syntax->kind == ND_ARRAY_LITERAL) { length = syntax->nargs; item = syntax->lhs; }
     if (length < 0) {
         if (target >= 0 || (type_is_array(element) && dims && dims->next))
-            error_tok(site->tok, "init による配列要素の file 所有責任を追跡できません。要素数が分かる初期値を指定してください");
+            error_tok(site->tok, QMSG_0216);
         return source;
     }
     count = target > length ? target : length;
-    if (count > FC_MAX_RESOURCES) error_tok(site->tok, "file を生成する配列が大きすぎて close を証明できません");
+    if (count > FC_MAX_RESOURCES) error_tok(site->tok, QMSG_0183);
     result->length = count;
     for (i = 0; i < count; i++) {
         char key[64]; FcMap *child; FcEntry *e;
@@ -389,7 +389,7 @@ static FcMap *fc_eval(FcContext *ctx, FcState *s, Node *n)
             for (p = call->func->params->next; p; p = p->next) {
                 Node *item;
                 for (item = n->lhs; item && item->var != p; item = item->next) { }
-                if (!item) fatal("生成引数の close 解析が不正です");
+                if (!item) fatal(QMSG_0716);
                 *end = fc_new(sizeof(**end)); (*end)->kind = ND_NUM; (*end)->ty = p->ty; end = &(*end)->next;
             }
             n->init = call;
@@ -509,7 +509,7 @@ static FcFlow *fc_append(FcFlow *a, FcFlow *b, Token *site)
     for (p = a; p->next; p = p->next) count++;
     p->next = b;
     for (p = b; p; p = p->next) count++;
-    if (count >= FC_MAX_PATHS) error_tok(site, "close の解析経路が多すぎます。関数を分割してください");
+    if (count >= FC_MAX_PATHS) error_tok(site, QMSG_0115);
     return a;
 }
 static FcFlow *fc_try(FcContext *ctx,FcState *s,Node *n)
@@ -569,7 +569,7 @@ static FcFlow *fc_step(FcContext *ctx, FcState *s, Node *n)
             if (f->kind == 2) { out = fc_append(out, fc_flow(f->state, 0, NULL), n->tok); continue; }
             for (id = before; id < ctx->count; id++)
                 if (ctx->resources[id].parameter == 0 && fc_alive(ctx, f->state, id))
-                    error_tok(ctx->resources[id].site->tok, "ループの次の反復までに file の close を確認できません");
+                    error_tok(ctx->resources[id].site->tok, QMSG_0476);
             {
                 FcEnv *e;
                 for (e = baseline->env; e; e = e->next) {
@@ -577,13 +577,13 @@ static FcFlow *fc_step(FcContext *ctx, FcState *s, Node *n)
                     if (old == now) continue;
                     for (entry = old->entries; entry; entry = entry->next)
                         if (entry->id > 0 && fc_alive(ctx, f->state, entry->id))
-                            error_tok(n->tok, "ループで file の別名が変わるため close を証明できません");
+                            error_tok(n->tok, QMSG_0473);
                 }
             }
             if (truth != 1) out = fc_append(out, fc_flow(f->state, 0, NULL), n->tok);
             else if (!has_exit) for (id = 1; id < ctx->count; id++)
                 if (ctx->resources[id].parameter == 0 && fc_alive(ctx, f->state, id))
-                    error_tok(ctx->resources[id].site->tok, "終了しないループへ入る前に file を close してください");
+                    error_tok(ctx->resources[id].site->tok, QMSG_0725);
         }
         return out;
     }
@@ -646,7 +646,7 @@ static void fc_analyze(FcInfo *info)
     {FcFlow **end=&info->exits;while(*end){FcFlow *flow=*end;if(flow->kind==4){*end=flow->next;flow->next=info->errors;info->errors=flow;}else end=&flow->next;}}
     if(info->fn->io_caught)for(f=info->errors;f;f=f->next){int id;for(id=1;id<ctx->count;id++)
         if(ctx->resources[id].parameter==0&&fc_alive(ctx,f->state,id))
-            error_tok(ctx->resources[id].site->tok,"回復するエラー経路で file の close を確認できません（関数 %.*s）。finally または case で close してください",info->fn->name_len,info->fn->name);}
+            error_tok(ctx->resources[id].site->tok,QMSG_0588,info->fn->name_len,info->fn->name);}
     for (f = info->exits; f; f = f->next) {
         int id;
         for (id = 1; id < ctx->count; id++) if (ctx->resources[id].parameter == 0 && fc_alive(ctx, f->state, id)) {
@@ -655,7 +655,7 @@ static void fc_analyze(FcInfo *info)
                 if (p->is_ref && fc_file_type(p->ty) && fc_contains(fc_value(f->state, p), id) &&
                     (!info->fn->is_initializer || info->fn->ret == TY_VOID || f->truth == 1)) escaped = 1;
             if (!escaped) error_tok(ctx->resources[id].site->tok,
-                "この file が正常終了する全経路で明示的に close されることを確認できません（関数 %.*s）", info->fn->name_len, info->fn->name);
+                QMSG_0384, info->fn->name_len, info->fn->name);
         }
     }
     if (info->fn->is_initializer && info->fn->ret == TY_BOOL) {

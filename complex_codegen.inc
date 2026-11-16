@@ -49,7 +49,7 @@ static void gen_complex_runtime(void)
                 x64_ucomisd(4, 5); x64_jcc(CC_AE, scale); complex_xmm_copy(4, 5);
                 x64_bind(scale); x64_xor(R10, R10); x64_movq_to_xmm(5, R10);
                 x64_ucomisd(4, 5); x64_jcc(CC_P, nonzero); x64_jcc(CC_NZ, nonzero);
-                collection_fail("0 の複素数では割れません\n"); x64_bind(nonzero);
+                collection_fail(QMSG_0078); x64_bind(nonzero);
                 x64_sse_sd(SSE_DIV, 0, 4); x64_sse_sd(SSE_DIV, 1, 4);
                 x64_sse_sd(SSE_DIV, 2, 4); x64_sse_sd(SSE_DIV, 3, 4);
                 complex_xmm_copy(4, 2); x64_sse_sd(SSE_MUL, 4, 2);

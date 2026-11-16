@@ -6,7 +6,7 @@ static int library_size_label(Type ty)
 {
     SizeCode *p;
     for(p=size_codes;p;p=p->next)if(p->ty==ty)return p->label;
-    p=calloc(1,sizeof(*p));if(!p)fatal("lib.size のコードを確保できません");
+    p=calloc(1,sizeof(*p));if(!p)fatal(QMSG_0286);
     p->ty=ty;p->label=new_label("lib.size");
     if(size_codes_tail)size_codes_tail->next=p;else size_codes=p;
     size_codes_tail=p;return p->label;
@@ -22,7 +22,7 @@ static void gen_library_builtin(Node *node)
             Node length=*node;length.kind=ND_LENGTH;length.lhs=node->lhs;gen_expr(&length);return;
         }
         gen_expr(node->lhs);gen_wide(W_DIGITS,TY_I64,ty,0,NULL);
-        {int ok=new_label("lib.length.finite");x64_test(R8,R8);x64_jcc(CC_Z,ok);gen_fail(node->tok,"lib.length に NaN・無限大は指定できません",EX_SOFTWARE);x64_bind(ok);}
+        {int ok=new_label("lib.length.finite");x64_test(R8,R8);x64_jcc(CC_Z,ok);gen_fail(node->tok,QMSG_0284,EX_SOFTWARE);x64_bind(ok);}
         return;
     }
     gen_expr(node->lhs);push();
@@ -40,7 +40,7 @@ static void gen_library_size_runtime(void)
         if(type_is_text(p->ty)){
             int ok=new_label("lib.size.text.ok");
             x64_bind(p->label);x64_load(RAX,RAX,0);x64_mov_imm(RCX,INT64_MAX/8);x64_cmp(RAX,RCX);x64_jcc(CC_BE,ok);
-            collection_fail("lib.size の結果が int_64 の範囲を超えています\n");
+            collection_fail(QMSG_0288);
             x64_bind(ok);x64_shl_imm(RAX,3);x64_ret();continue;
         }
         rt_enter(p->label,4);rt_save(1,RAX);rt_set(2,0);rt_set(3,0);
@@ -49,7 +49,7 @@ static void gen_library_size_runtime(void)
             x64_bind(loop);rt_load(RAX,1);rt_load(RCX,2);x64_load(RDX,RAX,0);x64_cmp(RCX,RDX);x64_jcc(CC_AE,done);
             x64_load(RAX,RAX,24);x64_shl_imm(RCX,3);x64_add(RAX,RCX);x64_load(RAX,RAX,0);
             x64_call(library_size_label(array_element(p->ty)));rt_load(RCX,3);x64_add(RAX,RCX);x64_jcc(CC_NO,ok);
-            collection_fail("lib.size の結果が int_64 の範囲を超えています\n");
+            collection_fail(QMSG_0288);
             x64_bind(ok);rt_save(3,RAX);rt_load(RCX,2);x64_add_imm(RCX,1);rt_save(2,RCX);x64_jmp(loop);
             x64_bind(done);
         }else{
@@ -58,7 +58,7 @@ static void gen_library_size_runtime(void)
                 int ok=new_label("lib.size.field.ok");
                 rt_load(RAX,1);x64_load(RAX,RAX,24);x64_load(RAX,RAX,f->index*8);
                 x64_call(library_size_label(f->ty));rt_load(RCX,3);x64_add(RAX,RCX);x64_jcc(CC_NO,ok);
-                collection_fail("lib.size の結果が int_64 の範囲を超えています\n");
+                collection_fail(QMSG_0288);
                 x64_bind(ok);rt_save(3,RAX);
             }
         }
@@ -83,9 +83,9 @@ static void gen_library_path_runtime(void)
     x64_load(RAX,RBP,-192+80);x64_test(RAX,RAX);x64_jcc(CC_Z,ok);
     rt_cmp(RAX,65);x64_jcc(CC_NZ,bad_arg);
     x64_load(RAX,R14,COLLECTION_CONTEXT);x64_load(RDX,RAX,0);x64_lea(RSI,RAX,8);x64_call(write_err_label);
-    x64_lea_data(RSI,prog_add_data(prog,"io.path のパスが不正な UTF-8 です\n",strlen("io.path のパスが不正な UTF-8 です\n")));
-    x64_mov_imm(RDX,(long long)strlen("io.path のパスが不正な UTF-8 です\n"));x64_mov_imm(R8,EX_DATAERR);x64_jmp(runtime_error_label);
-    x64_bind(bad_arg);collection_fail("io.path の引数が不正です（NUL・拡張子・パス形式を確認してください）\n");
+    x64_lea_data(RSI,prog_add_data(prog,QMSG_0275,strlen(QMSG_0275)));
+    x64_mov_imm(RDX,(long long)strlen(QMSG_0275));x64_mov_imm(R8,EX_DATAERR);x64_jmp(runtime_error_label);
+    x64_bind(bad_arg);collection_fail(QMSG_0277);
     x64_bind(ok);rt_load(RAX,3);rt_cmp(RAX,5);x64_jcc(CC_B,text);rt_cmp(RAX,6);x64_jcc(CC_A,text);
     x64_load(RAX,RBP,-192+32);rt_leave();
     x64_bind(text);rt_load(RAX,4);x64_load(RCX,RBP,-192+32);x64_store(RAX,0,RCX);rt_leave();

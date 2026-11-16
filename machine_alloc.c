@@ -51,7 +51,7 @@ static int spill(Allocator *s,int value)
         if(slot<0){
             if(s->fixed)slot=value;
             else for(slot=0;slot<512&&s->slots[slot]>=0;slot++);
-            if(slot>=512)fatal("内部エラー: 数値退避領域が不足しています");
+            if(slot>=512)fatal(QMSG_0565);
             s->home[value]=slot;s->slots[slot]=value;
             if(slot+1>s->peak)s->peak=slot+1;
         }
@@ -68,7 +68,7 @@ static int get_register(Allocator *s,int fp,int avoid_a,int avoid_b)
         if(value<0)return i;
         if(value!=avoid_a&&value!=avoid_b&&(victim<0||s->r->inst[value].last>s->r->inst[o[victim]].last))victim=i;
     }
-    if(victim<0)fatal("内部エラー: 数値レジスタを割り当てられません");
+    if(victim<0)fatal(QMSG_0559);
     if(!spill(s,o[victim]))return -1;
     return victim;
 }
@@ -77,7 +77,7 @@ static int operand(Allocator *s,int value,int other,int *reg)
     int n;
     if(value<0){*reg=-1;return 1;}
     if(s->location[value]>=0){*reg=s->location[value];return 1;}
-    if(!s->written[value]||s->home[value]<0)fatal("内部エラー: 退避されていない数値です");
+    if(!s->written[value]||s->home[value]<0)fatal(QMSG_0571);
     n=get_register(s,machine_is_float(s->r->inst[value].ty),value,other);
     if(n<0||!send(s,ME_RELOAD,value,n,s->home[value],-1,-1,-1,-1,-1))return 0;
     owners(s,value)[n]=value;s->location[value]=n;*reg=n;return 1;
@@ -125,7 +125,7 @@ static int record(void *context,const MachineEvent *event)
     if(p->count==r->capacity){
         int cap=r->capacity?r->capacity*2:64;
         MachineEvent *events=realloc(p->events,(size_t)cap*sizeof(*events));
-        if(!events)fatal("数値退避計画を確保できません");
+        if(!events)fatal(QMSG_0655);
         p->events=events;r->capacity=cap;
     }
     p->events[p->count++]=*event;return 1;
@@ -194,11 +194,11 @@ void machine_plan_function(Function *fn)
     int profile,peak=0,old_slots=fn->opt_machine_slots;
     for(r=fn->machine_regions;r;r=r->next)for(profile=0;profile<2;profile++){
         Recorder recorder;
-        p=calloc(1,sizeof(*p));if(!p)fatal("数値退避計画を確保できません");
+        p=calloc(1,sizeof(*p));if(!p)fatal(QMSG_0655);
         r->plans[profile]=p;p->profile=profile;
         recorder=(Recorder){p,&budget,0};
         if(!machine_allocate(r,profile,0,record,&recorder,&p->spill_count))goto fixed;
-        if(!machine_plan_valid(r,p))fatal("内部エラー: 数値退避計画が不整合です");
+        if(!machine_plan_valid(r,p))fatal(QMSG_0564);
         if(p->spill_count>peak)peak=p->spill_count;
     }
     fn->opt_machine_slots=peak;
@@ -208,7 +208,7 @@ fixed:
     fn->opt_machine_fixed=1;fn->opt_machine_slots=old_slots;
 frame:
     if(fn->stack_size<0||fn->stack_size>INT_MAX-15||fn->opt_machine_slots<0||
-       fn->opt_machine_slots>(INT_MAX-15-fn->stack_size)/8)fatal("関数のスタック領域が大きすぎます");
+       fn->opt_machine_slots>(INT_MAX-15-fn->stack_size)/8)fatal(QMSG_0785);
     fn->opt_machine_base=fn->stack_size;
     fn->stack_size=(fn->stack_size+fn->opt_machine_slots*8+15)/16*16;
 }

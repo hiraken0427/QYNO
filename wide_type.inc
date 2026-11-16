@@ -21,7 +21,7 @@ static Value wide_calculate(Node *node,int op,Value a,Value b,Type ty,int aux)
 {
     WideRequest r={0};r.op=op;r.ty=wide_tag(ty);r.from=wide_tag(a.ty);r.aux=aux;r.a=value_bits(a);r.b=value_bits(b);
     wide_execute(&r);
-    if(r.status)const_error(node,r.status==3?"0 で割ることや0の負の累乗はできません":r.status==4?"負の累乗の結果を整数で表せません":"数値の変換・演算結果が対象型の範囲外です");
+    if(r.status)const_error(node,r.status==3?QMSG_0075:r.status==4?QMSG_0745:QMSG_0648);
     return bits_value(r.out,op==W_CMP?TY_BOOL:ty);
 }
 static int wide_fits(Value v,Type ty)
@@ -38,7 +38,7 @@ static void wide_literal_context(Node *n,Type ty)
     if(ty!=TY_HALF&&ty!=TY_QUAD)return;
     if((n->kind==ND_FNUM||n->kind==ND_WIDE)&&n->raw_numeric&&n->tok->kind==TK_FNUM){
         WideRequest r={0};r.op=W_READ;r.ty=wide_tag(ty);r.input=n->tok->loc;r.length=n->tok->len;wide_execute(&r);
-        if(r.status)error_tok(n->tok,"小数リテラルが %s の範囲外です",type_name(ty));
+        if(r.status)error_tok(n->tok,QMSG_0625,type_name(ty));
         n->kind=ND_WIDE;n->ty=ty;n->wide=r.out;return;
     }
     if(n->kind==ND_NEG||n->kind==ND_ADD||n->kind==ND_SUB||n->kind==ND_MUL||n->kind==ND_DIV||n->kind==ND_POW){
@@ -52,7 +52,7 @@ static Value wide_read_value(Node *node,Value text,Type ty,int base)
     WideRequest r={0};int end=text.len;
     while(end&& (text.s[end-1]==' '||text.s[end-1]=='\t'))end--;
     r.op=W_READ;r.ty=wide_tag(ty);r.input=text.s;r.length=end;r.base=base;wide_execute(&r);
-    if(r.status||r.used!=end)const_error(node,"文字列を指定した数値型として読み取れません（範囲・基数・文字列を確認してください）");
+    if(r.status||r.used!=end)const_error(node,QMSG_0682);
     return bits_value(r.out,ty);
 }
 

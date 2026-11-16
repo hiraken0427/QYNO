@@ -16,21 +16,21 @@ static void check_library_builtin(Node *node)
 {
     Builtin b=(Builtin)node->val;Node *arg;Type seen[MAX_PLACE_DEPTH];
     int expected=b==BI_PATH_JOIN||b==BI_PATH_WITH_EXTENSION?2:1;
-    if(node->nargs!=expected)error_tok(node->tok,"%s.%s の引数は %d 個です",builtin_namespace(b),builtin_name(b),expected);
+    if(node->nargs!=expected)error_tok(node->tok,QMSG_0056,builtin_namespace(b),builtin_name(b),expected);
     allow_void=0;
     for(arg=node->lhs;arg;arg=arg->next){
-        if(arg->kind==ND_REFARG)error_tok(arg->tok,"lib / io.path の呼び出しに ref は付けません");
+        if(arg->kind==ND_REFARG)error_tok(arg->tok,QMSG_0283);
         check_expr(arg);
     }
     if(b==BI_LIB_SIZE){
-        if(!library_size_type(node->lhs->ty,seen,0))error_tok(node->tok,"lib.size は %s の値のサイズに対応していません",type_name(node->lhs->ty));
+        if(!library_size_type(node->lhs->ty,seen,0))error_tok(node->tok,QMSG_0289,type_name(node->lhs->ty));
         node->ty=TY_I64;
     }else if(b==BI_LIB_LENGTH){
         Type t=node->lhs->ty;
-        if(!type_is_text(t)&&!type_is_array(t)&&!is_numeric(t))error_tok(node->tok,"lib.length は %s の長さに対応していません",type_name(t));
+        if(!type_is_text(t)&&!type_is_array(t)&&!is_numeric(t))error_tok(node->tok,QMSG_0285,type_name(t));
         node->ty=TY_I64;
     }else{
-        for(arg=node->lhs;arg;arg=arg->next)if(!type_is_text(arg->ty))error_tok(arg->tok,"io.path.%s の引数は str・char にしてください",builtin_name(b));
+        for(arg=node->lhs;arg;arg=arg->next)if(!type_is_text(arg->ty))error_tok(arg->tok,QMSG_0280,builtin_name(b));
         node->ty=b==BI_PATH_IS_ABSOLUTE||b==BI_PATH_IS_RELATIVE?TY_BOOL:TY_STR;
     }
     if(is_const_expr(node))(void)eval_const(node);

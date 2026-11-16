@@ -23,7 +23,7 @@ typedef struct {
 static void *allocate(size_t size)
 {
     void *p = calloc(1, size);
-    if (!p) fatal("インライン展開の領域を確保できません");
+    if (!p) fatal(QMSG_0393);
     return p;
 }
 static int value_type(Type ty)

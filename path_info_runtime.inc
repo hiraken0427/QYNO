@@ -61,8 +61,8 @@ static void gen_path_info_runtime(void)
     x64_bind(directory);rt_set(4,2);x64_jmp(classified);
     x64_bind(link);rt_set(4,3);
     x64_bind(classified);x64_jmp(finish);
-    x64_bind(large);dir_policy_error(13,"Metadata size exceeds int_64");x64_jmp(finish);
-    x64_bind(malformed);dir_policy_error(14,"Malformed metadata timestamp");
+    x64_bind(large);dir_policy_error(13,QMSG_0815);x64_jmp(finish);
+    x64_bind(malformed);dir_policy_error(14,QMSG_0816);
     x64_bind(finish);if(target==TARGET_WINDOWS)dir_close(3);io_rt_check();
     rt_load(RAX,6);rt_load(RDI,7);x64_call(target==TARGET_LINUX?time_timespec_label:time_filetime_label);rt_save(8,RAX);
     x64_mov_imm(RDI,40);x64_call(alloc_label);rt_save(9,RAX);x64_store_imm(RAX,0,4);x64_store_imm(RAX,8,4);

@@ -29,11 +29,11 @@ static void warn_unused_inferred_locals(Ast *ast)
                 if (similar_local_name(v, candidate)) break;
             if (candidate) {
                 warning_tok(v->tok,
-                    "型名を省略して宣言した変数 %.*s は未使用です（代入のみ）。既存の変数 %.*s と名前が似ています（%s:%d）",
+                    QMSG_0591,
                     v->name_len, v->name, candidate->name_len, candidate->name,
                     candidate->tok->source->filename, candidate->tok->line);
             } else {
-                warning_tok(v->tok, "型名を省略して宣言した変数 %.*s は未使用です（代入のみ）",
+                warning_tok(v->tok, QMSG_0590,
                     v->name_len, v->name);
             }
         }

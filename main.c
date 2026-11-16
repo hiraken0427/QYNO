@@ -16,77 +16,6 @@ void select_source(SourceFile *source)
     current_file = source;
 }
 
-/* 位置情報なしのエラー */
-void fatal(const char *fmt, ...)
-{
-    va_list ap;
-
-    fprintf(stderr, "qyc: エラー: ");
-    va_start(ap, fmt);
-    vfprintf(stderr, fmt, ap);
-    va_end(ap);
-    fprintf(stderr, "\n");
-    exit(1);
-}
-
-/* ソースの該当行と ^ で診断位置を示す */
-static void source_diagnostic(SourceFile *source, int line, int col, const char *level, const char *fmt, va_list ap)
-{
-    const char *line_start;
-    const char *line_end;
-    int cur_line;
-    int i;
-
-    line_start = source->input;
-    cur_line = 1;
-    while (cur_line < line && *line_start != '\0') {
-        if (*line_start == '\n') {
-            cur_line++;
-        }
-        line_start++;
-    }
-    line_end = line_start;
-    while (*line_end != '\0' && *line_end != '\n' && *line_end != '\r') {
-        line_end++;
-    }
-
-    fprintf(stderr, "%s:%d:%d: %s: ", source->filename, line, col, level);
-    vfprintf(stderr, fmt, ap);
-    fprintf(stderr, "\n");
-
-    fprintf(stderr, "%.*s\n", (int)(line_end - line_start), line_start);
-    for (i = 0; i < col - 1 && line_start + i < line_end; i++) {
-        fputc(line_start[i] == '\t' ? '\t' : ' ', stderr);
-    }
-    fprintf(stderr, "^\n");
-}
-
-void error_at(int line, int col, const char *fmt, ...)
-{
-    va_list ap;
-    va_start(ap, fmt);
-    source_diagnostic(current_file, line, col, "エラー", fmt, ap);
-    va_end(ap);
-    exit(1);
-}
-
-void error_tok(Token *tok, const char *fmt, ...)
-{
-    va_list ap;
-    va_start(ap, fmt);
-    source_diagnostic(tok->source, tok->line, tok->col, "エラー", fmt, ap);
-    va_end(ap);
-    exit(1);
-}
-
-void warning_tok(Token *tok, const char *fmt, ...)
-{
-    va_list ap;
-    va_start(ap, fmt);
-    source_diagnostic(tok->source, tok->line, tok->col, "警告", fmt, ap);
-    va_end(ap);
-}
-
 #ifdef _WIN32
 static UINT original_output_cp;
 
@@ -113,14 +42,41 @@ static void setup_console(void)
 
 static void usage(int status)
 {
-    fprintf(stderr, "使い方: qyc <入力ファイル.qy> [-o <出力ファイル>] [-S] [-I <探索ルート>] [--target windows|linux]\n");
-    fprintf(stderr, "  -o <ファイル>        出力ファイル名を指定する\n");
-    fprintf(stderr, "                       （既定は Windows 向けなら 入力名.exe、Linux 向けなら拡張子なし）\n");
-    fprintf(stderr, "  -S                   実行ファイルを作らず、アセンブリ（.s）だけを出力する\n");
-    fprintf(stderr, "  --target <OS>        出力先の OS（windows または linux）。既定は実行中の OS\n");
-    fprintf(stderr, "  -I <ディレクトリ>    import の探索ルートを追加する（複数指定可）\n");
-    fprintf(stderr, "  --version            バージョンを表示する\n");
+    FILE *out=status?stderr:stdout;
+    if(diagnostic_japanese){
+        fprintf(out,"使い方: qyc <入力ファイル.qy> [オプション]\n\n");
+        fprintf(out,"  -o <ファイル>           出力ファイル名を指定する\n");
+        fprintf(out,"  -S                      アセンブリだけを出力する\n");
+        fprintf(out,"  -I <ディレクトリ>       import の探索ルートを追加する（複数指定可）\n");
+        fprintf(out,"  --target windows|linux  出力先OSを指定する（既定は実行中のOS）\n");
+        fprintf(out,"  --jp, --japanese        日本語の表示を使う（大文字も使用可）\n");
+        fprintf(out,"  --color=auto|always|never  コンパイラ診断の色を指定する\n");
+        fprintf(out,"  --diagnostics=plain     ツール向けの位置情報形式を使う\n");
+        fprintf(out,"  --quiet                 完了メッセージを表示しない\n");
+        fprintf(out,"  -h, --help              使い方を表示する\n");
+        fprintf(out,"  --version               バージョンを表示する\n\n");
+        fprintf(out,"出力名を省くと、Windowsは入力名.exe、Linuxは拡張子なしとなる。\n");
+    }else{
+        fprintf(out,"Usage: qyc <input.qy> [options]\n\n");
+        fprintf(out,"  -o <file>               Set the output filename\n");
+        fprintf(out,"  -S                      Emit assembly instead of an executable\n");
+        fprintf(out,"  -I <directory>          Add an import search root (repeatable)\n");
+        fprintf(out,"  --target windows|linux  Set the target OS (default: host OS)\n");
+        fprintf(out,"  --jp, --japanese        Use Japanese messages (case-insensitive)\n");
+        fprintf(out,"  --color=auto|always|never  Control compiler diagnostic colors\n");
+        fprintf(out,"  --diagnostics=plain     Use source locations suitable for tools\n");
+        fprintf(out,"  --quiet                 Suppress the completion message\n");
+        fprintf(out,"  -h, --help              Show this help\n");
+        fprintf(out,"  --version               Show the version\n\n");
+        fprintf(out,"Default output: input.exe for Windows, input without .qy for Linux.\n");
+    }
     exit(status);
+}
+static int japanese_option(const char *s)
+{
+    char lower[16];size_t i,n=strlen(s);if(n>=sizeof(lower))return 0;
+    for(i=0;i<=n;i++)lower[i]=(s[i]>='A'&&s[i]<='Z')?(char)(s[i]+'a'-'A'):s[i];
+    return !strcmp(lower,"--jp")||!strcmp(lower,"--japanese");
 }
 
 static int has_qy_extension(const char *path)
@@ -142,7 +98,7 @@ static char *replace_extension(const char *path, const char *ext)
     ext_len = strlen(ext);
     buf = malloc(base_len + ext_len + 1);
     if (buf == NULL) {
-        fatal("メモリを確保できません");
+        fatal(QMSG_0437);
     }
     memcpy(buf, path, base_len);
     memcpy(buf + base_len, ext, ext_len + 1);
@@ -157,7 +113,7 @@ static char *copy_string(const char *str)
     len = strlen(str);
     buf = malloc(len + 1);
     if (buf == NULL) {
-        fatal("メモリを確保できません");
+        fatal(QMSG_0437);
     }
     memcpy(buf, str, len + 1);
     return buf;
@@ -180,7 +136,7 @@ static Target parse_target(const char *name)
     if (strcmp(name, "linux") == 0) {
         return TARGET_LINUX;
     }
-    fatal("--target には windows か linux を指定してください: %s", name);
+    fatal(QMSG_0069, name);
     return TARGET_WINDOWS;
 }
 
@@ -191,13 +147,13 @@ static void write_assembly(Ast *ast, const char *path, Target target)
 
     out = fopen(path, "w");
     if (out == NULL) {
-        fatal("%s に書き込めません", path);
+        fatal(QMSG_0027, path);
     }
     prog_init(&prog);
     codegen(ast, &prog, out, target);
     prog_free(&prog);
     if (fclose(out) != 0) {
-        fatal("%s の書き込みに失敗しました", path);
+        fatal(QMSG_0038, path);
     }
 }
 
@@ -214,9 +170,18 @@ int main(int argc, char **argv)
     const char **roots;
     int root_count = 0;
 
+    /* Language selection precedes every diagnostic, including malformed CLI
+     * options. Values of path/target options and operands after -- are skipped. */
+    {int jp=0,j;for(j=1;j<argc;j++){
+        if(!strcmp(argv[j],"--"))break;
+        if(japanese_option(argv[j]))jp=1;
+        if(!strcmp(argv[j],"-o")||!strcmp(argv[j],"-I")||!strcmp(argv[j],"--target"))j++;
+    }messages_select(jp);}
+    diagnostic_plain=getenv("QYNO_DIAGNOSTICS")&&!strcmp(getenv("QYNO_DIAGNOSTICS"),"plain");
+    diagnostic_quiet=getenv("QYNO_QUIET")!=NULL;
     setup_console();
     roots = calloc((size_t)argc, sizeof(*roots));
-    if (roots == NULL) fatal("探索ルートの領域を確保できません");
+    if (roots == NULL) fatal(QMSG_0643);
 
     input_path = NULL;
     output_path = NULL;
@@ -224,10 +189,26 @@ int main(int argc, char **argv)
     target = default_target();
 
     for (i = 1; i < argc; i++) {
+        if(japanese_option(argv[i]))continue;
+        if(!strcmp(argv[i],"--quiet")){diagnostic_quiet=1;continue;}
+        if(!strcmp(argv[i],"--diagnostics=plain")){diagnostic_plain=1;continue;}
+        if(!strcmp(argv[i],"--diagnostics=human")){diagnostic_plain=0;continue;}
+        if(!strcmp(argv[i],"--color=auto")){diagnostic_color(0);continue;}
+        if(!strcmp(argv[i],"--color=always")){diagnostic_color(1);continue;}
+        if(!strcmp(argv[i],"--color=never")){diagnostic_color(2);continue;}
+        if(!strcmp(argv[i],"--")){
+            if(input_path||i+2!=argc)usage(1);
+            input_path=argv[++i];diagnostic_input(input_path);break;
+        }
         if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
             usage(0);
         }
         if (strcmp(argv[i], "--version") == 0) {
+            if(diagnostic_japanese){
+                printf("QYNO バージョン %s（プロトタイプ）\n",QYC_VERSION);
+                printf("本製品はプロトタイプです。明示・黙示を問わず、いかなる保証もありません。\n");
+                printf("商品性および特定目的への適合性に関する黙示の保証も含みます。\n");return 0;
+            }
             printf("QYNO version %s (PROTOTYPE)\n", QYC_VERSION);
             printf("Please note that this product is a prototype. No warranties of any kind exist,\n");
             printf("including implied warranties of merchantability or fitness for a particular purpose.\n");
@@ -254,7 +235,7 @@ int main(int argc, char **argv)
             continue;
         }
         if (strcmp(argv[i], "-I") == 0) {
-            if (i + 1 >= argc) fatal("-I の後に探索ルートが必要です");
+            if (i + 1 >= argc) fatal(QMSG_0070);
             roots[root_count++] = argv[++i];
             continue;
         }
@@ -263,27 +244,30 @@ int main(int argc, char **argv)
             continue;
         }
         if (argv[i][0] == '-') {
-            fatal("不明なオプションです: %s", argv[i]);
+            fatal(QMSG_0484, argv[i]);
         }
         if (input_path != NULL) {
-            fatal("入力ファイルは1つだけ指定してください");
+            fatal(QMSG_0528);
         }
-        input_path = argv[i];
+        input_path = argv[i];diagnostic_input(input_path);
     }
 
     if (input_path == NULL) {
         usage(1);
     }
     if (!has_qy_extension(input_path)) {
-        fatal("ソースファイルの拡張子は .qy にしてください: %s", input_path);
+        fatal("%s",diagnostic_japanese?"ソースファイルの拡張子は\".qy\"にしてください":"Source file extension must be \".qy\"");
     }
 
     /* 1–3. 全モジュールを読み込み、各ソース位置を保持して解析する。 */
+    diagnostic_phase(1);
     ast = load_program(input_path, roots, root_count);
     free(roots);
 
     /* 4. 型検査 */
+    diagnostic_phase(2);
     typecheck(ast, target);
+    diagnostic_phase(0);
     optimize_program(ast);
 
     /* -S：アセンブリだけを出力して終わる */
@@ -295,7 +279,7 @@ int main(int argc, char **argv)
         }
         write_assembly(ast, out_path, target);
         free(out_path);
-        return 0;
+        diagnostic_success();return 0;
     }
 
     /* 5. 機械語を生成する */
@@ -318,5 +302,5 @@ int main(int argc, char **argv)
 
     free(out_path);
     prog_free(&prog);
-    return 0;
+    diagnostic_success();return 0;
 }

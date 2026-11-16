@@ -61,7 +61,7 @@ static void apply_relocs(unsigned char *img, const Program *prog, size_t data_of
     for (i = 0; i < prog->reloc_count; i++) {
         r = &prog->relocs[i];
         if (r->kind != RELOC_DATA) {
-            fatal("内部エラー: Linux 向けにインポートは使えません");
+            fatal(QMSG_0537);
         }
         pos = CODE_OFFSET + r->pos;
         disp = (long)(data_offset + r->target) - (long)(pos + 4);
@@ -81,7 +81,7 @@ void write_elf(const char *path, const Program *prog)
     file_size = data_offset + prog->data.len;
     img = calloc(1, file_size);
     if (img == NULL) {
-        fatal("メモリを確保できません");
+        fatal(QMSG_0437);
     }
 
     /* ELF ヘッダ */
@@ -128,21 +128,21 @@ void write_elf(const char *path, const Program *prog)
 
     fp = fopen(path, "wb");
     if (fp == NULL) {
-        fatal("%s に書き込めません", path);
+        fatal(QMSG_0027, path);
     }
     if (fwrite(img, 1, file_size, fp) != file_size) {
         fclose(fp);
-        fatal("%s の書き込みに失敗しました", path);
+        fatal(QMSG_0038, path);
     }
     if (fclose(fp) != 0) {
-        fatal("%s の書き込みに失敗しました", path);
+        fatal(QMSG_0038, path);
     }
     free(img);
 
 #if defined(__unix__) || defined(__APPLE__)
     /* 実行権限を付ける */
     if (chmod(path, 0755) != 0) {
-        fatal("%s に実行権限を付けられません", path);
+        fatal(QMSG_0026, path);
     }
 #endif
 }

@@ -58,7 +58,7 @@ static void provider_edge(int from,int to)
     if(provider_edge_count==provider_edge_cap){
         provider_edge_cap=provider_edge_cap?provider_edge_cap*2:64;
         provider_edges=realloc(provider_edges,(size_t)provider_edge_cap*sizeof(*provider_edges));
-        if(!provider_edges)fatal("ランタイムの依存を保持できません");
+        if(!provider_edges)fatal(QMSG_0471);
     }
     provider_edges[provider_edge_count++]=(ProviderEdge){from,to};
 }
@@ -76,9 +76,9 @@ void x64_plan_finish(void)
     size_t visits=0;
     selected_count=label_count;
     selected=calloc((size_t)(selected_count?selected_count:1),1);
-    if(!selected)fatal("ランタイムの選別を保持できません");
+    if(!selected)fatal(QMSG_0472);
     planned_labels=malloc((size_t)(label_count?label_count:1)*sizeof(*planned_labels));
-    if(!planned_labels)fatal("ラベルの計画を保持できません");
+    if(!planned_labels)fatal(QMSG_0470);
     memcpy(planned_labels,labels,(size_t)label_count*sizeof(*labels));
     while(changed){
         changed=0;
@@ -130,12 +130,12 @@ void x64_end(void)
     long target;
     long rel;
 
-    if(selection_mode==2&&label_count!=selected_count)fatal("内部エラー: ラベルの生成数が一致しません");
+    if(selection_mode==2&&label_count!=selected_count)fatal(QMSG_0547);
     for (i = 0; i < fixup_count; i++) {
         f = &fixups[i];
         target = labels[f->label].offset;
         if (target < 0) {
-            fatal("内部エラー: ラベル %s の位置が決まっていません", labels[f->label].name);
+            fatal(QMSG_0545, labels[f->label].name);
         }
         rel = target - (long)(f->pos + 4);
         buf_set_u32(&prog->text, f->pos, (uint32_t)(int32_t)rel);
@@ -202,11 +202,11 @@ int x64_new_label(const char *name)
         label_cap = label_cap == 0 ? 1024 : label_cap * 2;
         labels = realloc(labels, sizeof(Label) * (size_t)label_cap);
         if (labels == NULL) {
-            fatal("メモリを確保できません");
+            fatal(QMSG_0437);
         }
     }
     l = &labels[label_count];
-    if(selection_mode==2&&(label_count>=selected_count||strncmp(name,planned_labels[label_count].name,LABEL_NAME_SIZE-1)))fatal("内部エラー: ラベルの生成順が一致しません");
+    if(selection_mode==2&&(label_count>=selected_count||strncmp(name,planned_labels[label_count].name,LABEL_NAME_SIZE-1)))fatal(QMSG_0548);
     strncpy(l->name, name, LABEL_NAME_SIZE - 1);
     l->name[LABEL_NAME_SIZE - 1] = '\0';
     l->offset = -1;
@@ -221,10 +221,10 @@ void x64_bind(int label)
         current_provider=label;
     }
     labels[label].provider=current_provider;
-    if(selection_mode==2&&planned_labels[label].provider!=current_provider)fatal("内部エラー: ラベルの提供元が一致しません");
+    if(selection_mode==2&&planned_labels[label].provider!=current_provider)fatal(QMSG_0546);
     falls_through=1;
     if(!x64_output_enabled())return;
-    if(labels[label].offset>=0)fatal("内部エラー: ラベル %s が重複しています",labels[label].name);
+    if(labels[label].offset>=0)fatal(QMSG_0544,labels[label].name);
     labels[label].offset = (long)prog->text.len;
     if (text != NULL) {
         fprintf(text, "%s:\n", labels[label].name);
@@ -250,7 +250,7 @@ static void add_fixup(int label, size_t pos)
         fixup_cap = fixup_cap == 0 ? 4096 : fixup_cap * 2;
         fixups = realloc(fixups, sizeof(Fixup) * (size_t)fixup_cap);
         if (fixups == NULL) {
-            fatal("メモリを確保できません");
+            fatal(QMSG_0437);
         }
     }
     fixups[fixup_count].label = label;
@@ -467,7 +467,7 @@ void x64_lea_index(Reg dst, Reg base, Reg index, int scale)
 {
     unsigned char b[5];
     int displacement = low3(base) == 5;
-    if (index == RSP || scale < 0 || scale > 3) fatal("内部エラー: 添字アドレスの指定が不正です");
+    if (index == RSP || scale < 0 || scale > 3) fatal(QMSG_0570);
     b[0] = (unsigned char)(rex(1, dst, base) | (ext(index) << 1));
     b[1] = 0x8D;
     b[2] = (unsigned char)((displacement ? 0x40 : 0) | (low3(dst) << 3) | 4);
@@ -813,7 +813,7 @@ static const char *xmm_names[] = {
 static void check_xmm(int x)
 {
     if (x < 0 || x > 7) {
-        fatal("内部エラー: 未対応の xmm レジスタです");
+        fatal(QMSG_0566);
     }
 }
 
@@ -996,7 +996,7 @@ void x64_setcc(Cond cc, Reg r)
     unsigned char b[3];
 
     if ((int)r > 3) {
-        fatal("内部エラー: setcc は al〜bl のみ対応しています");
+        fatal(QMSG_0539);
     }
     b[0] = 0x0F;
     b[1] = (unsigned char)(0x90 + cc);
@@ -1011,7 +1011,7 @@ void x64_movzx8(Reg dst, Reg src)
     int n;
 
     if ((int)src > 3) {
-        fatal("内部エラー: movzx は al〜bl のみ対応しています");
+        fatal(QMSG_0538);
     }
     n = 0;
     if (ext(dst)) {
@@ -1029,7 +1029,7 @@ static void op8(unsigned char op, const char *name, Reg dst, Reg src)
     unsigned char b[2];
 
     if ((int)dst > 3 || (int)src > 3) {
-        fatal("内部エラー: 8ビット演算は al〜bl のみ対応しています");
+        fatal(QMSG_0534);
     }
     b[0] = op;
     b[1] = modrm_reg(src, dst);

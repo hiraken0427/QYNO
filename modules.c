@@ -33,7 +33,7 @@ static int load_depth;
 static void *allocate(size_t size)
 {
     void *p = calloc(1, size);
-    if (p == NULL) fatal("モジュールの領域を確保できません");
+    if (p == NULL) fatal(QMSG_0442);
     return p;
 }
 
@@ -83,12 +83,12 @@ static SourceFile *read_source(const char *filename, char *canonical, Module *mo
     SourceFile *source = allocate(sizeof(*source));
     FILE *file = fopen(filename, "rb");
     long size;
-    if (file == NULL) fatal("%s を開けません: %s", filename, strerror(errno));
+    if (file == NULL) fatal(QMSG_0051, filename, strerror(errno));
     if (fseek(file, 0, SEEK_END) != 0 || (size = ftell(file)) < 0 || fseek(file, 0, SEEK_SET) != 0) {
-        fatal("%s のサイズを取得できません", filename);
+        fatal(QMSG_0031, filename);
     }
     source->text = allocate((size_t)size + 1);
-    if (fread(source->text, 1, (size_t)size, file) != (size_t)size) fatal("%s を読み込めません", filename);
+    if (fread(source->text, 1, (size_t)size, file) != (size_t)size) fatal(QMSG_0050, filename);
     fclose(file);
     source->filename = copy_name(filename, strlen(filename));
     source->canonical_path = canonical;
@@ -101,7 +101,7 @@ static SourceFile *read_source(const char *filename, char *canonical, Module *mo
 static void import_trace(void)
 {
     int i;
-    fprintf(stderr, "import 経路: ");
+    fprintf(stderr, QMSG_0214);
     for (i = 0; i < load_depth; i++) {
         if (i != 0) fprintf(stderr, " -> ");
         fprintf(stderr, "%s", load_stack[i]->name[0] ? load_stack[i]->name : "<entry>");
@@ -143,14 +143,14 @@ static Module *load_module(const char *name, const char *filename, char *canonic
     for (module = modules; module != NULL; module = module->next) {
         size_t length = strlen(module->name);
         if (module->builtin && strncmp(name, module->name, length) == 0 && name[length] == '.') {
-            error_tok(site, "標準モジュール %s に %s はありません", module->name, name + length + 1);
+            error_tok(site, QMSG_0706, module->name, name + length + 1);
         }
     }
     for (module = modules; module != NULL; module = module->next) {
         if (strcmp(module->name, name) == 0) {
             if (module->state == 1) {
                 import_trace();
-                error_tok(site, "循環 import: %s を読み込み中です", name);
+                error_tok(site, QMSG_0634, name);
             }
             return module;
         }
@@ -164,26 +164,26 @@ static Module *load_module(const char *name, const char *filename, char *canonic
                 break;
             }
             if (errno != ENOENT && errno != ENOTDIR) {
-                error_tok(site, "モジュール %s を探索できません: %s (%s)", name, candidate, strerror(errno));
+                error_tok(site, QMSG_0441, name, candidate, strerror(errno));
             }
             free(candidate);
         }
         if (filename == NULL) {
             import_trace();
-            for (i = 0; i < search_root_count; i++) fprintf(stderr, "探索ルート: %s\n", search_roots[i]);
-            error_tok(site, "モジュール %s が見つかりません（探索ルートを -I で追加できます）", name);
+            for (i = 0; i < search_root_count; i++) fprintf(stderr, QMSG_0641, search_roots[i]);
+            error_tok(site, QMSG_0439, name);
         }
     }
     for (module = modules; module != NULL; module = module->next) {
         if (module->source != NULL && strcmp(module->source->canonical_path, canonical) == 0) {
             if (module->state == 1) {
                 import_trace();
-                error_tok(site, "循環 import: %s は読み込み中の %s と同じファイルです", name, module->source->filename);
+                error_tok(site, QMSG_0633, name, module->source->filename);
             }
-            error_tok(site, "モジュール %s と %s は同じファイルを別の名前で参照しています", name, module->name);
+            error_tok(site, QMSG_0440, name, module->name);
         }
     }
-    if (load_depth == (int)(sizeof(load_stack) / sizeof(load_stack[0]))) error_tok(site, "import の依存が深すぎます");
+    if (load_depth == (int)(sizeof(load_stack) / sizeof(load_stack[0]))) error_tok(site, QMSG_0212);
     module = allocate(sizeof(*module));
     module->name = copy_name(name, strlen(name));
     module->id = module_count++;
@@ -217,7 +217,7 @@ Ast *load_program(const char *path, const char **roots, int root_count)
     EnumDef **enum_tail = &program->enums;
     Interface **interface_tail = &program->interfaces;
     int i;
-    if (canonical == NULL) fatal("%s を開けません: %s", path, strerror(errno));
+    if (canonical == NULL) fatal(QMSG_0051, path, strerror(errno));
     directory = copy_name(canonical, strlen(canonical));
 #ifdef _WIN32
     for (last = directory; *last; last++) if (*last == '\\') *last = '/';
@@ -231,7 +231,7 @@ Ast *load_program(const char *path, const char **roots, int root_count)
     for (i = 0; i < root_count; i++) {
         struct stat st;
         char *root = canonical_path(roots[i]);
-        if (root == NULL || stat(root, &st) != 0 || !S_ISDIR(st.st_mode)) fatal("探索ルートがディレクトリではありません: %s", roots[i]);
+        if (root == NULL || stat(root, &st) != 0 || !S_ISDIR(st.st_mode)) fatal(QMSG_0642, roots[i]);
         search_roots[i + 1] = root;
     }
     modules = NULL;
@@ -475,7 +475,7 @@ static Symbol using_symbol(Using *u, const char *name)
 static void merge_symbol(Symbol *result, Symbol candidate, Token *site, const char *name)
 {
     if (candidate.kind == SYM_NONE) return;
-    if (result->kind != SYM_NONE && !same_symbol(*result, candidate)) error_tok(site, "using による名前 %s が衝突しています。修飾名を使ってください", name);
+    if (result->kind != SYM_NONE && !same_symbol(*result, candidate)) error_tok(site, QMSG_0362, name);
     *result = candidate;
 }
 
@@ -494,7 +494,7 @@ static int symbol_accessible(Symbol symbol,Module *owner)
 }
 static void require_symbol_access(Symbol symbol,Module *owner,Token *site,const char *name)
 {
-    if(!symbol_accessible(symbol,owner))error_tok(site,"private の定義 %s は宣言したモジュールの外から参照できません",name);
+    if(!symbol_accessible(symbol,owner))error_tok(site,QMSG_0309,name);
 }
 
 static Symbol scoped_symbol(Module *owner, const char *name, Using *scope, Using *skip, Token *site)
@@ -531,27 +531,27 @@ static void diagnose_renamed(Module *owner,const char *name,Using *scope,Using *
         Symbol parent=scoped_symbol(owner,prefix,scope,skip,site);free(prefix);
         if(parent.kind==SYM_MODULE&&parent.module->builtin&&
            (replacement=builtin_replacement(parent.module->name,dot+1)))
-            error_tok(site,"%s は廃止されました。%s.%s を使用してください",name,parent.module->name,replacement);
+            error_tok(site,QMSG_0048,name,parent.module->name,replacement);
         return;
     }
     for(u=scope;u;u=u->vnext)if(u!=skip&&u->state==2&&!u->alias&&u->target_module&&u->target_module->builtin&&
         (replacement=builtin_replacement(u->target_module->name,name)))
-            error_tok(site,"%s は廃止されました。%s を使用してください",name,replacement);
+            error_tok(site,QMSG_0047,name,replacement);
     for(u=owner->ast->usings;u;u=u->next)if(u!=skip&&u->state==2&&!u->alias&&u->target_module&&u->target_module->builtin&&
         (replacement=builtin_replacement(u->target_module->name,name)))
-            error_tok(site,"%s は廃止されました。%s を使用してください",name,replacement);
+            error_tok(site,QMSG_0047,name,replacement);
 }
 
 static void resolve_using(Using *u)
 {
     Symbol target;
     if (u->state == 2) return;
-    if (u->state == 1) error_tok(u->path_tok, "using の参照が循環しています: %s", u->path);
+    if (u->state == 1) error_tok(u->path_tok, QMSG_0363, u->path);
     u->state = 1;
     target = scoped_symbol(u->tok->source->module, u->path, u->scope, u, u->path_tok);
     if(target.kind==SYM_NONE)diagnose_renamed(u->tok->source->module,u->path,u->scope,u,u->path_tok);
-    if (target.kind == SYM_NONE) error_tok(u->path_tok, "using の対象 %s はありません。必要な import と名前を確認してください", u->path);
-    if (u->alias != NULL && target.kind != SYM_MODULE) error_tok(u->alias, "as の別名はモジュールにだけ指定できます: %s", u->path);
+    if (target.kind == SYM_NONE) error_tok(u->path_tok, QMSG_0364, u->path);
+    if (u->alias != NULL && target.kind != SYM_MODULE) error_tok(u->alias, QMSG_0095, u->path);
     u->target_enum = target.enumeration;
     u->target_model = target.model;
     u->target_interface = target.contract;
@@ -585,21 +585,21 @@ static int import_root(Module *owner, const char *name)
 static void introduced_name(Using *u, const char *name, Symbol symbol)
 {
     Module *owner = u->tok->source->module;
-    if(symbol.kind==SYM_BUILTIN&&builtin_is_random(symbol.builtin)&&random_operation(symbol.builtin)!=0)error_tok(u->path_tok,"乱数の型名APIはモジュール別名を使ってください（using lib.random as random）");
+    if(symbol.kind==SYM_BUILTIN&&builtin_is_random(symbol.builtin)&&random_operation(symbol.builtin)!=0)error_tok(u->path_tok,QMSG_0496);
     Symbol direct = direct_symbol(owner, name);
     Using *other;
     Var *local;
     if ((direct.kind != SYM_NONE && !same_symbol(direct, symbol)) ||
         (import_root(owner, name) && direct.kind == SYM_NONE)) {
-        error_tok(u->path_tok, "using %s が導入する %s は、既存の名前と衝突しています", u->path, name);
+        error_tok(u->path_tok, QMSG_0358, u->path, name);
     }
     for (local = u->locals; local != NULL; local = local->vnext) {
-        if (name_matches(local->name, local->name_len, name)) error_tok(u->path_tok, "using %s の名前 %s は、%s:%d の変数と衝突しています", u->path, name, local->tok->source->filename, local->tok->line);
+        if (name_matches(local->name, local->name_len, name)) error_tok(u->path_tok, QMSG_0359, u->path, name, local->tok->source->filename, local->tok->line);
     }
     for (other = u->scope; other != NULL; other = other->vnext) {
         Symbol candidate = using_symbol(other, name);
         if (candidate.kind != SYM_NONE && !same_symbol(candidate, symbol)) {
-            error_tok(u->path_tok, "using %s の名前 %s は、using %s (%s:%d) と衝突しています", u->path, name, other->path, other->tok->source->filename, other->tok->line);
+            error_tok(u->path_tok, QMSG_0360, u->path, name, other->path, other->tok->source->filename, other->tok->line);
         }
     }
     for (other = owner->ast->usings; other != NULL; other = other->next) {
@@ -607,7 +607,7 @@ static void introduced_name(Using *u, const char *name, Symbol symbol)
         if (other == u) continue;
         candidate = using_symbol(other, name);
         if (candidate.kind != SYM_NONE && !same_symbol(candidate, symbol)) {
-            error_tok(u->path_tok, "using %s の名前 %s は、using %s (%s:%d) と衝突しています", u->path, name, other->path, other->tok->source->filename, other->tok->line);
+            error_tok(u->path_tok, QMSG_0360, u->path, name, other->path, other->tok->source->filename, other->tok->line);
         }
     }
 }
@@ -688,9 +688,9 @@ static void validate_declaration(Token *site, Using *scope)
     Module *owner = site->source->module;
     char *name = copy_name(site->loc, (size_t)site->len);
     Using *u;
-    if (import_root(owner, name)) error_tok(site, "名前 %s は import または組み込みモジュールの名前と衝突しています", name);
+    if (import_root(owner, name)) error_tok(site, QMSG_0585, name);
     for (u = scope; u != NULL; u = u->vnext) {
-        if (using_symbol(u, name).kind != SYM_NONE) error_tok(site, "名前 %s は using %s と衝突しています", name, u->path);
+        if (using_symbol(u, name).kind != SYM_NONE) error_tok(site, QMSG_0586, name, u->path);
     }
     for (u = owner->ast->usings; u != NULL; u = u->next) {
         Symbol symbol = using_symbol(u, name);
@@ -701,7 +701,7 @@ static void validate_declaration(Token *site, Using *scope)
             !(symbol.kind == SYM_ENUM && symbol.enumeration->tok == site) &&
             !(symbol.kind == SYM_MODEL && symbol.model->tok == site) &&
             !(symbol.kind == SYM_INTERFACE && symbol.contract->tok == site)) {
-            error_tok(site, "名前 %s は using %s と衝突しています", name, u->path);
+            error_tok(site, QMSG_0586, name, u->path);
         }
     }
     free(name);
@@ -729,7 +729,7 @@ void validate_module_names(Ast *program)
     { Model *m; for (m = program->models; m; m = m->next) validate_declaration(m->tok, NULL); }
     for (fn = program->funcs; fn != NULL; fn = fn->next) {
         if (!fn->model) validate_declaration(fn->tok, NULL);
-        if (!fn->model && fn->tok->source->module != program->entry && token_matches(fn->tok, "main")) error_tok(fn->tok, "依存モジュールには main を定義できません");
+        if (!fn->model && fn->tok->source->module != program->entry && token_matches(fn->tok, "main")) error_tok(fn->tok, QMSG_0521);
         for (v = fn->params; v != NULL; v = v->next) validate_declaration(v->tok, v->usings);
         for (v = fn->locals; v != NULL; v = v->next) {
             if (v->name_len != 0) validate_declaration(v->tok, v->usings);
@@ -737,7 +737,7 @@ void validate_module_names(Ast *program)
                 char *name = copy_name(v->name, (size_t)v->name_len);
                 Symbol target = scoped_symbol(v->tok->source->module, name, v->usings, NULL, v->tok);
                 if (target.kind != SYM_NONE)
-                    error_tok(v->tok, "%s は既存の定数・関数・型・名前空間です。型名を省略した宣言で置き換えることはできません", name);
+                    error_tok(v->tok, QMSG_0049, name);
                 free(name);
             }
         }
@@ -753,7 +753,7 @@ void resolve_module_name(Node *node)
     if (node->kind == ND_PRINT || node->kind == ND_INPUT) {
         int expected = node->kind == ND_PRINT ? BI_IO_PRINT : BI_IO_INPUT;
         if (symbol.kind == SYM_BUILTIN && symbol.builtin == expected) return;
-        error_tok(node->tok, "%s は io.%s を参照していません。using io または選択 using を宣言し、名前空間を確認してください",
+        error_tok(node->tok, QMSG_0045,
                   name, builtin_name((Builtin)expected));
     }
     /* Qualified constant aggregates (including forward declarations and using
@@ -790,11 +790,11 @@ void resolve_module_name(Node *node)
             base->next = NULL;
             resolve_module_name(base);
             if (strcmp(dot + 1, "value") == 0) {
-                if (base->kind != ND_VAR) error_tok(node->tok, ".value は変数の直後に指定してください");
+                if (base->kind != ND_VAR) error_tok(node->tok, QMSG_0073);
                 node->var = base->var;
             } else {
                 node->kind = strcmp(dot + 1, "length") == 0 ? ND_LENGTH : ND_ADDR;
-                if (node->kind == ND_ADDR && base->kind != ND_VAR) error_tok(node->tok, ".addr は変数の直後に指定してください");
+                if (node->kind == ND_ADDR && base->kind != ND_VAR) error_tok(node->tok, QMSG_0071);
                 node->lhs = base;
             }
             return;
@@ -802,9 +802,9 @@ void resolve_module_name(Node *node)
     }
     if (node->kind == ND_CALL) {
         if(symbol.kind==SYM_ENUM){node->kind=ND_ENUM_CONVERT;node->cmp_ty=symbol.enumeration->ty;return;}
-        if (symbol.kind == SYM_INTERFACE) error_tok(node->tok, "interface は生成できません");
+        if (symbol.kind == SYM_INTERFACE) error_tok(node->tok, QMSG_0258);
         if (symbol.kind == SYM_MODEL) {
-            if (node->nargs) error_tok(node->tok, "モデルの初期化は 型 変数 = {フィールド=値} と書いてください");
+            if (node->nargs) error_tok(node->tok, QMSG_0455);
             node->kind = ND_MODEL_INIT; node->cmp_ty = symbol.model->ty; return;
         }
         if (symbol.kind == SYM_FUNCTION) {
@@ -819,15 +819,15 @@ void resolve_module_name(Node *node)
         if (symbol.kind == SYM_NONE) {
             diagnose_renamed(owner,name,node->usings,NULL,node->tok);
             const char *ns = builtin_namespace_of(name, (int)strlen(name));
-            if (ns != NULL) error_tok(node->tok, "関数 %s は定義されていません（%s.%s と書くか、using %s.%s を宣言してください）", name, ns, name, ns, name);
+            if (ns != NULL) error_tok(node->tok, QMSG_0784, name, ns, name, ns, name);
         }
-        error_tok(node->tok, "関数 %s は定義されていません。import と using を確認してください", name);
+        error_tok(node->tok, QMSG_0783, name);
     }
     if (symbol.kind == SYM_CONSTANT) {
         node->var = symbol.constant;
         return;
     }
-    error_tok(node->tok, "変数または定数 %s は宣言されていません。import と using を確認してください", name);
+    error_tok(node->tok, QMSG_0609, name);
 }
 
 Type resolve_module_type(Token *tok, const char *name, Using *scope)
@@ -835,7 +835,7 @@ Type resolve_module_type(Token *tok, const char *name, Using *scope)
     Symbol symbol = scoped_symbol(tok->source->module, name, scope, NULL, tok);
     if(symbol.kind==SYM_ENUM)return symbol.enumeration->ty;
     if (symbol.kind == SYM_INTERFACE) return symbol.contract->ty;
-    if (symbol.kind != SYM_MODEL) error_tok(tok, "モデル型 %s は定義されていません。import と using を確認してください", name);
+    if (symbol.kind != SYM_MODEL) error_tok(tok, QMSG_0463, name);
     return symbol.model->ty;
 }
 

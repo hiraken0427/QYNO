@@ -146,7 +146,7 @@ Type standard_type(Ast *ast,const char *ns,const char *name)
         for(m=mod->ast->models;m;m=m->next)if(m->tok->source->module==mod&&!strcmp(m->name,name))return m->ty;
         for(e=mod->ast->enums;e;e=e->next)if(e->tok->source->module==mod&&!strcmp(e->name,name))return e->ty;
     }
-    fatal("標準型 %s.%s がありません",ns,name);return TY_NONE;
+    fatal(QMSG_0707,ns,name);return TY_NONE;
 }
 
 /* Old standard names are diagnostics, never callable aliases. */

@@ -163,6 +163,35 @@ static int pow_double_label;
 static int pow_float_label;
 static int write_err_label;
 static int runtime_error_label;
+static int diagnostic_tail_label;
+typedef struct DiagnosticContext DiagnosticContext;
+struct DiagnosticContext {
+    DiagnosticContext *next;SourceFile *source;int line,col,len;
+    char *ns,*operation;size_t offset;
+};
+static DiagnosticContext *diagnostic_contexts;
+static void diagnostic_context_reset(void)
+{
+    DiagnosticContext *p=diagnostic_contexts;
+    while(p){DiagnosticContext *next=p->next;free(p->ns);free(p->operation);free(p);p=next;}
+    diagnostic_contexts=NULL;
+}
+static size_t diagnostic_context_data(Token *tok,const char *ns,const char *operation)
+{
+    DiagnosticContext *p;Buffer packet;
+    for(p=diagnostic_contexts;p;p=p->next)
+        if(p->source==tok->source&&p->line==tok->line&&p->col==tok->col&&p->len==tok->len&&
+           ((!p->ns&&!ns)||(p->ns&&ns&&!strcmp(p->ns,ns)))&&
+           ((!p->operation&&!operation)||(p->operation&&operation&&!strcmp(p->operation,operation))))return p->offset;
+    p=calloc(1,sizeof(*p));if(!p)fatal(QMSG_0437);
+    if(ns){p->ns=malloc(strlen(ns)+1);if(!p->ns)fatal(QMSG_0437);strcpy(p->ns,ns);}
+    if(operation){p->operation=malloc(strlen(operation)+1);if(!p->operation)fatal(QMSG_0437);strcpy(p->operation,operation);}
+    p->source=tok->source;p->line=tok->line;p->col=tok->col;p->len=tok->len;
+    buf_init(&packet);diagnostic_context(&packet,tok,ns,operation);
+    p->offset=prog_add_data(prog,(const char *)packet.data,packet.len);buf_free(&packet);
+    p->next=diagnostic_contexts;diagnostic_contexts=p;return p->offset;
+}
+
 static int exit_label;
 static int round_labels[3];         /* 四捨五入・切り上げ・切り捨て */
 static int round_integer_labels[2][3]; /* int 専用。double へ変換しない */
@@ -999,6 +1028,16 @@ static void gen_pow_real(int is_float)
 }
 
 /* rsi・rdx のメッセージを標準エラー出力に書き、終了コード 1 でエントリ処理の終了処理へ移る */
+static void gen_diagnostic_tail(void)
+{
+    int done=rt_label("diagnostic.tail.done");
+    rt_enter(diagnostic_tail_label,0);x64_test(RAX,RAX);x64_jcc(CC_Z,done);
+    x64_load(RDX,RAX,0);x64_add(RAX,RDX);
+    x64_load(RDX,RAX,8);x64_test(RDX,RDX);x64_jcc(CC_Z,done);
+    x64_lea(RSI,RAX,16);x64_call(write_err_label);
+    x64_bind(done);rt_leave();
+}
+
 static void gen_runtime_error(void)
 {
     x64_bind(runtime_error_label);
@@ -1295,7 +1334,7 @@ static void gen_integer_checked(Type from, Type to, Token *tok)
     if(type_is_wide(from)||type_is_wide(to)){gen_wide(W_CONVERT,to,from,0,tok);return;}
     int bad = new_label("integer.cast.range"), done = new_label("integer.cast.done");
     gen_integer_range(from, to, bad); x64_jmp(done);
-    x64_bind(bad); gen_fail(tok, "整数変換の結果が対象型の範囲外です", EX_SOFTWARE);
+    x64_bind(bad); gen_fail(tok, QMSG_0665, EX_SOFTWARE);
     x64_bind(done);
 }
 static void gen_format_integer(Type ty)
@@ -1367,7 +1406,7 @@ static void gen_convert(Type from, Type to)
         x64_movd_from_xmm(RAX, 0);
         return;
     }
-    fatal("内部エラー: %s から %s への変換は未対応です", type_name(from), type_name(to));
+    fatal(QMSG_0533, type_name(from), type_name(to));
 }
 
 /* rax の文字列を保持し、r9=文字数、r8=UTF-8不正の状態を得る。 */
@@ -1388,12 +1427,12 @@ static void gen_char_check(Token *tok, int code)
     gen_text_measure_preserving();
     x64_test(R8, R8);
     x64_jcc(CC_Z, utf8_ok);
-    gen_fail(tok, "不正な UTF-8 文字列です", code);
+    gen_fail(tok, QMSG_0486, code);
     x64_bind(utf8_ok);
     x64_mov_imm(RCX, 1);
     x64_cmp(R9, RCX);
     x64_jcc(CC_Z, one);
-    gen_fail(tok, "char には 書記素クラスタをちょうど1つ含む文字列が必要です", code);
+    gen_fail(tok, QMSG_0112, code);
     x64_bind(one);
 }
 
@@ -1439,7 +1478,7 @@ static void gen_text_operation(Node *node)
         pop(RAX);
         x64_test(RDI, RDI);
         x64_jcc(CC_NS, in_range);
-        gen_fail(node->tok, "文字列の添字が範囲外です", EX_SOFTWARE);
+        gen_fail(node->tok, QMSG_0675, EX_SOFTWARE);
         x64_bind(in_range);
     } else {
         x64_mov_imm(RDI, -1);
@@ -1447,7 +1486,7 @@ static void gen_text_operation(Node *node)
     x64_call(string_scan_label);
     x64_test(R8, R8);
     x64_jcc(CC_Z, valid);
-    gen_fail(node->tok, "不正な UTF-8 文字列です", EX_SOFTWARE);
+    gen_fail(node->tok, QMSG_0486, EX_SOFTWARE);
     x64_bind(valid);
     if (node->kind == ND_LENGTH) {
         return;
@@ -1455,7 +1494,7 @@ static void gen_text_operation(Node *node)
     in_range = new_label("text.index.found");
     x64_test(RDX, RDX);
     x64_jcc(CC_NZ, in_range);
-    gen_fail(node->tok, "文字列の添字が範囲外です", EX_SOFTWARE);
+    gen_fail(node->tok, QMSG_0675, EX_SOFTWARE);
     x64_bind(in_range);
     x64_push(RDX);
     x64_push(RCX);
@@ -1469,7 +1508,7 @@ static void gen_text_operation(Node *node)
         x64_test(RAX, RAX);
         x64_jcc(CC_NZ, allocated);
     }
-    gen_fail(node->tok, "文字列のメモリを確保できません", EX_SOFTWARE);
+    gen_fail(node->tok, QMSG_0673, EX_SOFTWARE);
     x64_bind(allocated);
     x64_pop(RCX);
     x64_pop(RSI);
@@ -1497,7 +1536,7 @@ static void gen_neg(Node *node)
         x64_btc(RAX, 31);
         return;
     default:
-        fatal("内部エラー: 単項 - の型が不正です");
+        fatal(QMSG_0552);
     }
 }
 
@@ -1528,7 +1567,7 @@ static void gen_div_check(Node *node)
     ok = new_label("div.ok");
     x64_test(RDI, RDI);
     x64_jcc(CC_NZ, nonzero);
-    gen_fail(node->tok, node->kind == ND_MOD ? "0 で割った余りを求めようとしました" : "0 で割ろうとしました", EX_SOFTWARE);
+    gen_fail(node->tok, node->kind == ND_MOD ? QMSG_0074 : QMSG_0076, EX_SOFTWARE);
     x64_bind(nonzero);
     if (integer_unsigned(node->ty)) return;
     x64_mov_imm(RCX, -1);
@@ -1542,7 +1581,7 @@ static void gen_div_check(Node *node)
         x64_mov_imm(RDI, 1);
         x64_jmp(ok);
     } else {
-        gen_fail(node->tok, "割り算の結果が int の範囲を超えます", EX_SOFTWARE);
+        gen_fail(node->tok, QMSG_0580, EX_SOFTWARE);
     }
     x64_bind(ok);
 }
@@ -1563,14 +1602,14 @@ static void gen_pow_check(Node *node)
     }
     x64_test(RCX, RCX);
     x64_jcc(CC_NZ, nonzero);
-    gen_fail(node->tok, "0 の負の累乗は定義されていません", EX_SOFTWARE);
+    gen_fail(node->tok, QMSG_0079, EX_SOFTWARE);
     x64_bind(nonzero);
     if (type_is_integer(node->ty)) {
         x64_mov_imm(RCX, 1);
         x64_cmp(RAX, RCX);
         x64_jcc(CC_Z, ok);
         if (!integer_unsigned(node->ty)) { x64_mov_imm(RCX, -1); x64_cmp(RAX, RCX); x64_jcc(CC_Z, ok); }
-        gen_fail(node->tok, "負の累乗の結果を int で表せません（2.0^(-1) のように底を小数にしてください）", EX_SOFTWARE);
+        gen_fail(node->tok, QMSG_0744, EX_SOFTWARE);
     }
     x64_bind(ok);
 }
@@ -1630,7 +1669,7 @@ static void gen_binary(Node *node)
         x64_call(concat_label);
         return;
     default:
-        fatal("内部エラー: 二項演算の型が不正です");
+        fatal(QMSG_0550);
     }
 }
 
@@ -1866,7 +1905,7 @@ static void gen_real_to_integer(Type from, Type to, Token *tok)
         x64_ucomisd(0, 1); x64_jcc(CC_B, low); x64_sse_sd(SSE_SUB, 0, 1); x64_cvttsd2si(RAX, 0); x64_btc(RAX, 63); x64_jmp(done);
     }
     x64_bind(low); x64_cvttsd2si(RAX, 0); x64_jmp(done);
-    x64_bind(bad); gen_fail(tok, "整数変換の結果が対象型の範囲外です", EX_SOFTWARE);
+    x64_bind(bad); gen_fail(tok, QMSG_0665, EX_SOFTWARE);
     x64_bind(done);
 }
 static void gen_builtin(Node *node)
@@ -1884,7 +1923,7 @@ static void gen_builtin(Node *node)
         int bad=new_label("wide.text.bad"),done=new_label("wide.text.done");
         gen_expr(x);x64_load(RDX,RAX,0);x64_lea(RSI,RAX,8);x64_add(RDX,RSI);x64_xor(RDI,RDI);gen_wide_parse(node->ty);
         x64_test(RCX,RCX);x64_jcc(CC_NZ,bad);push();x64_call(skip_ws_label);x64_cmp(RSI,RDX);pop(RAX);x64_jcc(CC_Z,done);
-        x64_bind(bad);gen_fail(node->tok,"文字列を指定した小数型として読み取れません",EX_DATAERR);x64_bind(done);return;
+        x64_bind(bad);gen_fail(node->tok,QMSG_0681,EX_DATAERR);x64_bind(done);return;
     }
     if(type_is_wide(ty)||type_is_wide(node->ty)){
         if(b==BI_INT||b==BI_FLOAT||b==BI_DOUBLE||b==BI_HALF||b==BI_QUAD){gen_expr(x);gen_wide(W_CONVERT,node->ty,ty,0,node->tok);return;}
@@ -1945,7 +1984,7 @@ static void gen_builtin(Node *node)
             x64_call(round_integer_labels[integer_unsigned(ty)][b - BI_ROUND]);
             x64_test(RDX, RDX);
             x64_jcc(CC_Z, ok);
-            gen_fail(node->tok, "整数の丸め結果が int の範囲を超えます", EX_SOFTWARE);
+            gen_fail(node->tok, QMSG_0658, EX_SOFTWARE);
             x64_bind(ok);
             gen_integer_checked(ty, ty, node->tok);
             return;
@@ -3294,12 +3333,12 @@ static void gen_input_error(void)
     int wdone;
     int sloop;
     int sdone;
-    static const char input_label_text[] = "\t入力 | ";
-    static const char caret_prefix[] = "\n\t       ";
+    const char *input_label_text = QMSG_0000;
+    const char *caret_prefix = diagnostic_japanese?"\n\t       ":"\n\t        ";
     static const char caret[] = "^ ";
 
-    lbl_input = prog_add_data(prog, input_label_text, sizeof(input_label_text) - 1);
-    lbl_caret_prefix = prog_add_data(prog, caret_prefix, sizeof(caret_prefix) - 1);
+    lbl_input = prog_add_data(prog, input_label_text, strlen(input_label_text));
+    lbl_caret_prefix = prog_add_data(prog, caret_prefix, strlen(caret_prefix));
     lbl_space = prog_add_data(prog, " ", 1);
     lbl_caret = prog_add_data(prog, caret, sizeof(caret) - 1);
     lbl_newline = prog_add_data(prog, "\n", 1);
@@ -3325,14 +3364,14 @@ static void gen_input_error(void)
     x64_load(RDX, RBP, -16);
     x64_call(write_err_label);
     x64_lea_data(RSI, lbl_input);
-    x64_mov_imm(RDX, (long long)sizeof(input_label_text) - 1);
+    x64_mov_imm(RDX, (long long)strlen(input_label_text));
     x64_call(write_err_label);
     x64_load(RAX, RBP, -48);
     x64_load(RDX, RAX, 0);
     x64_lea(RSI, RAX, 8);
     x64_call(write_err_label);
     x64_lea_data(RSI, lbl_caret_prefix);
-    x64_mov_imm(RDX, (long long)sizeof(caret_prefix) - 1);
+    x64_mov_imm(RDX, (long long)strlen(caret_prefix));
     x64_call(write_err_label);
 
     /* 誤りの位置までの表示幅 */
@@ -4765,46 +4804,26 @@ static void source_line(Token *tok, const char **start, int *len)
 /* 実行時エラーのメッセージ（1行）を rdata に置き、rsi・rdx・r8 を設定して実行時エラーへ */
 static void gen_fail(Token *tok, const char *text, int code)
 {
-    char msg[1024];
-    int len;
-    size_t offset;
-
-    len = snprintf(msg, sizeof(msg), "QYNO 実行時エラー: %s:%d:%d: %s\n", tok ? tok->source->filename : "<runtime>", tok ? tok->line : 0, tok ? tok->col : 0, text);
-    if (len < 0 || len >= (int)sizeof(msg)) {
-        len = (int)strlen(msg);
-    }
-    offset = prog_add_data(prog, msg, (size_t)len);
-    x64_lea_data(RSI, offset);
-    x64_mov_imm(RDX, len);
-    x64_mov_imm(R8, code);
-    x64_jmp(runtime_error_label);
+    Buffer message;size_t offset;
+    buf_init(&message);diagnostic_runtime(&message,tok,text);
+    offset=prog_add_data(prog,(const char *)message.data,message.len);
+    x64_lea_data(RSI,offset);x64_mov_imm(RDX,(long long)message.len);buf_free(&message);
+    x64_mov_imm(R8,code);x64_jmp(runtime_error_label);
 }
 
 /* 入力の誤りの見出し（ファイル名・行・列と、ソースの該当行）を rdata に置く */
 static size_t input_head(Token *tok, int *len_out)
 {
-    char *msg;
-    const char *line;
-    int line_len;
-    int cap;
-    int len;
-    size_t offset;
-
-    source_line(tok, &line, &line_len);
-    cap = line_len + 1024;
-    msg = malloc((size_t)cap);
-    if (msg == NULL) {
-        fatal("メモリを確保できません");
+    Buffer message;size_t offset;
+    buf_init(&message);
+    diagnostic_runtime(&message,tok,diagnostic_japanese?"入力を読み取れませんでした":"Could not read input");
+    if(diagnostic_plain){
+        const char *line;int length;char number[40];int n;
+        source_line(tok,&line,&length);n=snprintf(number,sizeof(number),"\t%d | ",tok->line);
+        buf_add(&message,(const unsigned char *)number,(size_t)n);buf_add(&message,(const unsigned char *)line,(size_t)length);buf_add_u8(&message,'\n');
     }
-    len = snprintf(msg, (size_t)cap, "QYNO 実行時エラー: %s:%d:%d: 入力を読み取れませんでした\n\t%d | %.*s\n",
-                   tok->source->filename, tok->line, tok->col, tok->line, line_len, line);
-    if (len < 0 || len >= cap) {
-        len = (int)strlen(msg);
-    }
-    offset = prog_add_data(prog, msg, (size_t)len);
-    free(msg);
-    *len_out = len;
-    return offset;
+    offset=prog_add_data(prog,(const char *)message.data,message.len);
+    *len_out=(int)message.len;buf_free(&message);return offset;
 }
 
 /*
@@ -4844,7 +4863,7 @@ static void sep_display(InputField *f, char *buf, size_t cap)
         e--;
     }
     if (s == e) {
-        snprintf(buf, cap, "空白");
+        snprintf(buf, cap, QMSG_0722);
         return;
     }
     snprintf(buf, cap, "%.*s", e - s, f->sep + s);
@@ -4860,7 +4879,7 @@ static void gen_read_line_into(Node *node, int eof)
     {
         int ok = new_label("input.read_ok");
         x64_jcc(CC_NZ, ok);
-        gen_fail(node->tok, "入力の読み込みに失敗しました", EX_IOERR);
+        gen_fail(node->tok, QMSG_0527, EX_IOERR);
         x64_bind(ok);
     }
     x64_store(RBP, -node->in_line->offset, RAX);
@@ -4924,7 +4943,7 @@ static void gen_input_value(Node *node)
         x64_load(RAX, RBP, -node->in_line->offset);
         x64_jmp(done);
         x64_bind(eof);
-        gen_fail(node->tok, "入力が終わっていて、読み込めませんでした", EX_DATAERR);
+        gen_fail(node->tok, QMSG_0526, EX_DATAERR);
         x64_bind(done);
         return;
     }
@@ -4963,17 +4982,17 @@ static void gen_input_value(Node *node)
 
     head = input_head(node->tok, &head_len);
     x64_bind(eof);
-    gen_fail(node->tok, "入力が終わっていて、読み込めませんでした", EX_DATAERR);
+    gen_fail(node->tok, QMSG_0526, EX_DATAERR);
     x64_bind(missing);
-    gen_input_fail(node, head, head_len, "値が入力されていません");
+    gen_input_fail(node, head, head_len, QMSG_0523);
     x64_bind(type_err);
-    snprintf(reason, sizeof(reason), "%s として読めません", type_name(ty));
+    snprintf(reason, sizeof(reason), QMSG_0020, type_name(ty));
     gen_input_fail(node, head, head_len, reason);
     x64_bind(range_err);
-    snprintf(reason, sizeof(reason), "%s の範囲を超えています", type_name(ty));
+    snprintf(reason, sizeof(reason), QMSG_0041, type_name(ty));
     gen_input_fail(node, head, head_len, reason);
     x64_bind(extra);
-    gen_input_fail(node, head, head_len, "余計な文字があります");
+    gen_input_fail(node, head, head_len, QMSG_0512);
     x64_bind(done);
 }
 
@@ -5046,7 +5065,7 @@ static void gen_input_pattern(Node *node)
         n++;
     }
     plans = calloc((size_t)n, sizeof(*plans));
-    if (plans == NULL) fatal("入力先を確保できません");
+    if (plans == NULL) fatal(QMSG_0529);
     i = 0;
     for (f = node->fields; f != NULL; f = f->next, i++) {
         plans[i] = place_capture(f->var);
@@ -5058,7 +5077,7 @@ static void gen_input_pattern(Node *node)
     range_err = calloc((size_t)n, sizeof(int));
     sep_err = calloc((size_t)n, sizeof(int));
     if (missing == NULL || type_err == NULL || range_err == NULL || sep_err == NULL) {
-        fatal("メモリを確保できません");
+        fatal(QMSG_0437);
     }
     for (i = 0; i < n; i++) {
         missing[i] = new_label("input.missing");
@@ -5252,11 +5271,11 @@ static void gen_input_pattern(Node *node)
 
     head = input_head(node->tok, &head_len);
     x64_bind(eof);
-    gen_fail(node->tok, "入力が終わっていて、読み込めませんでした", EX_DATAERR);
+    gen_fail(node->tok, QMSG_0526, EX_DATAERR);
     x64_bind(destination_err);
-    gen_input_fail(node,head,head_len,"文字の置換後に入力先の書記素境界が変わります");
+    gen_input_fail(node,head,head_len,QMSG_0669);
     x64_bind(extra);
-    gen_input_fail(node, head, head_len, "余計な文字があります");
+    gen_input_fail(node, head, head_len, QMSG_0512);
     i = 0;
     for (f = node->fields; f != NULL; f = f->next, i++) {
         ty = f->temp->ty;
@@ -5264,20 +5283,20 @@ static void gen_input_pattern(Node *node)
         while (root->kind == ND_INDEX) root = root->lhs;
         snprintf(name, sizeof(name), "%.*s", root->var->name_len, root->var->name);
         x64_bind(missing[i]);
-        snprintf(reason, sizeof(reason), "「%s」に入れる値がありません", name);
+        snprintf(reason, sizeof(reason), QMSG_0381, name);
         gen_input_fail(node, head, head_len, reason);
         x64_bind(type_err[i]);
-        snprintf(reason, sizeof(reason), "「%s」に入れる値を %s として読めません", name, type_name(ty));
+        snprintf(reason, sizeof(reason), QMSG_0382, name, type_name(ty));
         gen_input_fail(node, head, head_len, reason);
         x64_bind(range_err[i]);
-        snprintf(reason, sizeof(reason), "「%s」に入れる値が %s の範囲を超えています", name, type_name(ty));
+        snprintf(reason, sizeof(reason), QMSG_0380, name, type_name(ty));
         gen_input_fail(node, head, head_len, reason);
         x64_bind(sep_err[i]);
         if (f->sep != NULL) {
             sep_display(f, sepbuf, sizeof(sepbuf));
-            snprintf(reason, sizeof(reason), "ここに「%s」が必要です", sepbuf);
+            snprintf(reason, sizeof(reason), QMSG_0383, sepbuf);
         } else {
-            snprintf(reason, sizeof(reason), "余計な文字があります");
+            snprintf(reason, sizeof(reason), QMSG_0512);
         }
         gen_input_fail(node, head, head_len, reason);
     }
@@ -5311,7 +5330,7 @@ static void gen_ref_place(Var *v, Token *tok, Reg r)
     ok = new_label("ref.ok");
     x64_test(r, r);
     x64_jcc(CC_NZ, ok);
-    snprintf(msg, sizeof(msg), "ref の変数 %.*s が何も指していません", v->name_len, v->name);
+    snprintf(msg, sizeof(msg), QMSG_0322, v->name_len, v->name);
     gen_fail(tok, msg, EX_SOFTWARE);
     x64_bind(ok);
 }
@@ -5637,7 +5656,7 @@ static void gen_expr_inner(Node *node)
             x64_test(RCX, RCX); x64_jcc(CC_S, invalid);
             x64_mov_imm(RDX, integer_width(node->ty) - 1); x64_cmp(RCX, RDX); x64_jcc(CC_BE, valid);
             x64_bind(invalid);
-            { char message[128]; snprintf(message, sizeof(message), "シフト量は0以上%d以下にしてください", integer_width(node->ty) - 1); gen_fail(node->tok, message, EX_SOFTWARE); }
+            { char message[128]; snprintf(message, sizeof(message), QMSG_0398, integer_width(node->ty) - 1); gen_fail(node->tok, message, EX_SOFTWARE); }
             x64_bind(valid);
             if (node->kind == ND_SHL) x64_shl_cl(RAX); else if (integer_unsigned(node->ty)) x64_shr_cl(RAX); else x64_sar_cl(RAX);
         }
@@ -5683,7 +5702,7 @@ static void gen_expr_inner(Node *node)
         }
         return;
     default:
-        fatal("内部エラー: 未対応の式です");
+        fatal(QMSG_0567);
     }
 }
 
@@ -5723,7 +5742,7 @@ static void gen_print_value(Node *expr)
         x64_call(print_addr_label);
         return;
     default:
-        fatal("内部エラー: 出力できない型です");
+        fatal(QMSG_0551);
     }
 }
 
@@ -5734,13 +5753,7 @@ static void gen_print_value(Node *expr)
  */
 static void gen_os_context(Token *tok,const char *ns,const char *operation)
 {
-    char prefix[1200];
-    int n = snprintf(prefix, sizeof(prefix), "QYNO 実行時エラー: %s:%d:%d: %s.%s: ",
-                     tok->source->filename, tok->line, tok->col,
-                     ns,operation);
-    if (n < 0) fatal("ファイルの診断を作成できません");
-    if ((size_t)n >= sizeof(prefix)) n = (int)sizeof(prefix) - 1;
-    x64_lea_data(R11, prog_add_str(prog, prefix, (size_t)n));
+    x64_lea_data(R11,diagnostic_context_data(tok,ns,operation));
     x64_store(R14, FILE_CONTEXT, R11);
     x64_store_imm(R14, FILE_PATH, 0); x64_store_imm(R14, FILE_OS_ERROR, 0);
     x64_lea_data(R11,prog_add_str(prog,tok->source->filename,strlen(tok->source->filename)));x64_store(R14,IO_SOURCE,R11);
@@ -5835,13 +5848,13 @@ static void gen_stmts(Node *list)
 
     for (node = list; node != NULL;) {
         if(gen_machine(node,1)){
-            if(depth!=baseline)fatal("内部エラー: 数値ブロックのスタックが不整合です");
+            if(depth!=baseline)fatal(QMSG_0558);
             node=node->opt_machine->after;
             continue;
         }
         gen_stmt(node);
         if (depth != baseline) {
-            fatal("内部エラー: スタックの深さが %d のままです", depth);
+            fatal(QMSG_0540, depth);
         }
         if (node->kind == ND_RETURN || node->kind == ND_BREAK || node->kind == ND_CONTINUE || node->kind == ND_THROW) break;
         node=node->next;
@@ -5875,7 +5888,7 @@ static void gen_if(Node *node)
 static void push_loop(int break_label, int continue_label)
 {
     if (loop_depth >= MAX_LOOP_DEPTH) {
-        fatal("ループの入れ子が深すぎます（%d 段まで）", MAX_LOOP_DEPTH);
+        fatal(QMSG_0474, MAX_LOOP_DEPTH);
     }
     break_labels[loop_depth] = break_label;
     continue_labels[loop_depth] = continue_label;
@@ -5951,13 +5964,13 @@ static void gen_for_update(Node *node, int end)
         return;
     }
     gen_load_var(v, tok);
-    gen_for_finite(v->ty, tok, "for の更新前の値は有限の数値にしてください");
+    gen_for_finite(v->ty, tok, QMSG_0198);
     push();
     gen_expr(node->step->lhs); /* 既存の型変換・演算・丸め順序を維持する */
-    gen_for_finite(v->ty, tok, "for の更新結果が有限ではありません");
+    gen_for_finite(v->ty, tok, QMSG_0199);
     pop(RDI);
     if(type_is_wide(v->ty)){
-        push();gen_wide(W_CMP,v->ty,v->ty,node->val>0?CMP_GT:CMP_LT,NULL);x64_test(RAX,RAX);pop(RAX);progress=new_label("for.wide.progress");x64_jcc(CC_NZ,progress);gen_fail(tok,"for の増分では値が前進しません",EX_SOFTWARE);x64_bind(progress);gen_store_var(v,tok);return;
+        push();gen_wide(W_CMP,v->ty,v->ty,node->val>0?CMP_GT:CMP_LT,NULL);x64_test(RAX,RAX);pop(RAX);progress=new_label("for.wide.progress");x64_jcc(CC_NZ,progress);gen_fail(tok,QMSG_0193,EX_SOFTWARE);x64_bind(progress);gen_store_var(v,tok);return;
     }
     if (v->ty == TY_FLOAT) {
         x64_movd_to_xmm(0, RDI);
@@ -5971,7 +5984,7 @@ static void gen_for_update(Node *node, int end)
     progress = new_label("for.progress");
     x64_ucomisd(node->val > 0 ? 1 : 0, node->val > 0 ? 0 : 1);
     x64_jcc(CC_A, progress);
-    gen_fail(tok, "for の増分では値が前進しません（丸め後の値を確認してください）", EX_SOFTWARE);
+    gen_fail(tok, QMSG_0194, EX_SOFTWARE);
     x64_bind(progress);
     gen_store_var(v, tok);
 }
@@ -5987,13 +6000,13 @@ static void gen_for_condition(Node *node)
     comparison.lhs = &converted;
     comparison.rhs = &converted;
     gen_expr(cmp->lhs);
-    gen_for_finite(cmp->lhs->ty, cmp->lhs->tok, "for のループ変数は有限の数値にしてください");
+    gen_for_finite(cmp->lhs->ty, cmp->lhs->tok, QMSG_0189);
     gen_convert_for_compare(cmp->lhs->ty, cmp->cmp_ty);
     push();
     gen_expr(cmp->rhs);
-    gen_for_finite(cmp->rhs->ty, cmp->rhs->tok, "for の終了境界は有限の数値にしてください");
+    gen_for_finite(cmp->rhs->ty, cmp->rhs->tok, QMSG_0203);
     gen_convert_for_compare(cmp->rhs->ty, cmp->cmp_ty);
-    gen_for_finite(converted.ty, cmp->rhs->tok, "for の終了境界は有限の数値にしてください");
+    gen_for_finite(converted.ty, cmp->rhs->tok, QMSG_0203);
     pop(RDI);
     gen_compare(&comparison);
 }
@@ -6012,7 +6025,7 @@ static void gen_for(Node *node)
     end = new_label("for.end");
     gen_stmt(node->init);
     gen_load_var(node->init->var, node->init->tok);
-    gen_for_finite(node->init->var->ty, node->init->lhs->tok, "for の開始値は有限の数値にしてください");
+    gen_for_finite(node->init->var->ty, node->init->lhs->tok, QMSG_0204);
     if (node->for_open) gen_for_update(node, end);
     {
         OptHoist *h;
@@ -6056,7 +6069,7 @@ static void gen_stmt(Node *node)
     case ND_BUILD_REJECT: {
         char reason[256];
         gen_creation_context(node->tok); x64_store(R14, COLLECTION_CONTEXT, RAX);
-        snprintf(reason, sizeof(reason), "%s の初期化が拒否されました\n", type_name((Type)node->val));
+        snprintf(reason, sizeof(reason), QMSG_0032, type_name((Type)node->val));
         collection_fail(reason); return;
     }
     case ND_IF:
@@ -6083,7 +6096,7 @@ static void gen_stmt(Node *node)
         }
         if (node->lhs != NULL) {
             if(node->opt_transfer){
-                if(!optimizer_transfer_valid(node->opt_transfer,emitting_function))fatal("内部エラー: 配列転送の計画が不整合です");
+                if(!optimizer_transfer_valid(node->opt_transfer,emitting_function))fatal(QMSG_0573);
                 gen_expr(node->opt_transfer->producer);
                 collection_context(node->opt_transfer->copy->tok);
                 collection_shape(node->var->ty,node->var->dims,RDI);
@@ -6107,7 +6120,7 @@ static void gen_stmt(Node *node)
         return;
     case ND_ASSIGN:
         if (node->opt_dead_store) return;
-        if(node->opt_transfer&&!optimizer_transfer_valid(node->opt_transfer,emitting_function))fatal("内部エラー: 配列転送の計画が不整合です");
+        if(node->opt_transfer&&!optimizer_transfer_valid(node->opt_transfer,emitting_function))fatal(QMSG_0573);
         gen_expr(node->lhs);
         if (type_is_model(node->var->ty)) { x64_call(type_model(node->var->ty)->copy_label); gen_copy_check(node->var->ty); }
         if (type_is_array(node->var->ty)) {
@@ -6148,7 +6161,7 @@ static void gen_stmt(Node *node)
         gen_print(node);
         return;
     default:
-        fatal("内部エラー: 未対応の文です");
+        fatal(QMSG_0568);
     }
 }
 
@@ -6236,7 +6249,7 @@ static void codegen_pass(Ast *ast, Program *out_prog, FILE *out_text, Target out
     text = out_text;
     target = out_target;
     size_codes=size_codes_tail=NULL;
-    typed_arrays_reset();
+    typed_arrays_reset();diagnostic_context_reset();
     depth = 0;
     label_seq = 0;
     rt_sequence=0;
@@ -6320,6 +6333,7 @@ static void codegen_pass(Ast *ast, Program *out_prog, FILE *out_text, Target out
     pow_double_label = x64_new_label(".L.qy_pow_double");
     pow_float_label = x64_new_label(".L.qy_pow_float");
     write_err_label = x64_new_label(".L.qy_write_err");
+    diagnostic_tail_label = x64_new_label(".L.qy_diagnostic_tail");
     runtime_error_label = x64_new_label(".L.qy_runtime_error");
     exit_label = x64_new_label(".L.qy_exit");
     round_labels[0] = x64_new_label(".L.qy_round");
@@ -6382,6 +6396,7 @@ static void codegen_pass(Ast *ast, Program *out_prog, FILE *out_text, Target out
     /* 実行時ルーチン */
     gen_write(write_label, 0);
     gen_write(write_err_label, 1);
+    gen_diagnostic_tail();
     gen_runtime_error();
     gen_print_int();
     gen_print_uint();

@@ -136,7 +136,7 @@ static IdataLayout layout_idata(const Program *prog)
     unsigned char used[IMP_COUNT]={0};
     memset(&l,0,sizeof(l));
     for(i=0;i<prog->reloc_count;i++)if(prog->relocs[i].kind==RELOC_IMPORT){
-        if(prog->relocs[i].target>=IMP_COUNT)fatal("内部エラー: Import ID が範囲外です");
+        if(prog->relocs[i].target>=IMP_COUNT)fatal(QMSG_0535);
         used[prog->relocs[i].target]=1;
     }
     for(i=0;i<IMP_COUNT;i++)l.slot[i]=-1;
@@ -197,7 +197,7 @@ static void apply_relocs(unsigned char *text, const Program *prog,
         if (r->kind == RELOC_DATA) {
             target = rdata_rva + (uint32_t)r->target;
         } else {
-            if(r->target>=IMP_COUNT||l->slot[r->target]<0)fatal("内部エラー: Import が出力されていません");
+            if(r->target>=IMP_COUNT||l->slot[r->target]<0)fatal(QMSG_0536);
             target = idata_rva + l->iat + 8 * (uint32_t)l->slot[r->target];
         }
         next = TEXT_RVA + (uint32_t)r->pos + 4;
@@ -239,7 +239,7 @@ void write_pe(const char *path, const Program *prog)
 
     img = calloc(1, file_size);
     if (img == NULL) {
-        fatal("メモリを確保できません");
+        fatal(QMSG_0437);
     }
 
     /* DOS ヘッダ */
@@ -300,14 +300,14 @@ void write_pe(const char *path, const Program *prog)
 
     fp = fopen(path, "wb");
     if (fp == NULL) {
-        fatal("%s に書き込めません（実行中の場合は終了してください）", path);
+        fatal(QMSG_0028, path);
     }
     if (fwrite(img, 1, file_size, fp) != file_size) {
         fclose(fp);
-        fatal("%s の書き込みに失敗しました", path);
+        fatal(QMSG_0038, path);
     }
     if (fclose(fp) != 0) {
-        fatal("%s の書き込みに失敗しました", path);
+        fatal(QMSG_0038, path);
     }
     free(img);
 }

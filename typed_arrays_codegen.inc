@@ -24,12 +24,12 @@ static int array_runtime_label(Type ty,int operation)
     ArrayCode *p;
     char name[96];
     int i;
-    if(operation<0||operation>3||!type_is_array(ty))fatal("内部エラー: 配列操作の型が不正です");
+    if(operation<0||operation>3||!type_is_array(ty))fatal(QMSG_0572);
     if(type_is_interface(array_base(ty)))return generic[operation];
     for(p=array_codes;p;p=p->next)if(p->ty==ty)break;
     if(!p){
         if(array_code_count>=QYNO_ARRAY_CODE_LIMIT)return generic[operation];
-        p=calloc(1,sizeof(*p));if(!p)fatal("配列操作の計画を確保できません");
+        p=calloc(1,sizeof(*p));if(!p)fatal(QMSG_0774);
         p->ty=ty;for(i=0;i<4;i++)p->labels[i]=-1;
         if(array_codes_tail)array_codes_tail->next=p;else array_codes=p;
         array_codes_tail=p;array_code_count++;

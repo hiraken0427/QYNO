@@ -17,7 +17,7 @@ static Value eval_const(Node *node)
 static Value constant_model(Node *node)
 {
     Model *m = type_model(node->ty);
-    if (contains_initializer(node->ty)) const_error(node, "init を含む値はコンパイル時に生成できません");
+    if (contains_initializer(node->ty)) const_error(node, QMSG_0232);
     ModelField *f; Node *item, **values; Node head = {0}, *tail = &head;
     Value v = {0};
     v.ty = node->ty; v.len = m->field_count;
@@ -33,15 +33,15 @@ static Value constant_model(Node *node)
         return v;
     }
     if ((const_model_budget -= m->field_count) < 0)
-        const_error(node, "const モデル・配列の展開が100万スロットを超えています");
+        const_error(node, QMSG_0134);
     values = calloc((size_t)m->field_count + 1, sizeof(*values));
-    if (!values) fatal("モデル定数を確保できません");
+    if (!values) fatal(QMSG_0465);
     /* Evaluate in source order, then store the canonical fields in layout order. */
     for (item = node->lhs; item; item = item->next)
         values[item->field->index] = value_node(eval_const(item->lhs), item->tok);
     for (f = m->fields; f; f = f->next) {
         item = calloc(1, sizeof(*item));
-        if (!item) fatal("モデル定数のフィールドを確保できません");
+        if (!item) fatal(QMSG_0464);
         item->kind = ND_FIELD; item->field = f; item->name = f->name; item->tok = f->tok;
         item->lhs = values[f->index]; tail = tail->next = item;
     }
@@ -54,7 +54,7 @@ static void constant_size(Node *where, Node *value, long long *budget)
     Node *item;
     if (!type_is_array(value->ty) && !type_is_model(value->ty)) return;
     *budget -= value->nargs;
-    if (*budget < 0) const_error(where, "const モデル・配列の展開が100万スロットを超えています");
+    if (*budget < 0) const_error(where, QMSG_0134);
     for (item = value->lhs; item; item = item->next)
         constant_size(where, type_is_model(value->ty) ? item->lhs : item, budget);
 }

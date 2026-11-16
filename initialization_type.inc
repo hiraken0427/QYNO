@@ -3,7 +3,7 @@
 static Node *init_node(NodeKind kind, Type ty, Token *tok)
 {
     Node *n = calloc(1, sizeof(*n));
-    if (!n) fatal("初期化の構文木を確保できません");
+    if (!n) fatal(QMSG_0578);
     n->kind = kind; n->ty = ty; n->tok = tok; return n;
 }
 static Node *init_var(Var *v)
@@ -41,7 +41,7 @@ static int defaultable(Type ty, ArrayDim *dims)
 }
 static void require_default(Type ty, ArrayDim *dims, Token *tok)
 {
-    if (!defaultable(ty, dims)) error_tok(tok, "%s の init には必須引数が必要です。要素またはフィールド全体の初期値を指定してください", type_name(ty));
+    if (!defaultable(ty, dims)) error_tok(tok, QMSG_0030, type_name(ty));
 }
 static void check_array_capacity(Node *source, Type ty, ArrayDim *dims)
 {
@@ -49,7 +49,7 @@ static void check_array_capacity(Node *source, Type ty, ArrayDim *dims)
     if (!type_is_array(ty) || !dims) return;
     while (source && source->kind == ND_ARRAY_COPY) source = source->lhs;
     if (!source || source->kind != ND_ARRAY_LITERAL) return;
-    if (dims->limit >= 0 && source->nargs > dims->limit) error_tok(source->tok, "配列の要素数が宣言された上限を超えています");
+    if (dims->limit >= 0 && source->nargs > dims->limit) error_tok(source->tok, QMSG_0767);
     if (type_is_array(array_element(ty)))
         for (item = source->lhs; item; item = item->next) check_array_capacity(item, array_element(ty), dims->next);
 }
@@ -62,10 +62,10 @@ static void check_padding(Node *source, Type ty, ArrayDim *dims)
     if (source && source->kind == ND_ARRAY_LITERAL) length = source->nargs;
     desired = dims ? dims->limit : -1;
     if (desired > 0 && (length < 0 || length < desired) && !defaultable(array_element(ty), dims->next))
-        error_tok(source->tok, "init の必須引数があるため、配列の不足分を既定生成できません");
+        error_tok(source->tok, QMSG_0221);
     if (type_is_array(array_element(ty))) {
         if (length < 0 && !defaultable(array_element(ty), dims ? dims->next : NULL))
-            error_tok(source->tok, "配列の不足分に必要な init の必須引数を確認できません");
+            error_tok(source->tok, QMSG_0754);
         if (source && source->kind == ND_ARRAY_LITERAL)
             for (item = source->lhs; item; item = item->next) check_padding(item, array_element(ty), dims ? dims->next : NULL);
     }
@@ -73,7 +73,7 @@ static void check_padding(Node *source, Type ty, ArrayDim *dims)
 static Function *new_builder(Ast *ast, Model *m, const char *name)
 {
     Function *fn = calloc(1, sizeof(*fn)); Var *ctx = calloc(1, sizeof(*ctx)); Function **end = &ast->funcs;
-    if (!fn || !ctx) fatal("生成関数を確保できません");
+    if (!fn || !ctx) fatal(QMSG_0718);
     fn->model = m; fn->is_internal = 1; fn->name = name; fn->name_len = (int)strlen(name);
     fn->tok = m->tok; fn->ret = m->ty; fn->params = ctx; fn->param_count = 1;
     ctx->name = ""; ctx->tok = m->tok; ctx->ty = TY_ADDR; ctx->is_param = 1;
@@ -95,7 +95,7 @@ static void prepare_builders(Ast *ast)
         m->builder = new_builder(ast, m, ".build"); m->default_builder = new_builder(ast, m, ".default");
         end = &m->builder->params->next;
         for (p = m->initializer ? m->initializer->params->next : NULL; p; p = p->next) {
-            Var *copy = calloc(1, sizeof(*copy)); if (!copy) fatal("生成引数を確保できません");
+            Var *copy = calloc(1, sizeof(*copy)); if (!copy) fatal(QMSG_0717);
             *copy = *p; copy->next = copy->vnext = NULL; copy->parameter_index = index++;
             *end = copy; end = &copy->next; m->builder->param_count++;
         }
@@ -106,16 +106,16 @@ static void check_initializer_defaults(Model *m)
 {
     Var *p, *copy;
     if (!m->initializer || m->recipe_state == 2) return;
-    if (m->recipe_state == 1) error_tok(m->initializer->tok, "init の既定生成が循環しています");
+    if (m->recipe_state == 1) error_tok(m->initializer->tok, QMSG_0225);
     m->recipe_state = 1;
     copy = m->builder->params->next;
     for (p = m->initializer->params->next; p; p = p->next, copy = copy->next) {
-        if (contains_file(p->ty)) error_tok(p->tok, "init の引数に file を含む型は指定できません");
+        if (contains_file(p->ty)) error_tok(p->tok, QMSG_0219);
         check_dims(p->dims);
         if (!p->default_arg) continue;
         check_expected(p->default_arg, p->ty);
-        p->default_arg = coerce(p->default_arg, p->ty, p->tok, "init の既定引数");
-        if (!model_constant_default(p->default_arg)) error_tok(p->tok, "init の既定引数は定数の入力を持つ生成式にしてください");
+        p->default_arg = coerce(p->default_arg, p->ty, p->tok, QMSG_0223);
+        if (!model_constant_default(p->default_arg)) error_tok(p->tok, QMSG_0224);
         copy->default_arg = p->default_arg;
     }
     m->recipe_state = 2;
@@ -127,11 +127,11 @@ static void check_construction(Node *node, Model *m)
     for (item = node->lhs; item; item = item->next) {
         for (p = m->builder->params->next; p; p = p->next)
             if (same_name(p->name, p->name_len, item->name, (int)strlen(item->name))) break;
-        if (!p) error_tok(item->tok, "%s.init に引数 %s はありません", m->name, item->name);
+        if (!p) error_tok(item->tok, QMSG_0057, m->name, item->name);
         for (before = node->lhs; before != item; before = before->next)
-            if (before->var == p) error_tok(item->tok, "init 引数 %s が重複しています", item->name);
+            if (before->var == p) error_tok(item->tok, QMSG_0235, item->name);
         item->var = p; check_expected(item->lhs, p->ty); check_value_transfer(item->lhs);
-        item->lhs = coerce(item->lhs, p->ty, item->tok, "init の引数");
+        item->lhs = coerce(item->lhs, p->ty, item->tok, QMSG_0218);
         if (type_is_model(p->ty)) item->lhs = copy_model(item->lhs);
         if (type_is_array(p->ty)) item->lhs = copy_array(item->lhs, p->dims, 0);
     }
@@ -139,7 +139,7 @@ static void check_construction(Node *node, Model *m)
     for (p = m->builder->params->next; p; p = p->next) {
         for (item = node->lhs; item && item->var != p; item = item->next) { }
         if (item) continue;
-        if (!p->default_arg) error_tok(node->tok, "%s.init の必須引数 %.*s がありません", m->name, p->name_len, p->name);
+        if (!p->default_arg) error_tok(node->tok, QMSG_0058, m->name, p->name_len, p->name);
         item = init_node(ND_FIELD, TY_NONE, p->tok); item->var = p; item->lhs = p->default_arg;
         if (type_is_model(p->ty)) item->lhs = copy_model(item->lhs);
         if (type_is_array(p->ty)) item->lhs = copy_array(item->lhs, p->dims, 0);
@@ -168,7 +168,7 @@ static void finish_builders(Ast *ast)
     for (m = ast->models; m; m = m->next) {
         Function *fn = m->builder; Var *p, *object = calloc(1, sizeof(*object));
         Node *decl, *ret, *body_call = NULL;
-        if (!object) fatal("生成先を確保できません");
+        if (!object) fatal(QMSG_0715);
         object->name = ""; object->tok = m->tok; object->ty = m->ty; object->offset = 8;
         fn->locals = object; fn->stack_size = 16;
         m->default_value = model_seed(m);
@@ -233,7 +233,7 @@ static void visit_default_dependencies(Model *m)
 {
     Var *p;
     if (m->dependency_state == 2) return;
-    if (m->dependency_state == 1) error_tok(m->tok, "init とフィールド既定値の生成が循環しています: %s", m->name);
+    if (m->dependency_state == 1) error_tok(m->tok, QMSG_0215, m->name);
     m->dependency_state = 1;
     recipe_dependencies(m->default_value);
     for (p = m->initializer ? m->initializer->params->next : NULL; p; p = p->next) recipe_dependencies(p->default_arg);

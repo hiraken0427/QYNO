@@ -8,7 +8,7 @@ static int generic_spec_count;
 static void *generic_alloc(size_t size)
 {
     void *p = calloc(1, size);
-    if (!p) fatal("関数の具体化を確保できません");
+    if (!p) fatal(QMSG_0787);
     return p;
 }
 static void *generic_lookup(GenericCopy *map, const void *old)
@@ -67,12 +67,12 @@ static Function *specialize_generic_call(Node *call)
     for (p = origin->params, arg = call->lhs, i = 0; p; p = p->next, arg = arg->next, i++) {
         if (!p->is_inferred) continue;
         if (p->is_ref != (arg->kind == ND_REFARG))
-            error_tok(arg->tok, "%d 番目の推論する引数は %s渡しです。呼び出し側の ref を確認してください", i + 1, p->is_ref ? "ref " : "値");
+            error_tok(arg->tok, QMSG_0017, i + 1, p->is_ref ? "ref " : QMSG_0522);
         { Node *value = p->is_ref ? arg->lhs : arg;
           check_expr(value);
           concrete_only(value->ty, value->tok);
           if (value->ty == TY_NONE || array_base(value->ty) == TY_ADDR)
-              error_tok(value->tok, "推論する引数には具体的な値型が必要です（addr は使用できません）");
+              error_tok(value->tok, QMSG_0645);
           types[i] = value->ty;
         }
     }
@@ -81,7 +81,7 @@ static Function *specialize_generic_call(Node *call)
             free(types); return spec->fn;
         }
     if (++generic_spec_count > 4096)
-        error_tok(call->tok, "関数の具体化はプログラム全体で4096件までです（展開元: %.*s）", origin->name_len, origin->name);
+        error_tok(call->tok, QMSG_0786, origin->name_len, origin->name);
     fn = generic_alloc(sizeof(*fn)); *fn = *origin; fn->next = NULL;
     fn->is_generic = 0; fn->is_template = 0; fn->generic_origin = origin;
     fn->generic_instances = 0; fn->check_state = 0; fn->label = 0;

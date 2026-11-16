@@ -24,7 +24,7 @@ static void gen_dir_error(void)
         x64_bind(path);rt_set(1,4);
     }
     x64_bind(raise);x64_mov_imm(RDI,11);
-    x64_lea_data(RAX,prog_add_str(prog,"Directory operation failed",strlen("Directory operation failed")));x64_call(io_raise_label);
+    x64_lea_data(RAX,prog_add_str(prog,QMSG_0805,strlen(QMSG_0805)));x64_call(io_raise_label);
     rt_load(RCX,1);x64_test(RCX,RCX);x64_jcc(CC_Z,done);
     x64_load(RAX,R14,IO_PENDING);x64_load(RAX,RAX,24);x64_store(RAX,0,RCX);
     x64_bind(done);rt_leave();
@@ -43,13 +43,13 @@ static void gen_dir_path(void)
     int ready=rt_label("dir.path.ready"),allowed=rt_label("dir.path.allowed"),bad=rt_label("dir.path.bad");
     rt_enter(dir_path_label,3);rt_save(3,RDI);x64_store(R14,FILE_PATH,RAX);
     directory_path_call(9);rt_save(1,RAX);x64_load(RCX,RAX,0);
-    x64_test(RCX,RCX);x64_jcc(CC_NZ,nonempty);file_fail(EX_SOFTWARE,"Directory path cannot be empty");
+    x64_test(RCX,RCX);x64_jcc(CC_NZ,nonempty);file_fail(EX_SOFTWARE,QMSG_0806);
     x64_bind(nonempty);directory_path_call(1);rt_save(2,RAX);x64_load(RCX,RAX,0);
     rt_load(RDX,3);x64_test(RDX,RDX);x64_jcc(CC_Z,allowed);
     x64_test(RCX,RCX);x64_jcc(CC_Z,bad);rt_cmp(RCX,2);x64_jcc(CC_A,allowed);
     x64_load8(RDX,RAX,8);rt_cmp(RDX,'.');x64_jcc(CC_NZ,allowed);rt_cmp(RCX,1);x64_jcc(CC_Z,bad);
     x64_load8(RDX,RAX,9);rt_cmp(RDX,'.');x64_jcc(CC_NZ,allowed);
-    x64_bind(bad);file_fail(EX_SOFTWARE,"Cannot remove a root, . or .. directory path");
+    x64_bind(bad);file_fail(EX_SOFTWARE,QMSG_0807);
     x64_bind(allowed);x64_test(RCX,RCX);x64_jcc(CC_Z,root);
     rt_load(RAX,1);x64_load(RCX,RAX,0);
     x64_bind(trim);x64_lea(RDX,RAX,7);x64_add(RDX,RCX);x64_load8(RDI,RDX,0);
@@ -152,8 +152,8 @@ static void gen_dir_remove(void)
         x64_test(RAX,RAX);x64_jcc(CC_NS,good);
     }
     dir_os_error(1);x64_jmp(finish);
-    x64_bind(link);dir_policy_error(12,"Removing a directory link is unsupported");x64_jmp(finish);
-    x64_bind(wrong);dir_policy_error(15,"Target is not a directory");x64_jmp(finish);
+    x64_bind(link);dir_policy_error(12,QMSG_0808);x64_jmp(finish);
+    x64_bind(wrong);dir_policy_error(15,QMSG_0809);x64_jmp(finish);
     x64_bind(good);x64_bind(finish);if(target==TARGET_WINDOWS)dir_close(2);
     x64_xor(RAX,RAX);rt_leave();
 }
@@ -206,18 +206,18 @@ static void gen_dir_convert(void)
     rt_enter(dir_convert_label,6);rt_save(2,RAX);x64_load(RCX,RAX,0);x64_shr_imm(RCX,1);rt_save(3,RCX);
     x64_add_imm(RAX,8);rt_save(1,RAX);directory_windows_encode(0);
     x64_test(RAX,RAX);x64_jcc(CC_NZ,good);file_windows_error();rt_cmp(RAX,-1113);x64_jcc(CC_NZ,os);
-    file_fail(EX_DATAERR,"Directory entry is not valid Unicode");x64_bind(os);dir_os_error(0);rt_leave();
+    file_fail(EX_DATAERR,QMSG_0810);x64_bind(os);dir_os_error(0);rt_leave();
     x64_bind(good);rt_save(5,RAX);x64_mov(RDI,RAX);x64_add_imm(RDI,8);x64_call(alloc_label);rt_save(4,RAX);
     rt_load(RCX,5);x64_store(RAX,0,RCX);directory_windows_encode(1);
     x64_test(RAX,RAX);x64_jcc(CC_NZ,done);file_windows_error();rt_cmp(RAX,-1113);x64_jcc(CC_NZ,os);
-    file_fail(EX_DATAERR,"Directory entry is not valid Unicode");
+    file_fail(EX_DATAERR,QMSG_0810);
     x64_bind(done);rt_load(RAX,4);rt_leave();
 }
 static void dir_contract_limit(Reg reg,long long cap)
 {
     int bad=rt_label("dir.limit.bad"),good=rt_label("dir.limit.good");
     x64_test(reg,reg);x64_jcc(CC_S,bad);rt_cmp(reg,cap);x64_jcc(CC_BE,good);
-    x64_bind(bad);file_fail(EX_SOFTWARE,"Directory limit is out of range");x64_bind(good);
+    x64_bind(bad);file_fail(EX_SOFTWARE,QMSG_0811);x64_bind(good);
 }
 static void gen_dir_list(void)
 {
@@ -307,9 +307,9 @@ static void gen_dir_list(void)
     rt_load(RCX,12);x64_store(RAX,0,RCX);x64_lea(RDI,RAX,8);rt_load(RSI,11);x64_rep_movsb();
     rt_load(RAX,3);rt_load(RDI,14);x64_call(array_runtime_label(array_type(TY_STR),AR_APPEND));
     x64_bind(next);rt_load(RCX,10);rt_save(9,RCX);x64_jmp(record);
-    x64_bind(large);dir_policy_error(13,"Directory listing exceeds its limit");x64_jmp(finish);
-    x64_bind(malformed);dir_policy_error(14,"Malformed native directory record");x64_jmp(finish);
-    x64_bind(wrong);dir_policy_error(15,"Target is not a directory");
+    x64_bind(large);dir_policy_error(13,QMSG_0812);x64_jmp(finish);
+    x64_bind(malformed);dir_policy_error(14,QMSG_0813);x64_jmp(finish);
+    x64_bind(wrong);dir_policy_error(15,QMSG_0809);
     x64_bind(finish);dir_close(2);io_rt_check();rt_set(13,0);rt_set(7,0);
     x64_bind(convert);rt_load(RCX,13);rt_load(RAX,3);x64_load(RDX,RAX,0);x64_cmp(RCX,RDX);x64_jcc(CC_AE,sorted);
     x64_load(RAX,RAX,24);x64_shl_imm(RCX,3);x64_add(RAX,RCX);x64_load(RAX,RAX,0);
@@ -320,7 +320,7 @@ static void gen_dir_list(void)
     }
     rt_load(RDX,3);x64_load(RDX,RDX,24);rt_load(RCX,13);x64_shl_imm(RCX,3);x64_add(RDX,RCX);rt_load(RAX,14);x64_store(RDX,0,RAX);
     rt_load(RCX,13);x64_add_imm(RCX,1);rt_save(13,RCX);x64_jmp(convert);
-    if(target==TARGET_WINDOWS){x64_bind(large);dir_policy_error(13,"Directory listing exceeds max_name_bytes");rt_leave();}
+    if(target==TARGET_WINDOWS){x64_bind(large);dir_policy_error(13,QMSG_0814);rt_leave();}
     x64_bind(sorted);rt_load(RAX,3);x64_call(dir_sort_label);rt_leave();
 }
 static void gen_directory_management_runtime(void)

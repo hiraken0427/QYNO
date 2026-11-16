@@ -36,7 +36,7 @@ Type array_type(Type element)
     }
     grown = realloc(types, (size_t)(count + 1) * sizeof(*types));
     if (grown == NULL) {
-        fatal("配列型のメモリを確保できません");
+        fatal(QMSG_0771);
     }
     types = grown;
     memset(&types[count], 0, sizeof(types[count]));
@@ -44,7 +44,7 @@ Type array_type(Type element)
     n = strlen(name);
     types[count].name = malloc(n + 3);
     if (types[count].name == NULL) {
-        fatal("配列型の名前を確保できません");
+        fatal(QMSG_0772);
     }
     memcpy(types[count].name, name, n);
     memcpy(types[count].name + n, "[]", 3);
@@ -84,7 +84,7 @@ Model *type_model(Type ty) { return types[(int)ty - TY_ARRAY].model; }
 static Type add_type(DynamicType entry)
 {
     DynamicType *grown = realloc(types, (size_t)(count + 1) * sizeof(*types));
-    if (!grown) fatal("型の領域を確保できません");
+    if (!grown) fatal(QMSG_0589);
     types = grown; types[count] = entry; return (Type)(TY_ARRAY + count++);
 }
 Type model_type(Model *model)
@@ -103,7 +103,7 @@ Type interface_type(Interface *contract)
 Type named_type(Token *tok, const char *name, Using *scope)
 {
     DynamicType e = {0}; size_t n = strlen(name);
-    e.path = malloc(n + 1); if (!e.path) fatal("型名を確保できません");
+    e.path = malloc(n + 1); if (!e.path) fatal(QMSG_0592);
     memcpy(e.path, name, n + 1); e.tok = tok; e.scope = scope;
     return add_type(e);
 }

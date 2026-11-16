@@ -7,7 +7,7 @@ static void check_field_initial(ModelField *f);
 static Node *copy_model(Node *source)
 {
     Node *copy = calloc(1, sizeof(*copy));
-    if (!copy) fatal("モデルのコピーを確保できません");
+    if (!copy) fatal(QMSG_0450);
     copy->kind = ND_MODEL_COPY; copy->lhs = source; copy->ty = source->ty; copy->tok = source->tok;
     copy->access_model = source->access_model;
     return copy;
@@ -15,7 +15,7 @@ static Node *copy_model(Node *source)
 static Node *model_default(Type ty, ArrayDim *dims, Token *tok)
 {
     Node *n = calloc(1, sizeof(*n));
-    if (!n) fatal("モデルの初期値を確保できません");
+    if (!n) fatal(QMSG_0454);
     n->tok = tok; n->ty = ty;
     require_default(ty, dims, tok);
     if (type_is_model(ty)) n->kind = ND_MODEL_NEW;
@@ -37,17 +37,17 @@ static void check_member_access(Node *use, Model *owner, int is_private,
                                 const char *name, Token *declaration)
 {
     if (is_private && use->access_model != owner)
-        error_tok(use->tok, "%s.%.*s は private です。この位置からはアクセスできません（宣言: %s:%d:%d）",
+        error_tok(use->tok, QMSG_0054,
                   owner->name, declaration->len, name, declaration->source->filename, declaration->line, declaration->col);
 }
 static void check_model_init(Node *node, Type expected)
 {
     Node *item, **end; ModelField *f; Model *m;
-    if (!type_is_model(expected)) error_tok(node->tok, "{フィールド=値} にはモデル型の文脈が必要です");
+    if (!type_is_model(expected)) error_tok(node->tok, QMSG_0377);
     /* Inferred arrays revisit their typed elements. Do not reinterpret the
      * omitted defaults appended below as explicit user-written field names. */
     if (node->ty != TY_NONE) {
-        if (node->ty != expected) error_tok(node->tok, "モデルの初期化先は同じ型にしてください");
+        if (node->ty != expected) error_tok(node->tok, QMSG_0456);
         return;
     }
     m = type_model(expected);
@@ -56,14 +56,14 @@ static void check_model_init(Node *node, Type expected)
     for (item = node->lhs; item; item = item->next) {
         Node *before;
         f = find_model_field(m, item->name);
-        if (!f) error_tok(item->tok, "モデル %s にフィールド %s はありません", m->name, item->name);
+        if (!f) error_tok(item->tok, QMSG_0445, m->name, item->name);
         for (before = node->lhs; before != item; before = before->next)
-            if (before->field == f) error_tok(item->tok, "フィールド %s の初期化が重複しています", f->name);
+            if (before->field == f) error_tok(item->tok, QMSG_0422, f->name);
         check_member_access(item, f->model, f->is_private, f->name, f->tok);
         item->field = f;
         check_expected(item->lhs, f->ty);
         check_value_transfer(item->lhs);
-        item->lhs = coerce(item->lhs, f->ty, item->tok, "フィールドの初期値");
+        item->lhs = coerce(item->lhs, f->ty, item->tok, QMSG_0425);
         if (type_is_array(f->ty)) item->lhs = copy_array(item->lhs, f->dims, 1);
         if (type_is_model(f->ty)) item->lhs = copy_model(item->lhs);
     }
@@ -72,7 +72,7 @@ static void check_model_init(Node *node, Type expected)
         for (item = node->lhs; item && item->field != f; item = item->next) { }
         if (item) continue;
         check_field_initial(f);
-        item = calloc(1, sizeof(*item)); if (!item) fatal("フィールドの初期値を確保できません");
+        item = calloc(1, sizeof(*item)); if (!item) fatal(QMSG_0426);
         item->kind = ND_FIELD; item->field = f; item->tok = f->tok; item->name = f->name;
         item->lhs = f->initial ? f->initial : model_default(f->ty, f->dims, f->tok);
         if (f->initial && type_is_model(f->ty)) item->lhs = copy_model(item->lhs);
@@ -85,11 +85,11 @@ static void check_model_field(Node *node)
 {
     ModelField *f; Node *index;
     check_expr(node->lhs);
-    if (!type_is_model(node->lhs->ty)) error_tok(node->tok, "%s にフィールド %s はありません", type_name(node->lhs->ty), node->name);
+    if (!type_is_model(node->lhs->ty)) error_tok(node->tok, QMSG_0025, type_name(node->lhs->ty), node->name);
     f = find_model_field(type_model(node->lhs->ty), node->name);
-    if (!f) error_tok(node->tok, "モデル %s にフィールド %s はありません", type_name(node->lhs->ty), node->name);
+    if (!f) error_tok(node->tok, QMSG_0445, type_name(node->lhs->ty), node->name);
     check_member_access(node, f->model, f->is_private, f->name, f->tok);
-    index = calloc(1, sizeof(*index)); if (!index) fatal("フィールド番号を確保できません");
+    index = calloc(1, sizeof(*index)); if (!index) fatal(QMSG_0434);
     index->kind = ND_NUM; index->ty = TY_INT; index->val = f->index; index->tok = node->tok;
     node->kind = ND_INDEX; node->rhs = index; node->field = f; node->ty = f->ty;
 }
@@ -99,11 +99,11 @@ static void check_model_method(Node *node)
     allow_void = 0; check_interface_receiver(node->lhs); allow_void = allow;
     if(type_is_array(node->lhs->ty)){
         int count=0;Node *arg;
-        if(!strcmp(node->name,"add"))error_tok(node->tok,"配列の末尾への追加には append を使用してください");
+        if(!strcmp(node->name,"add"))error_tok(node->tok,QMSG_0757);
         if(!strcmp(node->name,"append"))node->val=AM_APPEND;
         else if(!strcmp(node->name,"remove_at"))node->val=AM_REMOVE_AT;
         else if(!strcmp(node->name,"clear"))node->val=AM_CLEAR;
-        else error_tok(node->tok,"配列にはメソッド %s はありません",node->name);
+        else error_tok(node->tok,QMSG_0749,node->name);
         for(arg=node->rhs;arg;arg=arg->next)count++;
         node->kind=ND_METHOD;node->nargs=count;check_method(node);return;
     }
@@ -112,25 +112,25 @@ static void check_model_method(Node *node)
     if (type_is_interface(node->lhs->ty)) {
         for (fn = type_interface(node->lhs->ty)->methods; fn; fn = fn->next)
             if (same_name(fn->name, fn->name_len, node->tok->loc, node->tok->len)) break;
-        if (!fn) error_tok(node->tok, "interface %s に契約メソッド %.*s はありません", type_name(node->lhs->ty), node->tok->len, node->tok->loc);
+        if (!fn) error_tok(node->tok, QMSG_0245, type_name(node->lhs->ty), node->tok->len, node->tok->loc);
     } else {
-    if (!type_is_model(node->lhs->ty)) error_tok(node->tok, "%s にはこのメソッドはありません", type_name(node->lhs->ty));
+    if (!type_is_model(node->lhs->ty)) error_tok(node->tok, QMSG_0021, type_name(node->lhs->ty));
     for (fn = cur_ast->funcs; fn; fn = fn->next)
         if (fn->model == type_model(node->lhs->ty) && same_name(fn->name, fn->name_len, node->tok->loc, node->tok->len)) break;
-    if (!fn) error_tok(node->tok, "モデル %s にメソッド %.*s はありません", type_name(node->lhs->ty), node->tok->len, node->tok->loc);
+    if (!fn) error_tok(node->tok, QMSG_0446, type_name(node->lhs->ty), node->tok->len, node->tok->loc);
     }
-    if (fn->is_initializer) error_tok(node->tok, "init は生成専用です。型の文脈で {名前=値} と書いてください");
+    if (fn->is_initializer) error_tok(node->tok, QMSG_0230);
     check_member_access(node, fn->model, fn->is_private, fn->name, fn->tok);
     if (readonly_place(node->lhs) && !fn->is_readonly)
-        error_tok(node->tok, "const / readonly の %s から呼べません。このメソッドは readonly ではありません", type_name(node->lhs->ty));
-    self = calloc(1, sizeof(*self)); if (!self) fatal("メソッドの対象を確保できません");
+        error_tok(node->tok, QMSG_0122, type_name(node->lhs->ty));
+    self = calloc(1, sizeof(*self)); if (!self) fatal(QMSG_0436);
     { Node *root = node->lhs;
       while (root->kind == ND_INDEX) root = root->lhs;
       if (root->kind != ND_VAR) {
           Var *v, *other; Node *temp; int offset = 0;
-          if (!cur_func) error_tok(node->tok, "一時モデルのメソッドは関数の中で呼んでください");
+          if (!cur_func) error_tok(node->tok, QMSG_0479);
           v = calloc(1, sizeof(*v)); temp = calloc(1, sizeof(*temp));
-          if (!v || !temp) fatal("一時モデルを確保できません");
+          if (!v || !temp) fatal(QMSG_0480);
           for (other = cur_func->locals; other; other = other->next) if (other->offset > offset) offset = other->offset;
           v->name = ""; v->ty = node->lhs->ty; v->tok = node->tok; v->offset = offset + 8;
           v->next = cur_func->locals; cur_func->locals = v;
@@ -172,31 +172,31 @@ static int model_definition_depth;
 static void check_field_initial(ModelField *f)
 {
     if (!f->initial || f->initial_state == 2) return;
-    if (f->initial_state == 1) error_tok(f->tok, "フィールド %s の既定値が循環しています", f->name);
+    if (f->initial_state == 1) error_tok(f->tok, QMSG_0423, f->name);
     f->initial_state = 1;
     check_dims(f->dims);
     check_expected(f->initial, f->ty);
-    f->initial = coerce(f->initial, f->ty, f->tok, "フィールドの既定値");
-    if (!model_constant_default(f->initial)) error_tok(f->tok, "フィールドの既定値はコンパイル時に確定する式にしてください");
+    f->initial = coerce(f->initial, f->ty, f->tok, QMSG_0427);
+    if (!model_constant_default(f->initial)) error_tok(f->tok, QMSG_0428);
     f->initial_state = 2;
 }
 static void check_model_definition(Model *m)
 {
     ModelField *f, *other;
     if (m->state == 2) return;
-    if (m->state == 1) error_tok(m->tok, "モデル %s のフィールド定義が循環しています", m->name);
-    if (++model_definition_depth > MAX_PLACE_DEPTH) error_tok(m->tok, "モデルの入れ子が深すぎます");
+    if (m->state == 1) error_tok(m->tok, QMSG_0447, m->name);
+    if (++model_definition_depth > MAX_PLACE_DEPTH) error_tok(m->tok, QMSG_0453);
     m->state = 1;
     for (f = m->fields; f; f = f->next) {
         Function *fn;
         concrete_only(f->ty, f->tok);
-        for (fn = cur_ast->funcs; fn; fn = fn->next) if (fn->model == m && same_name(fn->name, fn->name_len, f->name, (int)strlen(f->name))) error_tok(f->tok, "フィールドとメソッドの名前 %s が重複しています", f->name);
+        for (fn = cur_ast->funcs; fn; fn = fn->next) if (fn->model == m && same_name(fn->name, fn->name_len, f->name, (int)strlen(f->name))) error_tok(f->tok, QMSG_0424, f->name);
         for (other = m->fields; other != f; other = other->next)
-            if (!strcmp(other->name, f->name)) error_tok(f->tok, "フィールド %s が重複しています", f->name);
+            if (!strcmp(other->name, f->name)) error_tok(f->tok, QMSG_0420, f->name);
         if (type_is_model(array_base(f->ty))) check_model_definition(type_model(array_base(f->ty)));
         check_dims(f->dims);
         f->pending = !f->initial && !defaultable(f->ty, f->dims);
-        if (f->pending && !m->initializer) error_tok(f->tok, "フィールド %s には既定値または親の init が必要です", f->name);
+        if (f->pending && !m->initializer) error_tok(f->tok, QMSG_0421, f->name);
         check_field_initial(f);
     }
     m->state = 2; model_definition_depth--;

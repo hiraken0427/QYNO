@@ -68,7 +68,7 @@ static Var *machine_loop_carry(Node *loop)
 typedef struct { MachineRegion *region; } MachineEmitter;
 static int machine_slot(MachineRegion *r,int slot)
 {
-    if(slot<0||slot>=r->owner->opt_machine_slots)fatal("内部エラー: 数値退避先がフレーム外です");
+    if(slot<0||slot>=r->owner->opt_machine_slots)fatal(QMSG_0563);
     return -(r->owner->opt_machine_base+(slot+1)*8);
 }
 static int machine_emit(void *context,const MachineEvent *event)
@@ -83,7 +83,7 @@ static int machine_emit(void *context,const MachineEvent *event)
     if(e->kind==ME_RELOAD){machine_load(p->ty,e->reg,RBP,machine_slot(r,e->slot));return 1;}
     if(e->kind==ME_FORGET||e->kind==ME_EXPIRE)return 1;
     if(e->kind==ME_RESULT){machine_result_rax(p->ty,e->reg);return 1;}
-    if(e->kind!=ME_STEP)fatal("内部エラー: 数値退避イベントが不正です");
+    if(e->kind!=ME_STEP)fatal(QMSG_0562);
     if(p->op==MI_CONTEXT){collection_context(p->source->tok);return 1;}
     if(p->op==MI_REF_CHECK){if(p->root->is_ref)gen_ref_place(p->root,p->source->lhs->tok,R10);return 1;}
     if(machine_is_barrier(p)){
@@ -162,7 +162,7 @@ static int machine_emit(void *context,const MachineEvent *event)
             cc=int_cond((CmpKind)p->source->val);
             if(integer_unsigned(p->source->cmp_ty))cc=p->source->val==CMP_LT?CC_B:p->source->val==CMP_LE?CC_BE:p->source->val==CMP_GT?CC_A:p->source->val==CMP_GE?CC_AE:cc;
             x64_cmp(left,right);x64_setcc(cc,dst);x64_movzx8(dst,dst);break;
-        default:fatal("内部エラー: 数値命令が未対応です");
+        default:fatal(QMSG_0560);
         }
 
     return 1;
@@ -174,20 +174,20 @@ static int gen_machine(Node *node,int statements)
     MachineEmitter emitter;
     int i,peak,base_depth=depth,profile=machine_carry!=NULL;
     if(machine_disabled||!r||r->owner!=emitting_function||r->statements!=statements)return 0;
-    if(!machine_region_valid(r))fatal("内部エラー: 不正な数値命令です");
+    if(!machine_region_valid(r))fatal(QMSG_0549);
     emitter.region=r;
     x64_comment("scalar region: %d operations",r->count);
     if(r->owner->opt_machine_fixed){
         x64_comment("scalar spill slots: %d (fixed)",r->owner->opt_machine_slots);
         if(!machine_allocate(r,profile,1,machine_emit,&emitter,&peak)||peak>r->owner->opt_machine_slots)
-            fatal("内部エラー: 固定数値退避領域が不整合です");
+            fatal(QMSG_0553);
     }else{
         plan=r->plans[profile];
         if(!plan||plan->profile!=profile||!machine_plan_valid(r,plan)||plan->spill_count>r->owner->opt_machine_slots)
-            fatal("内部エラー: 数値退避計画が不整合です");
+            fatal(QMSG_0564);
         x64_comment("scalar spill slots: %d",plan->spill_count);
         for(i=0;i<plan->count;i++)machine_emit(&emitter,&plan->events[i]);
     }
-    if(depth!=base_depth)fatal("内部エラー: 数値命令のスタックが不整合です");
+    if(depth!=base_depth)fatal(QMSG_0561);
     x64_comment("end scalar region");return 1;
 }

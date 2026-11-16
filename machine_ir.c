@@ -247,15 +247,15 @@ static MachineRegion *finish(Builder *b)
     int i;
     if(b->failed||!b->region.count||b->region.owner->opt_machine_ops>65536-b->region.count)return NULL;
     b->region.owner->opt_machine_ops+=b->region.count;
-    r=malloc(sizeof(*r));if(!r)fatal("機械命令の領域を確保できません");*r=b->region;
-    r->inst=malloc((size_t)r->count*sizeof(*r->inst));if(!r->inst)fatal("機械命令を確保できません");
+    r=malloc(sizeof(*r));if(!r)fatal(QMSG_0708);*r=b->region;
+    r->inst=malloc((size_t)r->count*sizeof(*r->inst));if(!r->inst)fatal(QMSG_0709);
     memcpy(r->inst,b->ops,(size_t)r->count*sizeof(*r->inst));
     for(i=0;i<r->count;i++){
         if(r->inst[i].a>=0)r->inst[r->inst[i].a].last=i;
         if(r->inst[i].b>=0)r->inst[r->inst[i].b].last=i;
     }
     if(!r->statements)r->inst[r->result].last=r->count;
-    if(!machine_region_valid(r))fatal("内部エラー: 機械命令の値が不整合です");
+    if(!machine_region_valid(r))fatal(QMSG_0569);
     if(r->count>r->owner->opt_machine_slots)r->owner->opt_machine_slots=r->count;
     r->next=r->owner->machine_regions;r->owner->machine_regions=r;
     return r;
@@ -274,7 +274,7 @@ static void lower(Function *fn,Node *list,int depth,int *budget)
         for(f=n->fields;f;f=f->next)lower(fn,f->var,depth+1,budget);
         if(n->opt_inline&&n->opt_inline->owner==fn)lower(fn,n->opt_inline->body,depth+1,budget);
         if(optimizer_scalar(n->ty)){
-            b=calloc(1,sizeof(*b));if(!b)fatal("数値命令を確保できません");b->region.owner=fn;
+            b=calloc(1,sizeof(*b));if(!b)fatal(QMSG_0652);b->region.owner=fn;
             b->region.result=expression(b,n,0);
             if(b->arithmetic)n->opt_machine=finish(b);
             free(b);
@@ -283,7 +283,7 @@ static void lower(Function *fn,Node *list,int depth,int *budget)
     /* Maximal scalar statement runs, with stores left visible at every CFG
      * boundary. Control flow, resources and cleanup never cross this region. */
     for(n=list;n;n=n->next)if(statement_candidate(n)){
-        b=calloc(1,sizeof(*b));if(!b)fatal("数値ブロックを確保できません");
+        b=calloc(1,sizeof(*b));if(!b)fatal(QMSG_0651);
         b->region.owner=fn;b->region.statements=1;
         for(end=n,count=0;end&&count<32&&statement_candidate(end);end=end->next,count++)statement(b,end);
         b->region.after=end;

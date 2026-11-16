@@ -31,7 +31,7 @@ static PlacePlan place_capture(Node *target)
     plan.target = target;
     plan.text_last = target->kind == ND_INDEX && type_is_text(target->lhs->ty);
     while (root->kind == ND_INDEX) {
-        if (plan.count >= MAX_PLACE_DEPTH) fatal("更新先の次元が多すぎます");
+        if (plan.count >= MAX_PLACE_DEPTH) fatal(QMSG_0697);
         path[plan.count++] = root;
         root = root->lhs;
     }
