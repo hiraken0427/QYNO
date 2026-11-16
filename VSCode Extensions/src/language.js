@@ -224,7 +224,7 @@ function complete(project, line, character) {
         const enumeration=enumContext(project,env,line,character,text);
         if(enumeration)for(const member of enumeration.members)if(!env.names.has(member.name))items.push(completion(member));
         for(const symbol of STANDARD) if(symbol.path.includes('.') && env.names.get(symbol.name)?.path!==symbol.path) items.push(completion(symbol,symbol.path));
-        for (const keyword of KEYWORD_COMPLETIONS) if (!env.names.has(keyword)) items.push({ label: keyword, kind: TYPES.has(keyword) ? 'type' : 'keyword', insertText: keyword, detail: 'QYNO 0.28.4' });
+        for (const keyword of KEYWORD_COMPLETIONS) if (!env.names.has(keyword)) items.push({ label: keyword, kind: TYPES.has(keyword) ? 'type' : 'keyword', insertText: keyword, detail: 'QYNO 0.28.5' });
     }
     // A completion immediately before '(' must not insert a second argument list.
     const next = project.model.lines[line].slice(character).match(/^\s*\(/);

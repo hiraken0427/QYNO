@@ -40,6 +40,19 @@ struct OptHoist {
 void optimizer_memory(Ast *ast);
 int optimizer_may_change(Node *nodes, Var *root, int shape_only);
 void optimizer_ranges(Ast *ast);
+/* One private literal instance is consumed at this declaration or store.
+ * The AST retains its original copy node for all static analyses. */
+struct ArrayTransferPlan {
+    ArrayTransferPlan *next;
+    Function *owner;
+    Node *site,*producer,*copy;
+    Var *target;
+    Type ty;
+    long long length,limit;
+    int conflict;
+};
+void optimizer_transfers(Ast *ast);
+int optimizer_transfer_valid(const ArrayTransferPlan *plan,Function *owner);
 void optimizer_machine(Ast *ast);
 int optimizer_scalar(Type ty);
 

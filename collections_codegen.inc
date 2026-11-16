@@ -232,6 +232,22 @@ static void gen_array_copy_runtime(Type array_ty,int entry)
     rt_leave();
 }
 
+/* Only proven private, one-dimensional scalar literals call this helper.
+ * Keep the copy's shape checks and logical capacity, without allocating. */
+static void gen_array_adopt_runtime(void)
+{
+    int length_ok=rt_label("adopt.length.ok"),size_ok=rt_label("adopt.size.ok");
+    rt_enter(array_adopt_label,2);rt_save(1,RAX);rt_save(2,RDI);
+    x64_load(RCX,RAX,0);x64_load(RDX,RDI,16);
+    x64_test(RDX,RDX);x64_jcc(CC_S,length_ok);
+    x64_cmp(RCX,RDX);x64_jcc(CC_BE,length_ok);
+    collection_fail("配列の要素数が代入先の上限を超えています\n");
+    x64_bind(length_ok);rt_cmp(RCX,0x0FFFFFFFFFFFFFF7LL);x64_jcc(CC_BE,size_ok);
+    collection_fail("配列に必要な領域が int の範囲を超えます\n");
+    x64_bind(size_ok);rt_load(RAX,1);rt_load(RDI,2);
+    x64_store(RAX,8,RCX);x64_store(RAX,16,RDI);rt_leave();
+}
+
 /* rax=配列、rdi=追加する値。子配列のコピー・領域確保の成功後にだけ変更する。 */
 static void gen_array_append_runtime(Type array_ty,int entry)
 {

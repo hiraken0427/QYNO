@@ -10,7 +10,7 @@
 #include "grapheme_runtime.h"
 #include <stdio.h>
 
-#define QYC_VERSION "0.28.4"
+#define QYC_VERSION "0.28.5"
 
 typedef struct SourceFile SourceFile;
 typedef struct Module Module;
@@ -24,6 +24,7 @@ typedef struct Interface Interface;
 typedef struct Implementation Implementation;
 typedef struct OptInline OptInline;
 typedef struct MachineRegion MachineRegion;
+typedef struct ArrayTransferPlan ArrayTransferPlan;
 typedef struct OptHoist OptHoist;
 
 struct SourceFile {
@@ -423,6 +424,7 @@ struct Node {
     int opt_dead_store; /* effect-free scalar store with no remaining reads */
     OptInline *opt_inline;
     MachineRegion *opt_machine;
+    ArrayTransferPlan *opt_transfer;
     Function *opt_proof_owner;
     unsigned opt_bounds; /* 1: all visited uses proved; 2: at least one unknown */
     OptHoist *opt_hoists; /* loop entry initializations */
