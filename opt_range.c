@@ -271,10 +271,10 @@ static void cache_fields(Function *fn,Node *loop,Node *list,Receiver *map,int co
                 !optimizer_may_change(loop->then,v,0)&&
                 !optimizer_may_change(loop->cond,v,0)&&
                 (!v->is_ref||(v->is_param&&!fn->is_initializer&&!fn->is_internal&&!optimizer_may_change(fn->body,v,1)))){
-                h=calloc(1,sizeof(*h));if(!h)fatal("不変フィールドを保持できません");
-                h->owner=fn;h->root=v;h->source=malloc(sizeof(Node));if(!h->source)fatal("フィールド式を保持できません");
+                h=calloc(1,sizeof(*h));if(!h)fatal(QMSG_0483);
+                h->owner=fn;h->root=v;h->source=malloc(sizeof(Node));if(!h->source)fatal(QMSG_0433);
                 *h->source=*n;h->source->next=NULL;h->source->opt_cached=NULL;h->source->opt_machine=NULL;
-                h->source->lhs=malloc(sizeof(Node));if(!h->source->lhs)fatal("受信者を保持できません");
+                h->source->lhs=malloc(sizeof(Node));if(!h->source->lhs)fatal(QMSG_0584);
                 *h->source->lhs=*n->lhs;h->source->lhs->var=v;h->source->lhs->opt_machine=NULL;
                 fn->stack_size+=8;h->slot=fn->stack_size;
                 h->next=loop->opt_hoists;loop->opt_hoists=h;n->opt_cached=h;
@@ -304,8 +304,8 @@ static void hoists(Function *fn,Node *list,int depth)
             if(bound->kind==ND_LENGTH&&bound->lhs->kind==ND_VAR&&type_is_array(bound->lhs->ty)&&!bound->opt_cached){
                 v=bound->lhs->var;
                 if(!v->is_const&&!v->opt_addressed&&!optimizer_may_change(n->then,v,1)){
-                    h=calloc(1,sizeof(*h));if(!h)fatal("ループの長さを保持できません");
-                    h->owner=fn;h->root=v;h->source=malloc(sizeof(Node));if(!h->source)fatal("ループの式を保持できません");
+                    h=calloc(1,sizeof(*h));if(!h)fatal(QMSG_0477);
+                    h->owner=fn;h->root=v;h->source=malloc(sizeof(Node));if(!h->source)fatal(QMSG_0475);
                     *h->source=*bound;h->source->next=NULL;h->source->opt_cached=NULL;
                     fn->stack_size+=8;h->slot=fn->stack_size;
                     h->next=n->opt_hoists;n->opt_hoists=h;

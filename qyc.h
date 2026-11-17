@@ -9,6 +9,7 @@
 #include "text_runtime.h"
 #include "grapheme_runtime.h"
 #include <stdio.h>
+#include "messages.h"
 
 #define QYC_VERSION "0.28.5"
 
@@ -30,6 +31,7 @@ typedef struct OptHoist OptHoist;
 struct SourceFile {
     const char *filename;
     char *canonical_path;
+    char *display_path;
     char *text;
     const char *input;  /* UTF-8 BOM の後 */
     Module *module;
@@ -817,5 +819,17 @@ void write_pe(const char *path, const Program *prog);
 
 /* elf.c：Linux 用の実行ファイルを書き出す */
 void write_elf(const char *path, const Program *prog);
+
+
+/* Human diagnostics and language selection. Source protocol columns are UTF-8 bytes. */
+extern int diagnostic_japanese,diagnostic_plain,diagnostic_quiet;
+void messages_select(int japanese);
+void diagnostic_phase(int phase);
+void diagnostic_color(int mode);
+void diagnostic_input(const char *path);
+const char *diagnostic_path(SourceFile *source);
+void diagnostic_success(void);
+void diagnostic_runtime(Buffer *out,Token *tok,const char *message);
+void diagnostic_context(Buffer *out,Token *tok,const char *ns,const char *operation);
 
 #endif

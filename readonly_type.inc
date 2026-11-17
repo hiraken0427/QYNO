@@ -30,15 +30,15 @@ static int readonly_place(Node *n)
 static void check_value_transfer(Node *n)
 {
     if (contains_file(n->ty) && readonly_place(n) && place_root(n)->var->is_readonly)
-        error_tok(n->tok, "readonly の file または file を含む値を変更可能な値としてコピーできません");
+        error_tok(n->tok, QMSG_0318);
 }
 
 static Var *hidden_local(Type ty, ArrayDim *dims, int readonly, Token *tok)
 {
     Var *v, *other; int offset = 0;
-    if (!cur_func) error_tok(tok, "const の初期値にはメソッド・通常関数呼び出しを使えません");
+    if (!cur_func) error_tok(tok, QMSG_0128);
     v = calloc(1, sizeof(*v));
-    if (!v) fatal("一時値を確保できません");
+    if (!v) fatal(QMSG_0481);
     for (other = cur_func->locals; other; other = other->next)
         if (other->offset > offset) offset = other->offset;
     v->name = ""; v->ty = ty; v->dims = dims; v->tok = tok;
@@ -51,7 +51,7 @@ static Var *hidden_local(Type ty, ArrayDim *dims, int readonly, Token *tok)
 static Node *clone_ref_path(Node *n, Var *root)
 {
     Node *copy = calloc(1, sizeof(*copy));
-    if (!copy) fatal("読み取り専用の参照を確保できません");
+    if (!copy) fatal(QMSG_0740);
     *copy = *n;
     if (n->kind == ND_INDEX) copy->lhs = clone_ref_path(n->lhs, root);
     else copy->var = root;

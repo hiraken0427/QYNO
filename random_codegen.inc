@@ -22,7 +22,7 @@ static void random_engine_call(void)
     for(i=0;i<16;i++){x64_sub_imm(RSP,4096);x64_store_imm(RSP,0,0);}
     x64_add_imm(RSP,65536);x64_and_imm(RSP,-16);x64_lea(RDI,RBP,RW);x64_call(wide_engine_label);x64_lea(RSP,RBP,-640);
     x64_load(RAX,RBP,RQOFF(status));x64_test(RAX,RAX);x64_jcc(CC_Z,good);rt_cmp(RAX,65);x64_jcc(CC_NZ,argument);
-    file_fail(EX_DATAERR,"乱数の候補が不正なUTF-8です");x64_bind(argument);file_fail(EX_SOFTWARE,"乱数の範囲・候補・文字数が不正です");x64_bind(good);
+    file_fail(EX_DATAERR,QMSG_0490);x64_bind(argument);file_fail(EX_SOFTWARE,QMSG_0501);x64_bind(good);
 }
 static void random_entropy_failure(void)
 {
@@ -30,7 +30,7 @@ static void random_entropy_failure(void)
     x64_store(R14,FILE_OS_ERROR,RAX);x64_mov_imm(RDI,14);
     rt_cmp(RAX,target==TARGET_LINUX?38:120);x64_jcc(CC_Z,unsupported);rt_cmp(RAX,target==TARGET_LINUX?95:50);x64_jcc(CC_NZ,raised);
     x64_bind(unsupported);x64_mov_imm(RDI,12);x64_bind(raised);
-    x64_lea_data(RAX,prog_add_str(prog,"OSから乱数シードを取得できません",strlen("OSから乱数シードを取得できません")));
+    x64_lea_data(RAX,prog_add_str(prog,QMSG_0085,strlen(QMSG_0085)));
     x64_call(io_raise_label);rt_leave();
 }
 static void random_entropy(void)

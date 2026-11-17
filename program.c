@@ -19,16 +19,16 @@ static size_t data_piece(size_t offset,const void *bytes,size_t length,int align
     DataPiece *p;
     uint64_t hash=data_hash(bytes,length);
     if(data_mode==2){
-        if(piece_cursor>=piece_count)fatal("内部エラー: データの計画が不足しています");
+        if(piece_cursor>=piece_count)fatal(QMSG_0542);
         p=&pieces[piece_cursor++];
-        if(p->length!=length||p->hash!=hash||p->alignment!=alignment)fatal("内部エラー: データの生成順が一致しません");
+        if(p->length!=length||p->hash!=hash||p->alignment!=alignment)fatal(QMSG_0541);
         return p->used?p->offset:0;
     }
     if(data_mode==1){
         if(piece_count==piece_capacity){
             piece_capacity=piece_capacity?piece_capacity*2:256;
             pieces=realloc(pieces,(size_t)piece_capacity*sizeof(*pieces));
-            if(!pieces)fatal("定数データの計画を確保できません");
+            if(!pieces)fatal(QMSG_0614);
         }
         p=&pieces[piece_count++];*p=(DataPiece){offset,0,length,hash,alignment,0};
     }
@@ -42,7 +42,7 @@ void prog_plan_finish(const Program *plan,Program *output)
         if(r->kind!=RELOC_DATA||!x64_provider_needed(r->provider))continue;
         lo=0;hi=piece_count;
         while(lo<hi){mid=lo+(hi-lo)/2;if(pieces[mid].old_offset<=r->target)lo=mid+1;else hi=mid;}
-        if(!lo||(pieces[lo-1].length&&r->target-pieces[lo-1].old_offset>=pieces[lo-1].length))fatal("内部エラー: 定数データの参照が不正です");
+        if(!lo||(pieces[lo-1].length&&r->target-pieces[lo-1].old_offset>=pieces[lo-1].length))fatal(QMSG_0556);
         pieces[lo-1].used=1;
     }
     for(i=0;i<piece_count;i++)if(pieces[i].used){
@@ -54,7 +54,7 @@ void prog_plan_finish(const Program *plan,Program *output)
 }
 void prog_plan_end(void)
 {
-    if(data_mode==2&&piece_cursor!=piece_count)fatal("内部エラー: 定数データの生成数が一致しません");
+    if(data_mode==2&&piece_cursor!=piece_count)fatal(QMSG_0557);
     data_mode=0;piece_cursor=piece_count=0;
 }
 
@@ -99,7 +99,7 @@ void prog_add_reloc(Program *prog, RelocKind kind, size_t pos, size_t target)
         new_cap = prog->reloc_cap == 0 ? 16 : prog->reloc_cap * 2;
         new_relocs = realloc(prog->relocs, sizeof(Reloc) * (size_t)new_cap);
         if (new_relocs == NULL) {
-            fatal("メモリを確保できません");
+            fatal(QMSG_0437);
         }
         prog->relocs = new_relocs;
         prog->reloc_cap = new_cap;

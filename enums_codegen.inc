@@ -16,7 +16,7 @@ static void gen_enum_cast(Node *node)
     }else{
         gen_integer_checked(from,TY_I32,node->tok);x64_call(e->check_label);x64_test(RCX,RCX);x64_jcc(CC_NZ,bad);
     }
-    x64_jmp(done);x64_bind(bad);gen_fail(node->tok,"enum の名前または数値が未定義です",EX_SOFTWARE);x64_bind(done);
+    x64_jmp(done);x64_bind(bad);gen_fail(node->tok,QMSG_0152,EX_SOFTWARE);x64_bind(done);
 }
 static void gen_enum_runtime(void)
 {
@@ -31,7 +31,7 @@ static void gen_enum_runtime(void)
             int next=new_label("enum.name.next");rt_cmp(RAX,m->value);x64_jcc(CC_NZ,next);
             x64_lea_data(RAX,prog_add_str(prog,m->name,strlen(m->name)));x64_ret();x64_bind(next);
         }
-        gen_fail(e->tok,"enum の値が未定義です",EX_SOFTWARE);
+        gen_fail(e->tok,QMSG_0148,EX_SOFTWARE);
         rt_enter(e->parse_label,2);rt_save(1,RSI);
         for(m=e->members;m;m=m->next){
             int next=new_label("enum.parse.next");rt_load(RSI,1);match_word(m->name,next);

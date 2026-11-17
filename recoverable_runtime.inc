@@ -68,7 +68,7 @@ static void gen_recoverable_runtime(void)
      rt_enter(file_labels[BI_FILE_TRY_OPEN-BI_FILE_OPEN],4);
      x64_load(RAX,RBP,32);x64_load(RCX,RAX,0);x64_test(RCX,RCX);x64_jcc(CC_Z,valid);
      x64_load(RCX,RCX,8);x64_test(RCX,RCX);x64_jcc(CC_Z,valid);
-     x64_lea_data(RAX,prog_add_str(prog,"try_open の出力先は未オープンである必要があります",strlen("try_open の出力先は未オープンである必要があります")));
+     x64_lea_data(RAX,prog_add_str(prog,QMSG_0353,strlen(QMSG_0353)));
      x64_mov_imm(R8,EX_SOFTWARE);x64_jmp(file_error_label);
      x64_bind(valid);x64_load(RAX,RBP,40);x64_push(RAX);x64_load(RAX,RBP,16);x64_push(RAX);
      x64_call(file_labels[0]);x64_add_imm(RSP,16);rt_save(1,RAX);

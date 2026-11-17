@@ -15,8 +15,8 @@ static void arguments_engine_call(void)
     int valid=rt_label("arguments.encoding.valid"),size=rt_label("arguments.size.error");
     x64_and_imm(RSP,-16);x64_lea(RDI,RBP,ARGS_REQUEST);x64_call(wide_engine_label);x64_lea(RSP,RBP,-256);
     x64_load(RAX,RBP,ARGS_REQUEST+(int)offsetof(WideRequest,status));x64_test(RAX,RAX);x64_jcc(CC_Z,valid);
-    rt_cmp(RAX,65);x64_jcc(CC_NZ,size);file_fail(EX_DATAERR,"実行時引数が正しいUnicodeではありません");
-    x64_bind(size);file_fail(EX_SOFTWARE,"実行時引数のサイズが範囲を超えています");x64_bind(valid);
+    rt_cmp(RAX,65);x64_jcc(CC_NZ,size);file_fail(EX_DATAERR,QMSG_0617);
+    x64_bind(size);file_fail(EX_SOFTWARE,QMSG_0619);x64_bind(valid);
 }
 static void gen_arguments_runtime(void)
 {
@@ -36,9 +36,9 @@ static void gen_arguments_runtime(void)
         int scan=rt_label("arguments.command.scan"),scanned=rt_label("arguments.command.scanned"),present=rt_label("arguments.command.present");
         int i;
         file_win_begin();file_win_end(IMP_GET_COMMAND_LINE_W);x64_test(RAX,RAX);x64_jcc(CC_NZ,present);
-        file_fail(EX_SOFTWARE,"実行時コマンドラインを取得できません");x64_bind(present);
+        file_fail(EX_SOFTWARE,QMSG_0616);x64_bind(present);
         rt_save(8,RAX);x64_xor(RCX,RCX);x64_bind(scan);x64_load8(RDX,RAX,0);x64_load8(R8,RAX,1);x64_shl_imm(R8,8);x64_or(RDX,R8);x64_test(RDX,RDX);x64_jcc(CC_Z,scanned);
-        x64_add_imm(RAX,2);x64_add_imm(RCX,1);x64_jcc(CC_NO,scan);file_fail(EX_SOFTWARE,"実行時引数が長すぎます");
+        x64_add_imm(RAX,2);x64_add_imm(RCX,1);x64_jcc(CC_NO,scan);file_fail(EX_SOFTWARE,QMSG_0618);
         x64_bind(scanned);
         for(i=0;i<(int)sizeof(WideRequest);i+=8)x64_store_imm(RBP,ARGS_REQUEST+i,0);
         x64_store_imm(RBP,ARGS_REQUEST+(int)offsetof(WideRequest,op),W_ARGUMENTS);
@@ -50,7 +50,7 @@ static void gen_arguments_runtime(void)
         arguments_engine_call();
     }
     rt_load(RAX,2);x64_mov_imm(RCX,(INT64_MAX-31)/8);x64_cmp(RAX,RCX);x64_jcc(CC_BE,setup);
-    file_fail(EX_SOFTWARE,"実行時引数の個数が範囲を超えています");x64_bind(setup);
+    file_fail(EX_SOFTWARE,QMSG_0620);x64_bind(setup);
     rt_set(5,0);
     {int empty=rt_label("arguments.array.empty");x64_test(RAX,RAX);x64_jcc(CC_Z,empty);
      x64_mov(RDI,RAX);x64_shl_imm(RDI,3);x64_call(alloc_label);rt_save(5,RAX);x64_bind(empty);}
@@ -64,7 +64,7 @@ static void gen_arguments_runtime(void)
         int scan=rt_label("arguments.utf8.scan"),scanned=rt_label("arguments.utf8.scanned");
         x64_load(RAX,RAX,0);x64_mov(RDX,RAX);x64_xor(RCX,RCX);x64_bind(scan);
         x64_load8(R8,RDX,0);x64_test(R8,R8);x64_jcc(CC_Z,scanned);x64_add_imm(RDX,1);x64_add_imm(RCX,1);
-        x64_jcc(CC_NO,scan);file_fail(EX_SOFTWARE,"実行時引数が長すぎます");x64_bind(scanned);rt_save(7,RCX);x64_mov(RDI,RCX);
+        x64_jcc(CC_NO,scan);file_fail(EX_SOFTWARE,QMSG_0618);x64_bind(scanned);rt_save(7,RCX);x64_mov(RDI,RCX);
     }else{x64_load(RDI,RAX,0);rt_save(7,RDI);x64_add_imm(RAX,8);}
     x64_call(arguments_copy_label);rt_load(RCX,3);x64_shl_imm(RCX,3);rt_load(RDX,5);x64_add(RDX,RCX);x64_store(RDX,0,RAX);
     rt_load(RAX,1);

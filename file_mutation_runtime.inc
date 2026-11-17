@@ -10,8 +10,8 @@ static void gen_mutation_error(void)
     int usual=rt_label("mutation.error.usual");
     rt_enter(mutation_error_label,0);rt_cmp(RAX,target==TARGET_LINUX?-18:-17);x64_jcc(CC_NZ,usual);
     x64_neg(RAX);x64_store(R14,FILE_OS_ERROR,RAX);x64_mov_imm(RDI,12);
-    x64_lea_data(RAX,prog_add_str(prog,"Moving across filesystems is unsupported",strlen("Moving across filesystems is unsupported")));x64_call(io_raise_label);rt_leave();
-    x64_bind(usual);file_os_fail("File operation failed");
+    x64_lea_data(RAX,prog_add_str(prog,QMSG_0851,strlen(QMSG_0851)));x64_call(io_raise_label);rt_leave();
+    x64_bind(usual);file_os_fail(QMSG_0798);
 }
 /* rax=original -> native path; source/destination strings stay in caller slots. */
 static void gen_mutation_path(void)
@@ -23,7 +23,7 @@ static void gen_mutation_path(void)
     directory_path_call(1);x64_load(RCX,RAX,0);x64_test(RCX,RCX);x64_jcc(CC_Z,bad);
     rt_cmp(RCX,2);x64_jcc(CC_A,ready);x64_load8(RDX,RAX,8);rt_cmp(RDX,'.');x64_jcc(CC_NZ,ready);
     rt_cmp(RCX,1);x64_jcc(CC_Z,bad);x64_load8(RDX,RAX,9);rt_cmp(RDX,'.');x64_jcc(CC_NZ,ready);
-    x64_bind(bad);file_fail(EX_SOFTWARE,"Invalid file path: empty, root, dot, or trailing separator");
+    x64_bind(bad);file_fail(EX_SOFTWARE,QMSG_0799);
     x64_bind(ready);rt_load(RAX,1);file_io_call(file_path_label);rt_leave();
 }
 /* rax=native pathname, rdi=0 copy source / 1 destination / 2 delete/rename.
@@ -68,8 +68,8 @@ static void gen_mutation_kind(void)
         {int typed=rt_label("mutation.kind.typed");x64_test(RAX,RAX);x64_jcc(CC_NZ,typed);file_windows_error();mutation_error();rt_leave();x64_bind(typed);}
         rt_cmp(RAX,1);x64_jcc(CC_NZ,wrong);
     }
-    x64_jmp(done);x64_bind(link);dir_policy_error(12,"File links are unsupported");rt_leave();
-    x64_bind(wrong);dir_policy_error(5,"Target is not a regular file");x64_bind(done);rt_leave();
+    x64_jmp(done);x64_bind(link);dir_policy_error(12,QMSG_0800);rt_leave();
+    x64_bind(wrong);dir_policy_error(5,QMSG_0801);x64_bind(done);rt_leave();
 }
 /* rax=native Windows destination -> fail if occupied, no handle acquired.
  * Exclusive creation and no-replace rename still decide concurrent races. */
@@ -78,7 +78,7 @@ static void gen_mutation_destination(void)
     int absent=rt_label("mutation.destination.absent"),failed=rt_label("mutation.destination.failed");
     if(target!=TARGET_WINDOWS)return;
     rt_enter(mutation_destination_label,0);x64_mov(RCX,RAX);file_win_begin();file_win_end(IMP_GET_FILE_ATTRIBUTES_W);
-    rt_cmp(RAX,0xffffffffLL);x64_jcc(CC_Z,failed);dir_policy_error(3,"Destination already exists");rt_leave();
+    rt_cmp(RAX,0xffffffffLL);x64_jcc(CC_Z,failed);dir_policy_error(3,QMSG_0802);rt_leave();
     x64_bind(failed);file_windows_error();rt_cmp(RAX,-2);x64_jcc(CC_Z,absent);rt_cmp(RAX,-3);x64_jcc(CC_Z,absent);
     mutation_error();x64_bind(absent);rt_leave();
 }
@@ -122,7 +122,7 @@ static void gen_mutation_copy(void)
     x64_bind(opened);dir_adopt(5);rt_load(RAX,5);x64_store_imm(RAX,8,5);x64_load(RAX,RAX,0);
     if(target==TARGET_LINUX){
         x64_call(file_kind_label);x64_test(RAX,RAX);x64_jcc(CC_NS,regular);mutation_error();x64_jmp(finish);
-        x64_bind(regular);x64_test(RAX,RAX);x64_jcc(CC_NZ,regular=rt_label("mutation.copy.valid"));dir_policy_error(5,"Source is not a regular file");x64_jmp(finish);x64_bind(regular);
+        x64_bind(regular);x64_test(RAX,RAX);x64_jcc(CC_NZ,regular=rt_label("mutation.copy.valid"));dir_policy_error(5,QMSG_0803);x64_jmp(finish);x64_bind(regular);
     }else{x64_call(mutation_kind_label);bulk_pending(finish);}
     mutation_original_path(2);
     if(target==TARGET_WINDOWS){rt_load(RAX,4);x64_call(mutation_destination_label);bulk_pending(finish);}
@@ -157,7 +157,7 @@ static void gen_mutation_move(void)
      x64_mov(RSI,RAX);x64_xor(RCX,RCX);x64_bind(scan);x64_load8(RDX,RSI,0);x64_load8(RDI,RSI,1);x64_or(RDX,RDI);x64_test(RDX,RDX);x64_jcc(CC_Z,measured);
      x64_add_imm(RSI,2);x64_add_imm(RCX,2);x64_jmp(scan);x64_bind(measured);rt_save(6,RCX);}
     rt_load(RDI,6);rt_cmp(RDI,INT32_MAX-24);
-    {int fits=rt_label("mutation.rename.fits");x64_jcc(CC_BE,fits);file_fail(EX_SOFTWARE,"Rename path is too long");x64_bind(fits);}
+    {int fits=rt_label("mutation.rename.fits");x64_jcc(CC_BE,fits);file_fail(EX_SOFTWARE,QMSG_0804);x64_bind(fits);}
     x64_add_imm(RDI,24);x64_call(alloc_label);rt_save(7,RAX);rt_load(RCX,6);x64_store(RAX,16,RCX);
     /* Store the 32-bit length before copying: bytes 20..23 overlap FileName. */
     x64_lea(RDI,RAX,20);rt_load(RSI,4);x64_rep_movsb();x64_store8_imm(RDI,0,0);x64_store8_imm(RDI,1,0);rt_load(RCX,5);x64_load(RCX,RCX,0);

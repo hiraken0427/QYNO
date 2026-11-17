@@ -3,7 +3,7 @@ static void check_complex_constructor(Node *node)
 {
     Node *arg; int next = 0, named = 0, used[2] = {0};
     node->ty = node->cmp_ty;
-    if (node->nargs > 2) error_tok(node->tok, "complex の引数は値1個または real / imag の2個までです");
+    if (node->nargs > 2) error_tok(node->tok, QMSG_0120);
     if (node->nargs == 1 && !node->lhs->arg_name) {
         check_expr(node->lhs);
         if (type_is_complex(node->lhs->ty)) { node->kind = ND_CAST; return; }
@@ -11,11 +11,11 @@ static void check_complex_constructor(Node *node)
     for (arg = node->lhs; arg; arg = arg->next) {
         int slot;
         if (arg->arg_name) { slot = arg->option_index; named = 1; }
-        else { if (named) error_tok(arg->tok, "位置引数は名前付き引数より先に書いてください"); slot = next++; }
-        if (slot > 1 || used[slot]) error_tok(arg->tok, "complex の引数が重複しています");
+        else { if (named) error_tok(arg->tok, QMSG_0509); slot = next++; }
+        if (slot > 1 || used[slot]) error_tok(arg->tok, QMSG_0119);
         used[slot] = 1; arg->option_index = slot;
         check_expr(arg);
-        if (!is_numeric(arg->ty)) error_tok(arg->tok, "complex の real / imag は実数にしてください");
+        if (!is_numeric(arg->ty)) error_tok(arg->tok, QMSG_0117);
     }
 }
 static Value complex_rounded(Value v)
@@ -31,7 +31,7 @@ static Value complex_calculate(Node *node, Value a, Value b, NodeKind op)
     else if (op == ND_MUL) { v.d = a.d*b.d - a.imag*b.imag; v.imag = a.d*b.imag + a.imag*b.d; }
     else {
         double scale = fmax(fabs(b.d), fabs(b.imag)), c, d, ar, ai, den;
-        if (b.d == 0 && b.imag == 0) const_error(node, "0 の複素数では割れません");
+        if (b.d == 0 && b.imag == 0) const_error(node, QMSG_0077);
         c = b.d / scale; d = b.imag / scale; ar = a.d / scale; ai = a.imag / scale;
         den = c*c + d*d; v.d = (ar*c + ai*d)/den; v.imag = (ai*c - ar*d)/den;
     }

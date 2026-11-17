@@ -69,7 +69,7 @@ async function checkProject(command, project, signal) {
         // All generated assembly stays inside the disposable snapshot.
         const execution = await new Promise(resolve => {
             execFile(command, [entry, '-S', '-o', path.join(directory, 'check.s'), ...rootArgs],
-                { cwd: directory, encoding: 'utf8', windowsHide: true, timeout: 10000, maxBuffer: 1024 * 1024, signal },
+                { env: { ...process.env, QYNO_DIAGNOSTICS: 'plain', QYNO_QUIET: '1', NO_COLOR: '1' }, cwd: directory, encoding: 'utf8', windowsHide: true, timeout: 10000, maxBuffer: 1024 * 1024, signal },
                 (error, stdout, stderr) => resolve({ error, stderr }));
         });
         if (signal?.aborted) return { cancelled: true };

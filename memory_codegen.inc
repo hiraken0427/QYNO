@@ -277,5 +277,5 @@ static void gen_alloc(void)
     rt_load(RAX, 13);
     rt_leave();
     x64_bind(oom);
-    gen_fail(NULL, "必要なメモリを確保できません（サイズが範囲外か、メモリ不足です）", EX_SOFTWARE);
+    gen_fail(NULL, QMSG_0635, EX_SOFTWARE);
 }

@@ -8,7 +8,7 @@ static void gen_file_binary_runtime(void)
     x64_load(RAX, RBP, 24); rt_save(1, RAX);
     x64_mov_imm(RDI, 5); x64_call(file_check_label);
     x64_load(RAX, RBP, 16); x64_test(RAX, RAX); x64_jcc(CC_NS, valid);
-    file_fail(EX_SOFTWARE, "read_bytes の count は非負にしてください");
+    file_fail(EX_SOFTWARE, QMSG_0314);
     x64_bind(valid); rt_save(2, RAX);
     x64_load(RCX, R14, FILE_CONTEXT); x64_store(R14, COLLECTION_CONTEXT, RCX);
     x64_mov_imm(RDI, 40); x64_call(alloc_label); rt_save(3, RAX);

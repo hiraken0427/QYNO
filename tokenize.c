@@ -12,7 +12,7 @@ static Token *new_token(TokenKind kind, const char *start, int len, int line, in
 
     tok = calloc(1, sizeof(Token));
     if (tok == NULL) {
-        fatal("メモリを確保できません");
+        fatal(QMSG_0437);
     }
     tok->kind = kind;
     tok->loc = start;
@@ -89,11 +89,11 @@ static const char *lex_basic(const char *p, int line, const char *line_start, To
         if (prefix || *end == 'i') {
             const char *after = end + !prefix;
             if (is_ident_char(*after) || (*after == '.' && isdigit((unsigned char)after[1])))
-                error_at(line, col_of(after, line_start), "虚数リテラルの後に数字・英字・_ は書けません");
-            if ((size_t)(end - number) >= sizeof(num_buf)) error_at(line, col_of(p, line_start), "虚数の桁が多すぎます");
+                error_at(line, col_of(after, line_start), QMSG_0732);
+            if ((size_t)(end - number) >= sizeof(num_buf)) error_at(line, col_of(p, line_start), QMSG_0731);
             memcpy(num_buf, number, (size_t)(end - number)); num_buf[end - number] = 0;
             errno = 0; fval = strtod(num_buf, NULL);
-            if (errno == ERANGE) error_at(line, col_of(p, line_start), "虚数が大きすぎるか小さすぎます");
+            if (errno == ERANGE) error_at(line, col_of(p, line_start), QMSG_0730);
             *cur = (*cur)->next = new_token(TK_IMAG, p, (int)(after - p), line, col_of(p, line_start));
             (*cur)->fval = fval; return after;
         }
@@ -103,12 +103,12 @@ static const char *lex_basic(const char *p, int line, const char *line_start, To
     if (isdigit((unsigned char)*p) && !(p[0]=='0' && integer_prefix((unsigned char)p[1]))) {
         int floating=0; q=p; while(isdigit((unsigned char)*q))q++;
         if(q[0]=='.' && isdigit((unsigned char)q[1])) { floating=1;q++;while(isdigit((unsigned char)*q))q++; }
-        if(*q=='e'||*q=='E') { floating=1;q++;if(*q=='+'||*q=='-')q++;if(!isdigit((unsigned char)*q))error_at(line,col_of(q,line_start),"指数の数字が必要です");while(isdigit((unsigned char)*q))q++; }
+        if(*q=='e'||*q=='E') { floating=1;q++;if(*q=='+'||*q=='-')q++;if(!isdigit((unsigned char)*q))error_at(line,col_of(q,line_start),QMSG_0640);while(isdigit((unsigned char)*q))q++; }
         if(floating) {
             WideRequest r={0}; Token *t;
-            if(is_ident_char(*q)||*q=='.')error_at(line,col_of(q,line_start),"小数の直後に英字・_・.は書けません");
+            if(is_ident_char(*q)||*q=='.')error_at(line,col_of(q,line_start),QMSG_0624);
             r.op=W_READ;r.ty=W_QUAD;r.input=p;r.length=(int)(q-p);wide_execute(&r);
-            if(r.status)error_at(line,col_of(p,line_start),"小数がbinary128の範囲外か桁数上限4096を超えています");
+            if(r.status)error_at(line,col_of(p,line_start),QMSG_0623);
             *cur=(*cur)->next=t=new_token(TK_FNUM,p,(int)(q-p),line,col_of(p,line_start));
             t->wide=r.out;
             if((size_t)(q-p)<sizeof(num_buf)) { memcpy(num_buf,p,(size_t)(q-p));num_buf[q-p]=0;errno=0;t->fval=strtod(num_buf,NULL);if(errno==ERANGE)t->wide_ty=TY_QUAD; }
@@ -121,10 +121,10 @@ static const char *lex_basic(const char *p, int line, const char *line_start, To
         WideRequest r={0};Token *t;int base=10;
         start=p;if(p[0]=='0'&&integer_prefix((unsigned char)p[1])){base=integer_prefix(p[1]);p+=2;}
         q=p;while(is_ident_char(*p))p++;
-        if(p==q)error_at(line,col_of(start,line_start),"整数の接頭辞の後に数字が必要です");
+        if(p==q)error_at(line,col_of(start,line_start),QMSG_0661);
         r.op=W_READ;r.ty=128;r.input=start;r.length=(int)(p-start);wide_execute(&r);
-        if(r.status||r.used!=r.length)error_at(line,col_of(start,line_start),"整数が128bitの範囲外か基数に合わない数字です");
-        if(*p=='.'&&isdigit((unsigned char)p[1]))error_at(line,col_of(p,line_start),"基数指定は整数にだけ使えます");
+        if(r.status||r.used!=r.length)error_at(line,col_of(start,line_start),QMSG_0657);
+        if(*p=='.'&&isdigit((unsigned char)p[1]))error_at(line,col_of(p,line_start),QMSG_0599);
         *cur=(*cur)->next=t=new_token(TK_NUM,start,(int)(p-start),line,col_of(start,line_start));
         t->wide=r.out;t->val=integer_bits(r.out.lo);
         if(r.out.hi)t->wide_ty=base==10&&(r.out.hi>>63)?TY_U128:TY_I128;
@@ -145,7 +145,7 @@ static const char *lex_basic(const char *p, int line, const char *line_start, To
 
     /* && は 00.21 で廃止（|| は縦棒2本として読む） */
     if (p[0] == '&') {
-        error_at(line, col_of(p, line_start), "&& は廃止されました。論理積には and を使ってください");
+        error_at(line, col_of(p, line_start), QMSG_0067);
     }
 
     /* 2文字の記号 */
@@ -189,7 +189,7 @@ static const char *skip_string(const char *p, int line, const char *line_start)
     p++;
     while (*p != quote) {
         if (*p == '\0' || *p == '\n' || *p == '\r') {
-            error_at(line, col_of(start, line_start), "文字列が閉じられていません（文字列は1行で書いてください）");
+            error_at(line, col_of(start, line_start), QMSG_0671);
         }
         if (*p == '{') {
             const char *line_end = p, *close;
@@ -226,13 +226,13 @@ Token *tokenize_fragment(const char *start, const char *end, int line, const cha
         }
         if (*p == '"' || *p == '\'') {
             next = skip_string(p, line, line_start);
-            if (next > end) error_at(line, col_of(p, line_start), "埋め込みの文字列が閉じられていません");
+            if (next > end) error_at(line, col_of(p, line_start), QMSG_0596);
             cur = cur->next = new_token(TK_STR, p, (int)(next - p), line, col_of(p, line_start));
             p = next; continue;
         }
         next = lex_basic(p, line, line_start, &cur);
         if (next == NULL || next > end) {
-            error_at(line, col_of(p, line_start), "埋め込みの式に使えない文字です");
+            error_at(line, col_of(p, line_start), QMSG_0595);
         }
         p = next;
     }
@@ -281,10 +281,10 @@ Token *tokenize(const char *src)
                 p++;
             }
             if (*p == ' ') {
-                error_at(line, col_of(p, line_start), "インデントにスペースは使えません。タブを使ってください");
+                error_at(line, col_of(p, line_start), QMSG_0392);
             }
             if (depth > indent + 1) {
-                error_at(line, col_of(p, line_start), "インデントが深すぎます。1段ずつ深くしてください");
+                error_at(line, col_of(p, line_start), QMSG_0391);
             }
             if (depth == indent + 1) {
                 cur = cur->next = new_token(TK_INDENT, p, 0, line, col_of(p, line_start));
@@ -339,7 +339,7 @@ Token *tokenize(const char *src)
             continue;
         }
 
-        error_at(line, col_of(p, line_start), "使えない文字です");
+        error_at(line, col_of(p, line_start), QMSG_0520);
     }
 
     /* 最終行に改行がなくても文を閉じ、残りのインデントをすべて戻す */

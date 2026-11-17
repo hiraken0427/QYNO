@@ -30,7 +30,7 @@ static void buf_reserve(Buffer *b, size_t n)
     }
     new_data = realloc(b->data, new_cap);
     if (new_data == NULL) {
-        fatal("メモリを確保できません");
+        fatal(QMSG_0437);
     }
     b->data = new_data;
     b->cap = new_cap;
@@ -73,7 +73,7 @@ void buf_set_u32(Buffer *b, size_t pos, uint32_t v)
     int i;
 
     if (pos + 4 > b->len) {
-        fatal("内部エラー: バッファの範囲外に書き込もうとしました");
+        fatal(QMSG_0543);
     }
     for (i = 0; i < 4; i++) {
         b->data[pos + (size_t)i] = (unsigned char)(v >> (8 * i));

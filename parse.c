@@ -85,7 +85,7 @@ static Node *new_node(NodeKind kind, Token *t)
 
     node = calloc(1, sizeof(Node));
     if (node == NULL) {
-        fatal("メモリを確保できません");
+        fatal(QMSG_0437);
     }
     node->kind = kind;
     node->tok = t;
@@ -147,16 +147,16 @@ static void check_stray_bar(void)
         return;
     }
     if (equal(tok->next, "|") && tok->next->loc == tok->loc + 1) {
-        error_tok(tok, "|| は廃止されました。論理和には or を使ってください");
+        error_tok(tok, QMSG_0379);
     }
-    error_tok(tok, "この | に対応する開きの | がありません（絶対値は |x| と書きます）");
+    error_tok(tok, QMSG_0387);
 }
 
 static void expect(const char *s)
 {
     if (!equal(tok, s)) {
         check_stray_bar();
-        error_tok(tok, "'%s' が必要です", s);
+        error_tok(tok, QMSG_0068, s);
     }
     tok = tok->next;
 }
@@ -191,9 +191,9 @@ static Type type_keyword(Token *t)
     if (equal(t, "complex_128")) return TY_C128;
     if (equal(t, "unsigned")) {
         Type base;
-        if (equal(t->next, "unsigned")) error_tok(t, "unsigned は1回だけ指定してください");
+        if (equal(t->next, "unsigned")) error_tok(t, QMSG_0357);
         base = type_keyword(t->next);
-        if (!type_is_integer(base) || integer_unsigned(base)) error_tok(t, "unsigned の後は整数型にしてください");
+        if (!type_is_integer(base) || integer_unsigned(base)) error_tok(t, QMSG_0356);
         return integer_type(integer_width(base), 1);
     }
     if (equal(t, "int_8")) return TY_I8;
@@ -231,7 +231,7 @@ static Type type_keyword(Token *t)
         if (end->next->kind != TK_IDENT) return TY_NONE;
         length = (size_t)(end->loc + end->len - t->loc);
         path = calloc(length + 1, 1);
-        if (!path) fatal("型名を確保できません");
+        if (!path) fatal(QMSG_0592);
         /* Build the path from tokens so spaces around dots are harmless. */
         { Token *part; size_t n = 0;
           for (part = t; ; part = part->next) {
@@ -260,7 +260,7 @@ static ArrayDim *dimensions(Type *ty)
     while (equal(tok, "[")) {
         ArrayDim *dim = calloc(1, sizeof(*dim));
         if (dim == NULL) {
-            fatal("配列の次元情報を確保できません");
+            fatal(QMSG_0758);
         }
         dim->tok = tok;
         dim->limit = -1;
@@ -271,7 +271,7 @@ static ArrayDim *dimensions(Type *ty)
         expect("]");
         tail = tail->next = dim;
         if (++rank > MAX_ARRAY_RANK) {
-            error_tok(dim->tok, "配列の次元数は %d 以下にしてください", MAX_ARRAY_RANK);
+            error_tok(dim->tok, QMSG_0760, MAX_ARRAY_RANK);
         }
         *ty = array_type(*ty);
     }
@@ -295,11 +295,11 @@ static Var *new_var(Token *t, Type ty)
     Var *v;
 
     if (is_keyword(t)) {
-        error_tok(t, "予約語は名前に使えません");
+        error_tok(t, QMSG_0506);
     }
     v = calloc(1, sizeof(Var));
     if (v == NULL) {
-        fatal("メモリを確保できません");
+        fatal(QMSG_0437);
     }
     v->name = t->loc;
     v->name_len = t->len;
@@ -329,7 +329,7 @@ static Var *declare_var(Token *t, Type ty, int is_const)
     if (cur_fn == NULL) {
         for (prev = ast->global_vars; prev != NULL; prev = prev->next) {
             if (same_name(prev, t)) {
-                error_tok(t, "%.*s はすでに %d 行目で宣言されています", t->len, t->loc, prev->tok->line);
+                error_tok(t, QMSG_0011, t->len, t->loc, prev->tok->line);
             }
         }
         v = new_var(t, ty);
@@ -344,7 +344,7 @@ static Var *declare_var(Token *t, Type ty, int is_const)
     if (prev != NULL && (prev->depth == block_depth ||
         (prev->is_param && (block_depth == (cur_fn->model ? 2 : 1) ||
             (cur_fn->model && equal(t, "this")))))) {
-        error_tok(t, "%.*s はすでに %d 行目で宣言されています", t->len, t->loc, prev->tok->line);
+        error_tok(t, QMSG_0011, t->len, t->loc, prev->tok->line);
     }
     v = new_var(t, ty);
     v->is_const = is_const;
@@ -376,7 +376,7 @@ static Node *string_expr(Token *t)
     parts = string_literal(t);
     for (node = parts; node != NULL; node = node->next) {
         if (node->kind != ND_STR) {
-            error_tok(t, "{式} の埋め込みは現在 print の中でのみ使えます");
+            error_tok(t, QMSG_0378);
         }
     }
     node = new_node(ND_STRLIT, t);
@@ -395,11 +395,11 @@ static Var *hidden_var(Type ty, Token *where)
     int count;
 
     if (cur_fn == NULL) {
-        error_tok(where, "input は関数の中でだけ使えます");
+        error_tok(where, QMSG_0239);
     }
     v = calloc(1, sizeof(Var));
     if (v == NULL) {
-        fatal("メモリを確保できません");
+        fatal(QMSG_0437);
     }
     v->name = "";
     v->name_len = 0;
@@ -442,7 +442,7 @@ static void append_text(char **buf, int *len, const char *s, int n)
 
     nb = realloc(*buf, (size_t)(*len + n + 1));
     if (nb == NULL) {
-        fatal("メモリを確保できません");
+        fatal(QMSG_0437);
     }
     memcpy(nb + *len, s, (size_t)n);
     *len += n;
@@ -495,14 +495,14 @@ static Node *input_expr(Token *start)
                 continue;
             }
             if (part->kind != ND_VAR && part->kind != ND_INDEX && part->kind != ND_FIELD) {
-                error_tok(part->tok, "input の {} の中には、読み込む先の変数または配列要素を書いてください");
+                error_tok(part->tok, QMSG_0236);
             }
             if (cur != NULL && cur->sep_len == 0) {
-                error_tok(part->tok, "{} と {} の間には、区切りの文字が必要です（例：{a}, {b}）");
+                error_tok(part->tok, QMSG_0375);
             }
             cur = calloc(1, sizeof(InputField));
             if (cur == NULL) {
-                fatal("メモリを確保できません");
+                fatal(QMSG_0437);
             }
             cur->var = part; cur->base = part->format_base;
             ty = part->var != NULL ? part->var->ty : TY_INT;
@@ -526,14 +526,14 @@ static Node *input_expr(Token *start)
         if (node->lhs->kind == ND_VAR || node->lhs->kind == ND_INDEX || node->lhs->kind == ND_FIELD) {
             node->input_pattern = 1;
             node->fields = calloc(1, sizeof(InputField));
-            if (node->fields == NULL) fatal("入力先を確保できません");
+            if (node->fields == NULL) fatal(QMSG_0529);
             node->fields->var = node->lhs;
             node->fields->temp = hidden_var(TY_INT, start);
             node->lhs = NULL;
         }
     }
     if (!equal(tok, ")")) {
-        error_tok(tok, "input の引数は1つです（複数の値は input(\"表示{a}, {b}\") のように形で書きます）");
+        error_tok(tok, QMSG_0238);
     }
     expect(")");
     node->in_line = hidden_var(TY_STR, start);
@@ -552,11 +552,11 @@ static char *name_path(void)
         char *grown;
         if (tok->kind != TK_IDENT ||
             (is_keyword(tok) && !(equal(tok, "file") && (size != 0 || equal(tok->next, "."))) && !(size != 0 && (equal(tok, "print") || equal(tok, "input") || equal(tok, "file") || random_builtin_find(tok->loc,tok->len)>=0)))) {
-            error_tok(tok, "モジュール名または識別子が必要です");
+            error_tok(tok, QMSG_0443);
         }
         length = (size_t)tok->len;
         grown = realloc(name, size + length + 2);
-        if (grown == NULL) fatal("名前の領域を確保できません");
+        if (grown == NULL) fatal(QMSG_0587);
         name = grown;
         if (size != 0) name[size++] = '.';
         memcpy(name + size, tok->loc, length);
@@ -599,11 +599,11 @@ static void call_args(Node *node)
                 if (node->val == BI_COMPLEX) {
                     if (equal(tok, "real")) slot = 0;
                     else if (equal(tok, "imag")) slot = 1;
-                    else { error_tok(tok, "complex の名前付き引数は real / imag です"); slot = 0; }
+                    else { error_tok(tok, QMSG_0118); slot = 0; }
                 }
                 else if (equal(tok, "base")) slot = 1;
                 else if (equal(tok, "prefix")) slot = 2;
-                else { error_tok(tok, "int / str の名前付き引数は base / prefix です"); slot = 0; }
+                else { error_tok(tok, QMSG_0241); slot = 0; }
                 tok = tok->next->next; arg = expr(); arg->option_index = slot;
                 arg->arg_name = mark; cur = cur->next = arg;
             } else if (consume("ref")) {
@@ -659,11 +659,11 @@ static Node *primary(void)
         node = new_node(ND_MODEL_INIT, tok);
         while (!equal(tok, "}")) {
             Token *field = tok; Node *item;
-            if (field->kind != TK_IDENT || is_keyword(field)) error_tok(field, "初期化するフィールド名が必要です");
+            if (field->kind != TK_IDENT || is_keyword(field)) error_tok(field, QMSG_0577);
             tok = tok->next; expect("=");
             item = new_unary(ND_FIELD, expr(), field);
             item->name = calloc((size_t)field->len + 1, 1);
-            if (!item->name) fatal("フィールド名を確保できません");
+            if (!item->name) fatal(QMSG_0431);
             memcpy(item->name, field->loc, (size_t)field->len);
             tail = tail->next = item; node->nargs++;
             if (!consume(",")) break;
@@ -730,7 +730,7 @@ static Node *primary(void)
         start = tok;
         node = new_unary(ND_ABS, expr(), start);
         if (!consume("|")) {
-            error_tok(tok, "絶対値を閉じる | が必要です");
+            error_tok(tok, QMSG_0728);
         }
         return node;
     }
@@ -769,7 +769,7 @@ static Node *primary(void)
             return node;
         }
         if (equal(tok, "(") && strcmp(member, "print") == 0) {
-            error_tok(start, "print は文として使ってください（戻り値はありません）");
+            error_tok(start, QMSG_0308);
         }
         node = new_node(ND_VAR, start);
         node->name = name;
@@ -779,7 +779,7 @@ static Node *primary(void)
         }
         return node;
     }
-    error_tok(tok, "値（数値・文字列・true・false・変数）または '(' が必要です");
+    error_tok(tok, QMSG_0525);
     return NULL;
 }
 
@@ -805,7 +805,7 @@ static Node *postfix(void)
                 Node *method = new_node(ND_MODEL_METHOD, field);
                 Node *receiver = node;
                 method->name = calloc((size_t)field->len + 1, 1);
-                if (!method->name) fatal("Cannot allocate a method name");
+                if (!method->name) fatal(QMSG_0835);
                 memcpy(method->name, field->loc, (size_t)field->len);
                 tok = field->next->next;
                 call_args(method);
@@ -818,7 +818,7 @@ static Node *postfix(void)
                 variable_member = 0;
             } else if (equal(field, "value") || equal(field, "addr")) {
                 if (node->kind != ND_VAR || variable_member) {
-                    error_tok(field, ".value と .addr は変数名の直後に1回だけ書けます");
+                    error_tok(field, QMSG_0072);
                 }
                 tok = tok->next;
                 if (equal(field, "addr")) {
@@ -828,10 +828,10 @@ static Node *postfix(void)
                 variable_member = 1;
             } else {
                 Node *access;
-                if (field->kind != TK_IDENT || is_keyword(field)) error_tok(field, "フィールド名が必要です");
+                if (field->kind != TK_IDENT || is_keyword(field)) error_tok(field, QMSG_0430);
                 access = new_unary(ND_FIELD, node, field);
                 access->name = calloc((size_t)field->len + 1, 1);
-                if (!access->name) fatal("フィールド名を確保できません");
+                if (!access->name) fatal(QMSG_0431);
                 memcpy(access->name, field->loc, (size_t)field->len);
                 tok = tok->next; node = access; variable_member = 0;
             }
@@ -875,14 +875,14 @@ static Node *unary(void)
               (operand->kind == ND_NUM && operand->tok->unsigned_literal && !operand->tok->decimal_min)) {
               WideRequest r = {0}; Node *n;
               r.a = operand->kind == ND_WIDE ? operand->wide : (WideBits){(uint64_t)operand->val, 0};
-              if (operand->ty == TY_U128 && (r.a.hi > UINT64_C(0x8000000000000000) || (r.a.hi == UINT64_C(0x8000000000000000) && r.a.lo))) error_tok(start, "負の128bit整数リテラルが範囲外です");
+              if (operand->ty == TY_U128 && (r.a.hi > UINT64_C(0x8000000000000000) || (r.a.hi == UINT64_C(0x8000000000000000) && r.a.lo))) error_tok(start, QMSG_0742);
               r.op=W_NEG;r.ty=-128;wide_execute(&r);
               n=new_node(ND_WIDE,start);n->wide=r.out;n->ty=TY_I128;n->raw_numeric=1;return n;
           }
           /* Parentheses and unary + do not change a minimum literal's type. */
           if (operand->kind == ND_NUM && operand->tok->kind == TK_NUM) {
               if (operand->tok->unsigned_literal) {
-                  if (!operand->tok->decimal_min) error_tok(operand->tok, "負の整数リテラルが範囲外です");
+                  if (!operand->tok->decimal_min) error_tok(operand->tok, QMSG_0743);
                   return new_num(INT64_MIN, start);
               }
               if (operand->val == INT64_C(2147483648)) return new_num(INT32_MIN, start);
@@ -910,7 +910,7 @@ static Node *mul(void)
         if (consume("/")) {
             rhs = unary();
             if (rhs->kind == ND_NUM && rhs->val == 0) {
-                error_tok(start, "0で割ることはできません");
+                error_tok(start, QMSG_0081);
             }
             node = new_binary(ND_DIV, node, rhs, start);
             continue;
@@ -918,7 +918,7 @@ static Node *mul(void)
         if (consume("%")) {
             rhs = unary();
             if (rhs->kind == ND_NUM && rhs->val == 0) {
-                error_tok(start, "0で割った余りは求められません");
+                error_tok(start, QMSG_0080);
             }
             node = new_binary(ND_MOD, node, rhs, start);
             continue;
@@ -1101,7 +1101,7 @@ static Node *flush_literal(Node *cur, Buffer *lit, Token *t)
     node = new_node(ND_STR, t);
     node->str = malloc(lit->len);
     if (node->str == NULL) {
-        fatal("メモリを確保できません");
+        fatal(QMSG_0437);
     }
     memcpy(node->str, lit->data, lit->len);
     node->str_len = (int)lit->len;
@@ -1128,7 +1128,7 @@ static char escape_char(Token *t, const char *p)
     case '}':
         return p[1];
     default:
-        error_at(t->line, col_in(t, p), "使えないエスケープです（\\n \\t \\r \\0 \\\\ \\\" \\' \\{ \\} が使えます）");
+        error_at(t->line, col_in(t, p), QMSG_0519);
         return 0;
     }
 }
@@ -1154,18 +1154,18 @@ static Node *embedded_expr(Token *t, const char *open, const char *close)
         while (p < end && (*p == ' ' || *p == '\t')) p++;
         while (end > p && (end[-1] == ' ' || end[-1] == '\t')) end--;
         if (end - p != 2 || p[0] != '0' || !(p[1] == 'b' || p[1] == 'o' || p[1] == 'd' || p[1] == 'x'))
-            error_at(t->line, col_in(t, colon), "書式指定は 0b / 0o / 0d / 0x にしてください");
+            error_at(t->line, col_in(t, colon), QMSG_0699);
         base = integer_prefix(p[1]);
     }
     line_start = t->loc - (t->col - 1);
     saved = tok;
     tok = tokenize_fragment(open + 1, colon ? colon : close, t->line, line_start);
     if (tok->kind == TK_EOF) {
-        error_at(t->line, col_in(t, open), "{} の中に式を書いてください（{ そのものは \\{ と書きます）");
+        error_at(t->line, col_in(t, open), QMSG_0376);
     }
     node = expr();
     if (tok->kind != TK_EOF) {
-        error_tok(tok, "埋め込みの式が正しくありません");
+        error_tok(tok, QMSG_0594);
     }
     tok = saved;
     node->format_base = base;
@@ -1200,7 +1200,7 @@ static Node *string_literal(Token *t)
         if (*p == '{') {
             close = interpolation_close(p, end);
             if (!close) {
-                error_at(t->line, col_in(t, p), "{ に対応する } がありません（{ そのものは \\{ と書きます）");
+                error_at(t->line, col_in(t, p), QMSG_0374);
             }
             cur = flush_literal(cur, &lit, t);
             cur->next = embedded_expr(t, p, close);
@@ -1258,7 +1258,7 @@ static Node *print_stmt(Token *start)
         if (!equal(tok, ")")) {
             expect(",");
             if (!is_end_arg(tok)) {
-                error_tok(tok, "print の2つ目には end=値 を書いてください（例：print(x, end=\"\")）");
+                error_tok(tok, QMSG_0307);
             }
         }
     }
@@ -1269,7 +1269,7 @@ static Node *print_stmt(Token *start)
         node->end_literal = literal;
     }
     expect(")");
-    expect_kind(TK_NEWLINE, "文の終わりには改行が必要です");
+    expect_kind(TK_NEWLINE, QMSG_0668);
     return node;
 }
 
@@ -1293,29 +1293,29 @@ static Node *declaration_ref(Token *start, int is_const, int is_ref)
 
     ty = infer ? TY_NONE : type_keyword(tok);
     if (infer && is_ref) {
-        error_tok(tok, "auto は値変数・const の宣言に使用してください（ref・関数引数・戻り値は未対応です）");
+        error_tok(tok, QMSG_0100);
     }
     if (!infer && ty == TY_NONE) {
-        error_tok(tok, "型（int・float・double・bool・str・char）が必要です");
+        error_tok(tok, QMSG_0593);
     }
     if (!short_const) skip_type();
     if (tok->kind != TK_IDENT) {
-        error_tok(tok, "%sが必要です", is_const ? "定数名" : "変数名");
+        error_tok(tok, QMSG_0059, is_const ? QMSG_0615 : QMSG_0610);
     }
     name = tok;
     tok = tok->next;
 
     if (infer && equal(tok, "[")) {
-        error_tok(tok, "auto の配列は初期値から次元も推論します（例：auto values = [1, 2, 3]）");
+        error_tok(tok, QMSG_0099);
     }
     dims = infer ? NULL : dimensions(&ty);
     node = new_node(ND_DECL, start);
     if (consume("=")) {
         node->lhs = expr();
     } else if (infer) {
-        error_tok(tok, "auto には初期値が必要です（例：auto value = 3）");
+        error_tok(tok, QMSG_0097);
     } else if (is_const) {
-        error_tok(tok, "const には初期値が必要です（例：const float PI = 3.141592）");
+        error_tok(tok, QMSG_0125);
     }
     /* 初期値の式の後で登録する（int a = a のような自己参照を防ぐ） */
     node->var = declare_var(name, ty, is_const);
@@ -1323,7 +1323,7 @@ static Node *declaration_ref(Token *start, int is_const, int is_ref)
     node->var->decl = node;
     node->var->is_ref = is_ref;
     node->var->is_inferred = infer;
-    expect_kind(TK_NEWLINE, "文の終わりには改行が必要です");
+    expect_kind(TK_NEWLINE, QMSG_0668);
     return node;
 }
 
@@ -1349,10 +1349,10 @@ static Node *update(Token *name, Node **inc, int *inc_sign)
 
     v = find_var(name);
     if (v == NULL) {
-        error_tok(name, "変数 %.*s は宣言されていません", name->len, name->loc);
+        error_tok(name, QMSG_0608, name->len, name->loc);
     }
     if (v->is_const) {
-        error_tok(name, "定数 %.*s には代入できません", name->len, name->loc);
+        error_tok(name, QMSG_0612, name->len, name->loc);
     }
     node = new_node(ND_ASSIGN, name);
     node->var = v;
@@ -1381,7 +1381,7 @@ static Node *update(Token *name, Node **inc, int *inc_sign)
         sign = -1;
         node->lhs = new_binary(ND_SUB, read, amount, op);
     } else {
-        error_tok(tok, "=、+=、-=、++、-- のいずれかが必要です");
+        error_tok(tok, QMSG_0082);
     }
     if (!equal(op, "=")) v->is_used = 1;
     if (inc != NULL) {
@@ -1412,7 +1412,7 @@ static Node *assignment(void)
     } else {
         node = update(name, NULL, NULL);
     }
-    expect_kind(TK_NEWLINE, "文の終わりには改行が必要です");
+    expect_kind(TK_NEWLINE, QMSG_0668);
     return node;
 }
 
@@ -1424,7 +1424,7 @@ static Using *using_list(Token *start)
     Using *scope = local_usings;
     for (;;) {
         Using *u = calloc(1, sizeof(Using));
-        if (u == NULL) fatal("using の領域を確保できません");
+        if (u == NULL) fatal(QMSG_0365);
         u->path_tok = tok;
         u->tok = start;
         u->path = name_path();
@@ -1433,13 +1433,13 @@ static Using *using_list(Token *start)
         u->locals = visible;
         if (consume("as")) {
             if (tok->kind != TK_IDENT || is_keyword(tok)) {
-                error_tok(tok, "as の後に別名が必要です");
+                error_tok(tok, QMSG_0096);
             }
             u->alias = tok;
             tok = tok->next;
         }
         if (equal(tok, "(")) {
-            error_tok(tok, "using には括弧を付けません");
+            error_tok(tok, QMSG_0361);
         }
         u->all_next = ast->all_usings;
         ast->all_usings = u;
@@ -1448,7 +1448,7 @@ static Using *using_list(Token *start)
         scope = u;
         if (!consume(",")) break;
     }
-    expect_kind(TK_NEWLINE, "文の終わりには改行が必要です");
+    expect_kind(TK_NEWLINE, QMSG_0668);
     return head.next;
 }
 
@@ -1458,14 +1458,14 @@ static void import_list(Token *start)
     while (*tail != NULL) tail = &(*tail)->next;
     for (;;) {
         ModuleImport *item = calloc(1, sizeof(ModuleImport));
-        if (item == NULL) fatal("import の領域を確保できません");
+        if (item == NULL) fatal(QMSG_0213);
         item->tok = start;
         item->name = name_path();
         *tail = item;
         tail = &item->next;
         if (!consume(",")) break;
     }
-    expect_kind(TK_NEWLINE, "文の終わりには改行が必要です");
+    expect_kind(TK_NEWLINE, QMSG_0668);
 }
 
 /*
@@ -1479,7 +1479,7 @@ static Node *block(const char *indent_msg)
     Var *saved;
     Using *saved_usings;
 
-    expect_kind(TK_NEWLINE, "ブロックを始める ';' の直後は改行してください");
+    expect_kind(TK_NEWLINE, QMSG_0435);
     expect_kind(TK_INDENT, indent_msg);
 
     saved = visible;
@@ -1490,7 +1490,7 @@ static Node *block(const char *indent_msg)
     while (tok->kind != TK_DEDENT && tok->kind != TK_EOF) {
         cur = cur->next = stmt();
     }
-    expect_kind(TK_DEDENT, "インデントが正しくありません");
+    expect_kind(TK_DEDENT, QMSG_0390);
     block_depth--;
     visible = saved;
     local_usings = saved_usings;
@@ -1508,7 +1508,7 @@ static Node *if_stmt(Token *start)
     node->cond = expr();
     expect(")");
     expect(";");
-    node->then = block("if の本体はタブで1段インデントしてください");
+    node->then = block(QMSG_0205);
 
     if (consume("else")) {
         if (equal(tok, "if")) {
@@ -1517,7 +1517,7 @@ static Node *if_stmt(Token *start)
             node->els = if_stmt(else_if);
         } else {
             expect(";");
-            node->els = block("else の本体はタブで1段インデントしてください");
+            node->els = block(QMSG_0138);
         }
     }
     return node;
@@ -1534,7 +1534,7 @@ static Node *while_stmt(Token *start)
     expect(")");
     expect(";");
     loop_depth++;
-    node->then = block("while の本体はタブで1段インデントしてください");
+    node->then = block(QMSG_0367);
     loop_depth--;
     return node;
 }
@@ -1571,7 +1571,7 @@ static Node *for_stmt(Token *start)
     /* 開始側の比較 */
     op1 = tok;
     if (!equal(op1, "<") && !equal(op1, "<=") && !equal(op1, ">") && !equal(op1, ">=")) {
-        error_tok(op1, "for の範囲は「開始値 <= 変数 < 終了値」の形で書いてください");
+        error_tok(op1, QMSG_0201);
     }
     increasing = equal(op1, "<") || equal(op1, "<=");
     node->for_open = equal(op1, "<") || equal(op1, ">");
@@ -1587,20 +1587,20 @@ static Node *for_stmt(Token *start)
         ty = TY_INT;
     }
     if (tok->kind != TK_IDENT) {
-        error_tok(tok, "ループ変数の名前が必要です");
+        error_tok(tok, QMSG_0478);
     }
     name = tok;
     if (!explicit_type && find_var(name) != NULL)
-        error_tok(name, "外側の変数と同名のループ変数を宣言する場合は、型を明示してください");
+        error_tok(name, QMSG_0611);
     tok = tok->next;
 
     /* 終了側の比較 */
     op2 = tok;
     if (!equal(op2, "<") && !equal(op2, "<=") && !equal(op2, ">") && !equal(op2, ">=")) {
-        error_tok(op2, "for の終了側には <、<=、>、>= のいずれかを書いてください");
+        error_tok(op2, QMSG_0202);
     }
     if (increasing != (equal(op2, "<") || equal(op2, "<="))) {
-        error_tok(op2, "範囲の向きが合っていません（左右とも <・<=、または左右とも >・>= にしてください）");
+        error_tok(op2, QMSG_0724);
     }
     tok = tok->next;
 
@@ -1628,7 +1628,7 @@ static Node *for_stmt(Token *start)
     expect(",");
     if (tok->kind != TK_IDENT || tok->len != name->len || strncmp(tok->loc, name->loc, (size_t)name->len) != 0 ||
         !(equal(tok->next, "++") || equal(tok->next, "--") || equal(tok->next, "+=") || equal(tok->next, "-="))) {
-        error_tok(tok, "for の増分はループ変数 %.*s の ++、--、+= 式、-= 式 のいずれかで書いてください",
+        error_tok(tok, QMSG_0196,
                  name->len, name->loc);
     }
     tok = tok->next;
@@ -1641,7 +1641,7 @@ static Node *for_stmt(Token *start)
     node->val = increasing ? 1 : -1;
 
     loop_depth++;
-    node->then = block("for の本体はタブで1段インデントしてください");
+    node->then = block(QMSG_0200);
     loop_depth--;
     visible = saved;
     return node;
@@ -1654,12 +1654,12 @@ static Node *loop_jump(NodeKind kind, Token *start)
 
     name = kind == ND_BREAK ? "break" : "continue";
     if (loop_depth == 0) {
-        error_tok(start, "%s はループ（for・while）の中でのみ使えます", name);
+        error_tok(start, QMSG_0046, name);
     }
     if (equal(tok, "(")) {
-        error_tok(tok, "%s には括弧を付けません（00.21 から %s() ではなく %s と書きます）", name, name, name);
+        error_tok(tok, QMSG_0023, name, name, name);
     }
-    expect_kind(TK_NEWLINE, "文の終わりには改行が必要です");
+    expect_kind(TK_NEWLINE, QMSG_0668);
     return new_node(kind, start);
 }
 
@@ -1667,22 +1667,22 @@ static Node *match_stmt(Token *start)
 {
     Node *node=new_node(ND_MATCH,start),**end=&node->then;Var *saved=visible;Using *saved_using=local_usings;
     expect("(");node->cond=expr();expect(")");expect(";");
-    expect_kind(TK_NEWLINE,"match には改行が必要です");expect_kind(TK_INDENT,"match の case は1段インデントしてください");
+    expect_kind(TK_NEWLINE,QMSG_0295);expect_kind(TK_INDENT,QMSG_0296);
     node->var=hidden_var(TY_NONE,start);
     while(tok->kind!=TK_DEDENT&&tok->kind!=TK_EOF){
         Token *site=tok;
         if(consume("case")){
             Node *arm=new_node(ND_CASE,site),**patterns=&arm->lhs;
             do{*patterns=expr();patterns=&(*patterns)->next;}while(consume(","));
-            expect(";");arm->then=block("case の本体は1段インデントしてください");*end=arm;end=&arm->next;
+            expect(";");arm->then=block(QMSG_0108);*end=arm;end=&arm->next;
         }else if(consume("else")){
-            expect(";");node->els=block("else の本体は1段インデントしてください");
-            if(tok->kind!=TK_DEDENT)error_tok(tok,"match の else は最後に1回だけ記述してください");
+            expect(";");node->els=block(QMSG_0137);
+            if(tok->kind!=TK_DEDENT)error_tok(tok,QMSG_0297);
             break;
-        }else error_tok(tok,"match の中には case または else を記述してください");
+        }else error_tok(tok,QMSG_0298);
     }
-    expect_kind(TK_DEDENT,"match の終わりが必要です");visible=saved;local_usings=saved_using;
-    if(!node->then&&!node->els)error_tok(start,"match は空にできません");
+    expect_kind(TK_DEDENT,QMSG_0301);visible=saved;local_usings=saved_using;
+    if(!node->then&&!node->els)error_tok(start,QMSG_0302);
     return node;
 }
 
@@ -1702,13 +1702,13 @@ static Node *try_stmt(Token *start)
         expect(")");
     }
     if(consume("as")) {
-        Token *name=tok; if(is_keyword(tok))error_tok(tok,"エラーの名前に予約語は使えません");expect_kind(TK_IDENT,"エラーの名前が必要です");
+        Token *name=tok; if(is_keyword(tok))error_tok(tok,QMSG_0396);expect_kind(TK_IDENT,QMSG_0395);
         binding=hidden_var(named_type(name,"io.Error",local_usings),name);
         binding->name=name->loc;binding->name_len=name->len;binding->is_readonly=1;
     }
     n->var=binding?binding:hidden_var(named_type(start,"io.Error",local_usings),start);
     n->ref_temp=hidden_var(TY_ADDR,start);
-    expect(";");n->then=block("try の本体は1段インデントしてください");
+    expect(";");n->then=block(QMSG_0350);
     while(consume("case")) {
         Node *arm=new_node(ND_CASE,start), **values=&arm->lhs;
         arm->tok=tok;expect("(");
@@ -1718,11 +1718,11 @@ static Node *try_stmt(Token *start)
         }
         expect(";");saved=visible;
         if(binding){binding->vnext=visible;visible=binding;}
-        arm->then=block("case の本体は1段インデントしてください");visible=saved;
+        arm->then=block(QMSG_0108);visible=saved;
         *tail=arm;tail=&arm->next;
     }
-    if(consume("finally")){expect(";");n->rhs=block("finally の本体は1段インデントしてください");}
-    if(!n->els&&!n->rhs)error_tok(start,"try には case または finally が必要です");
+    if(consume("finally")){expect(";");n->rhs=block(QMSG_0186);}
+    if(!n->els&&!n->rhs)error_tok(start,QMSG_0349);
     return n;
 }
 
@@ -1737,7 +1737,7 @@ static Node *stmt(void)
 
     start = tok;
     if (tok->kind == TK_INDENT) {
-        error_tok(tok, "余分なインデントがあります");
+        error_tok(tok, QMSG_0511);
     }
     io_call = qualified_io_call(tok);
     if (io_call != NULL && equal(io_call, "print")) {
@@ -1754,15 +1754,15 @@ static Node *stmt(void)
         if (tok->kind != TK_NEWLINE) {
             node->lhs = expr();         /* void の関数では値を書かない */
         }
-        expect_kind(TK_NEWLINE, "文の終わりには改行が必要です");
+        expect_kind(TK_NEWLINE, QMSG_0668);
         return node;
     }
     if (consume("try")) return try_stmt(start);
     if (consume("throw")) {
         node=new_node(ND_THROW,start);expect(";");
-        expect_kind(TK_NEWLINE,"throw; の後は改行してください");return node;
+        expect_kind(TK_NEWLINE,QMSG_0336);return node;
     }
-    if(equal(tok,"case")||equal(tok,"finally"))error_tok(tok,"対応する try がありません");
+    if(equal(tok,"case")||equal(tok,"finally"))error_tok(tok,QMSG_0621);
     if (consume("match")) return match_stmt(start);
     if (consume("if")) {
         return if_stmt(start);
@@ -1780,7 +1780,7 @@ static Node *stmt(void)
         return loop_jump(ND_CONTINUE, start);
     }
     if (equal(tok, "else")) {
-        error_tok(tok, "else に対応する if がありません");
+        error_tok(tok, QMSG_0136);
     }
     if (consume("const")) {
         return declaration(start, 1);
@@ -1795,11 +1795,11 @@ static Node *stmt(void)
         node = new_node(ND_ADDR_ASSIGN, name);
         node->var = find_var(name);
         if (node->var == NULL) {
-            error_tok(name, "変数 %.*s は宣言されていません", name->len, name->loc);
+            error_tok(name, QMSG_0608, name->len, name->loc);
         }
         tok = tok->next->next->next->next;
         node->lhs = expr();
-        expect_kind(TK_NEWLINE, "文の終わりには改行が必要です");
+        expect_kind(TK_NEWLINE, QMSG_0668);
         return node;
     }
     if (is_member(tok) && equal(tok->next->next, "value") && is_update_op(tok->next->next->next)) {
@@ -1807,7 +1807,7 @@ static Node *stmt(void)
         Token *name = tok;
         tok = tok->next->next->next;
         node = update(name, NULL, NULL);
-        expect_kind(TK_NEWLINE, "文の終わりには改行が必要です");
+        expect_kind(TK_NEWLINE, QMSG_0668);
         return node;
     }
     if (consume("using")) {
@@ -1832,10 +1832,10 @@ static Node *stmt(void)
         node = new_node(ND_EXPR_STMT, start);
         node->lhs = expr();
         if (node->lhs->kind != ND_INPUT) {
-            error_tok(start, "文が必要です（input の結果を使う式は、変数への代入や if の条件に書いてください）");
+            error_tok(start, QMSG_0666);
         }
         node->lhs->input_stmt = 1;
-        expect_kind(TK_NEWLINE, "文の終わりには改行が必要です");
+        expect_kind(TK_NEWLINE, QMSG_0668);
         return node;
     }
     if ((tok->kind == TK_IDENT && (!is_keyword(tok) || (equal(tok, "file") && equal(tok->next, ".")))) || equal(tok, "(")) {
@@ -1851,15 +1851,15 @@ static Node *stmt(void)
             node->rhs = node->val == UPDATE_INC || node->val == UPDATE_DEC ? new_num(1, node->tok) : expr();
         } else {
             if (target->kind != ND_CALL && target->kind != ND_METHOD && target->kind != ND_MODEL_METHOD && target->kind != ND_INPUT) {
-                error_tok(target->tok, "この式は代入・print・条件などで使ってください");
+                error_tok(target->tok, QMSG_0388);
             }
             if (target->kind == ND_INPUT) target->input_stmt = 1;
             node = new_unary(ND_EXPR_STMT, target, start);
         }
-        expect_kind(TK_NEWLINE, "文の終わりには改行が必要です");
+        expect_kind(TK_NEWLINE, QMSG_0668);
         return node;
     }
-    error_tok(tok, "文が必要です（return・print・if・while・for・break・continue・const・using・変数の宣言と更新・関数呼び出しに対応しています）");
+    error_tok(tok, QMSG_0667);
     return NULL;
 }
 
@@ -1893,27 +1893,27 @@ static Function *function_def(int is_readonly)
 
     fn = calloc(1, sizeof(Function));
     if (fn == NULL) {
-        fatal("メモリを確保できません");
+        fatal(QMSG_0437);
     }
     fn->is_readonly = is_readonly;
     fn->infer_return = omitted || equal(tok, "auto");
     fn->ret = fn->infer_return ? TY_NONE : return_type(tok);
     if (fn->ret == TY_NONE && !fn->infer_return) {
-        error_tok(tok, "ファイルの先頭に書けるのは const 定数と関数の定義だけです（関数は 戻り値の型 名前(引数); の形で書きます）");
+        error_tok(tok, QMSG_0413);
     }
     if (!omitted) skip_type();
     if (tok->kind != TK_IDENT || is_keyword(tok)) {
-        error_tok(tok, "関数名が必要です");
+        error_tok(tok, QMSG_0790);
     }
     name = tok;
     fn->model = parsing_model;
     fn->contract = parsing_interface;
     if (parsing_interface && fn->infer_return)
-        error_tok(name, "interface の契約には戻り値の型を明示してください");
-    if (parsing_interface && equal(name, "init")) error_tok(name, "interface に init は宣言できません");
+        error_tok(name, QMSG_0252);
+    if (parsing_interface && equal(name, "init")) error_tok(name, QMSG_0246);
     fn->is_initializer = parsing_model && equal(name, "init");
     if (fn->is_initializer && (is_readonly || (fn->ret != TY_VOID && fn->ret != TY_BOOL)))
-        error_tok(name, "init は public void / bool のブロック形式で定義してください");
+        error_tok(name, QMSG_0227);
     fn->name = name->loc;
     fn->name_len = name->len;
     fn->tok = name;
@@ -1931,7 +1931,7 @@ static Function *function_def(int is_readonly)
     cur = &head;
     if (parsing_model || parsing_interface) {
         Token *self = calloc(1, sizeof(*self));
-        if (!self) fatal("this を確保できません");
+        if (!self) fatal(QMSG_0334);
         *self = *name; self->loc = "this"; self->len = 4;
         v = new_var(self, parsing_model ? parsing_model->ty : parsing_interface->ty); v->is_param = 1; v->is_ref = 1; v->is_readonly = is_readonly;
         cur = cur->next = v; fn->param_count++;
@@ -1950,18 +1950,18 @@ static Function *function_def(int is_readonly)
                 (equal(tok->next, ",") || equal(tok->next, ")") || equal(tok->next, "["));
             param_infer = param_omitted || equal(tok, "auto");
             if (param_infer && (parsing_interface || fn->is_initializer))
-                error_tok(tok, "interface の契約と init の引数には型を明示してください");
+                error_tok(tok, QMSG_0251);
             ty = param_infer ? TY_NONE : type_keyword(tok);
             if (!param_infer && ty == TY_NONE) {
-                error_tok(tok, "引数の型（int・float・double・bool・str・char）が必要です");
+                error_tok(tok, QMSG_0630);
             }
             if (!param_omitted) skip_type();
             if (tok->kind != TK_IDENT) {
-                error_tok(tok, "引数の名前が必要です");
+                error_tok(tok, QMSG_0629);
             }
             for (p = head.next; p != NULL; p = p->next) {
                 if (same_name(p, tok)) {
-                    error_tok(tok, "引数 %.*s が重複しています", tok->len, tok->loc);
+                    error_tok(tok, QMSG_0627, tok->len, tok->loc);
                 }
             }
             v = new_var(tok, ty);
@@ -1974,13 +1974,13 @@ static Function *function_def(int is_readonly)
             fn->param_count++;
             tok = tok->next;
             if (param_infer && equal(tok, "["))
-                error_tok(tok, "推論する引数は配列の次元も推論します。名前の後の [] は省略してください");
+                error_tok(tok, QMSG_0646);
             v->dims = dimensions(&v->ty);
             if (consume("=")) {
-                if (!fn->is_initializer) error_tok(v->tok, "既定引数は init にだけ指定できます");
+                if (!fn->is_initializer) error_tok(v->tok, QMSG_0693);
                 v->default_arg = expr();
             }
-            if (fn->is_initializer && v->is_ref) error_tok(v->tok, "init の引数は値引数にしてください");
+            if (fn->is_initializer && v->is_ref) error_tok(v->tok, QMSG_0220);
             if (!consume(",")) {
                 break;
             }
@@ -1989,9 +1989,9 @@ static Function *function_def(int is_readonly)
     expect(")");
     fn->params = head.next;
     if (fn->infer_return && equal(tok, "["))
-        error_tok(tok, "戻り値の推論では配列の次元も推論します。関数名の後の [] は省略してください");
+        error_tok(tok, QMSG_0638);
     fn->return_dims = dimensions(&fn->ret);
-    if (fn->is_initializer && fn->return_dims) error_tok(name, "init の戻り値は void / bool のみです。配列は返せません");
+    if (fn->is_initializer && fn->return_dims) error_tok(name, QMSG_0222);
     i = 0;
     for (v = fn->params; v != NULL; v = v->next) {
         v->offset = -(16 + 8 * (fn->param_count - 1 - i));
@@ -2002,24 +2002,24 @@ static Function *function_def(int is_readonly)
 
     if (parsing_interface) {
         expect(";");
-        expect_kind(TK_NEWLINE, "interface のメソッド宣言の終わりには改行が必要です");
+        expect_kind(TK_NEWLINE, QMSG_0250);
         cur_fn = NULL; visible = NULL; return fn;
     }
 
     /* 本体：数式形式（= 式）またはブロック */
     start = tok;
     if (consume("=")) {
-        if (fn->is_initializer) error_tok(start, "init の本体はブロック形式にしてください");
+        if (fn->is_initializer) error_tok(start, QMSG_0226);
         fn->is_math_form = 1;
         fn->body = new_node(ND_RETURN, start);
         fn->body->lhs = expr();
-        expect_kind(TK_NEWLINE, "数式の形の関数定義は1行で書いてください");
+        expect_kind(TK_NEWLINE, QMSG_0656);
     } else {
         if (!equal(tok, ";")) {
-            error_tok(tok, "関数の本体は「;」の後の行に書くか、「= 式」の形で書いてください");
+            error_tok(tok, QMSG_0788);
         }
         tok = tok->next;
-        fn->body = block("関数の本体はタブで1段インデントしてください");
+        fn->body = block(QMSG_0789);
     }
 
     /* スタックに置くのは const 以外のローカル変数だけ（引数は呼び出し側が積む） */
@@ -2038,29 +2038,29 @@ static Function *function_def(int is_readonly)
 static EnumDef *enum_def(void)
 {
     EnumDef *e=calloc(1,sizeof(*e));EnumMember **end;Token *name;
-    if(!e)fatal("enum を確保できません");
+    if(!e)fatal(QMSG_0165);
     expect("enum");name=tok;
-    if(tok->kind!=TK_IDENT||is_keyword(tok))error_tok(tok,"enum の型名が必要です");
-    e->tok=tok;e->name=calloc((size_t)tok->len+1,1);if(!e->name)fatal("enum 名を確保できません");
+    if(tok->kind!=TK_IDENT||is_keyword(tok))error_tok(tok,QMSG_0154);
+    e->tok=tok;e->name=calloc((size_t)tok->len+1,1);if(!e->name)fatal(QMSG_0169);
     memcpy(e->name,tok->loc,(size_t)tok->len);e->ty=enum_type(e);tok=tok->next;
-    expect(";");expect_kind(TK_NEWLINE,"enum 定義には改行が必要です");
-    expect_kind(TK_INDENT,"enum の中にはメンバーを1段インデントしてください");end=&e->members;
+    expect(";");expect_kind(TK_NEWLINE,QMSG_0175);
+    expect_kind(TK_INDENT,QMSG_0145);end=&e->members;
     while(tok->kind!=TK_DEDENT&&tok->kind!=TK_EOF){
         EnumMember *m=calloc(1,sizeof(*m));EnumMember *old;
-        if(!m)fatal("enum メンバーを確保できません");
-        if(tok->kind!=TK_IDENT||is_keyword(tok))error_tok(tok,"enum のメンバー名には予約語以外の識別子が必要です");
+        if(!m)fatal(QMSG_0167);
+        if(tok->kind!=TK_IDENT||is_keyword(tok))error_tok(tok,QMSG_0144);
         m->owner=e;m->tok=tok;m->index=e->count++;m->name=calloc((size_t)tok->len+1,1);
-        if(!m->name)fatal("enum メンバー名を確保できません");
+        if(!m->name)fatal(QMSG_0168);
         memcpy(m->name,tok->loc,(size_t)tok->len);
-        for(old=e->members;old;old=old->next)if(!strcmp(old->name,m->name))error_tok(tok,"enum のメンバー名 %s が重複しています",m->name);
+        for(old=e->members;old;old=old->next)if(!strcmp(old->name,m->name))error_tok(tok,QMSG_0143,m->name);
         tok=tok->next;if(consume("="))m->initial=expr();
-        m->symbol=calloc(1,sizeof(*m->symbol));if(!m->symbol)fatal("enum の定数を確保できません");
+        m->symbol=calloc(1,sizeof(*m->symbol));if(!m->symbol)fatal(QMSG_0159);
         m->symbol->name=m->name;m->symbol->name_len=(int)strlen(m->name);m->symbol->ty=e->ty;
         m->symbol->is_const=1;m->symbol->is_global=1;m->symbol->tok=m->tok;m->symbol->enum_member=m;
-        *end=m;end=&m->next;expect_kind(TK_NEWLINE,"enum の各メンバーには改行が必要です");
+        *end=m;end=&m->next;expect_kind(TK_NEWLINE,QMSG_0151);
     }
-    expect_kind(TK_DEDENT,"enum 定義の終わりが必要です");
-    if(!e->members)error_tok(name,"enum は空にできません");
+    expect_kind(TK_DEDENT,QMSG_0176);
+    if(!e->members)error_tok(name,QMSG_0164);
     return e;
 }
 
@@ -2068,27 +2068,27 @@ static Model *model_def(Function **tail)
 {
     Model *m = calloc(1, sizeof(*m)); ModelField **fields;
     Token *start;
-    if (!m) fatal("モデルを確保できません");
+    if (!m) fatal(QMSG_0458);
     expect("model"); start = tok;
-    if (tok->kind != TK_IDENT || is_keyword(tok)) error_tok(tok, "モデル名が必要です");
+    if (tok->kind != TK_IDENT || is_keyword(tok)) error_tok(tok, QMSG_0460);
     m->tok = tok; m->name = calloc((size_t)tok->len + 1, 1);
-    if (!m->name) fatal("モデル名を確保できません");
+    if (!m->name) fatal(QMSG_0462);
     memcpy(m->name, tok->loc, (size_t)tok->len); m->ty = model_type(m);
     tok = tok->next;
     if (consume("implements")) {
         Implementation **end = &m->implements;
         do {
             Implementation *im = calloc(1, sizeof(*im));
-            if (!im) fatal("implements を確保できません");
+            if (!im) fatal(QMSG_0210);
             im->tok = tok;
-            if (tok->kind != TK_IDENT || is_keyword(tok)) error_tok(tok, "implements には interface の型名が必要です");
+            if (tok->kind != TK_IDENT || is_keyword(tok)) error_tok(tok, QMSG_0207);
             { char *path = name_path(); im->ty = named_type(im->tok, path, NULL); free(path); }
             *end = im; end = &im->next;
         } while (consume(","));
     }
     expect(";");
-    expect_kind(TK_NEWLINE, "モデル定義には改行が必要です");
-    expect_kind(TK_INDENT, "モデルの中はタブで1段インデントしてください");
+    expect_kind(TK_NEWLINE, QMSG_0466);
+    expect_kind(TK_INDENT, QMSG_0452);
     fields = &m->fields;
     parsing_model = m;
     while (tok->kind != TK_DEDENT && tok->kind != TK_EOF) {
@@ -2096,72 +2096,72 @@ static Model *model_def(Function **tail)
         if (equal(tok, "public") || equal(tok, "private")) {
             is_private = equal(tok, "private"); tok = tok->next;
             if (equal(tok, "public") || equal(tok, "private"))
-                error_tok(tok, "公開指定 public / private は1つだけ書いてください");
+                error_tok(tok, QMSG_0531);
         }
         is_readonly = consume("readonly");
         if (equal(tok, "readonly") || equal(tok, "public") || equal(tok, "private"))
-            error_tok(tok, "公開指定の後に readonly を1つだけ書いてください");
+            error_tok(tok, QMSG_0532);
         ty = return_type(tok); name = tok;
         inferred = equal(tok, "auto") || (tok->kind == TK_IDENT && !is_keyword(tok) && equal(tok->next, "("));
         if (!inferred) {
-            if (ty == TY_NONE) error_tok(tok, "モデルにはフィールドまたはメソッドを定義してください");
+            if (ty == TY_NONE) error_tok(tok, QMSG_0448);
             skip_type();
-            if (tok->kind != TK_IDENT || is_keyword(tok)) error_tok(tok, "メンバー名が必要です");
+            if (tok->kind != TK_IDENT || is_keyword(tok)) error_tok(tok, QMSG_0438);
         } else if (equal(tok, "auto") && !(tok->next->kind == TK_IDENT && equal(tok->next->next, "("))) {
-            error_tok(tok, "モデルの auto はメソッドの戻り値に使用してください。フィールドの型は明示してください");
+            error_tok(tok, QMSG_0449);
         }
         if (inferred || equal(tok->next, "(")) {
             tok = name;
             (*tail)->next = function_def(is_readonly); *tail = (*tail)->next;
             (*tail)->is_private = is_private;
             if ((*tail)->is_initializer) {
-                if (is_private) error_tok((*tail)->tok, "init は public で定義してください");
-                if (m->initializer) error_tok((*tail)->tok, "init の定義が重複しています");
+                if (is_private) error_tok((*tail)->tok, QMSG_0228);
+                if (m->initializer) error_tok((*tail)->tok, QMSG_0217);
                 m->initializer = *tail;
             }
         } else {
             ModelField *f = calloc(1, sizeof(*f));
-            if (is_readonly) error_tok(name, "readonly はメソッドと ref 引数に指定してください");
-            if (!f) fatal("フィールドを確保できません");
-            if (equal(tok, "init")) error_tok(tok, "init はモデル生成専用の名前です");
+            if (is_readonly) error_tok(name, QMSG_0320);
+            if (!f) fatal(QMSG_0429);
+            if (equal(tok, "init")) error_tok(tok, QMSG_0229);
             if (equal(tok, "this") || equal(tok, "addr") || equal(tok, "value") || equal(tok, "length"))
-                error_tok(tok, "this・addr・value・length はモデルのフィールド名に使えません");
+                error_tok(tok, QMSG_0335);
             f->model = m; f->is_private = is_private;
             f->tok = tok; f->name = calloc((size_t)tok->len + 1, 1);
-            if (!f->name) fatal("フィールド名を確保できません");
+            if (!f->name) fatal(QMSG_0431);
             memcpy(f->name, tok->loc, (size_t)tok->len); f->ty = ty; f->index = m->field_count++;
             tok = tok->next; f->dims = dimensions(&f->ty);
             cur_fn = NULL; visible = NULL; local_usings = NULL;
             if (consume("=")) f->initial = expr();
-            expect_kind(TK_NEWLINE, "フィールド宣言の終わりには改行が必要です");
+            expect_kind(TK_NEWLINE, QMSG_0432);
             *fields = f; fields = &f->next;
         }
     }
-    expect_kind(TK_DEDENT, "モデル定義を閉じてください");
+    expect_kind(TK_DEDENT, QMSG_0467);
     parsing_model = NULL; (void)start; return m;
 }
 
 static Interface *interface_def(void)
 {
     Interface *in = calloc(1, sizeof(*in)); Function **end;
-    if (!in) fatal("interface を確保できません");
+    if (!in) fatal(QMSG_0260);
     expect("interface");
-    if (tok->kind != TK_IDENT || is_keyword(tok)) error_tok(tok, "interface 名が必要です");
+    if (tok->kind != TK_IDENT || is_keyword(tok)) error_tok(tok, QMSG_0264);
     in->tok = tok; in->name = calloc((size_t)tok->len + 1, 1);
-    if (!in->name) fatal("interface 名を確保できません");
+    if (!in->name) fatal(QMSG_0266);
     memcpy(in->name, tok->loc, (size_t)tok->len); in->ty = interface_type(in);
     tok = tok->next; expect(";");
-    expect_kind(TK_NEWLINE, "interface 定義には改行が必要です");
-    expect_kind(TK_INDENT, "interface には1つ以上のメソッド宣言が必要です");
+    expect_kind(TK_NEWLINE, QMSG_0267);
+    expect_kind(TK_INDENT, QMSG_0247);
     parsing_interface = in; end = &in->methods;
     while (tok->kind != TK_DEDENT && tok->kind != TK_EOF) {
         int ro;
-        if (equal(tok, "private")) error_tok(tok, "interface のメソッドは public にしてください");
+        if (equal(tok, "private")) error_tok(tok, QMSG_0249);
         consume("public"); ro = consume("readonly");
         *end = function_def(ro); end = &(*end)->next;
     }
-    expect_kind(TK_DEDENT, "interface 定義を閉じてください");
-    if (!in->methods) error_tok(in->tok, "空の interface は定義できません");
+    expect_kind(TK_DEDENT, QMSG_0268);
+    if (!in->methods) error_tok(in->tok, QMSG_0720);
     parsing_interface = NULL; return in;
 }
 
@@ -2178,7 +2178,7 @@ Ast *parse(Token *t)
 
     ast = calloc(1, sizeof(Ast));
     if (ast == NULL) {
-        fatal("メモリを確保できません");
+        fatal(QMSG_0437);
     }
     tok = t;
     cur_fn = NULL;
@@ -2197,11 +2197,11 @@ Ast *parse(Token *t)
         int is_private=0;Token *visibility=NULL;
         if(equal(tok,"public")||equal(tok,"private")){
             visibility=tok;is_private=equal(tok,"private");tok=tok->next;
-            if(equal(tok,"public")||equal(tok,"private"))error_tok(tok,"公開指定 public / private は1つだけ書いてください");
-            if(equal(tok,"import")||equal(tok,"using"))error_tok(visibility,"import / using に公開指定は付けられません");
+            if(equal(tok,"public")||equal(tok,"private"))error_tok(tok,QMSG_0531);
+            if(equal(tok,"import")||equal(tok,"using"))error_tok(visibility,QMSG_0211);
         }
         if (tok->kind == TK_INDENT) {
-            error_tok(tok, "余分なインデントがあります");
+            error_tok(tok, QMSG_0511);
         }
         if (equal(tok, "enum")) {
             EnumDef *e=enum_def(),**end=&ast->enums;e->is_private=is_private;

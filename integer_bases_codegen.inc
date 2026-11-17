@@ -112,7 +112,7 @@ static void gen_integer_conversion(Node *node)
     if (!is_format) { rt_cmp(RDI, 0); x64_jcc(CC_Z, ok); }
     rt_cmp(RDI, 2); x64_jcc(CC_Z, ok); rt_cmp(RDI, 8); x64_jcc(CC_Z, ok);
     rt_cmp(RDI, 10); x64_jcc(CC_Z, ok); rt_cmp(RDI, 16); x64_jcc(CC_Z, ok);
-    gen_fail(node->tok, "整数変換の base が不正です", EX_SOFTWARE);
+    gen_fail(node->tok, QMSG_0664, EX_SOFTWARE);
     x64_bind(ok); x64_load(RAX, RBP, -base);
     if (is_format) { x64_load(RSI, RBP, -base + 16); gen_format_integer(node->lhs->ty); }
     else {
@@ -120,7 +120,7 @@ static void gen_integer_conversion(Node *node)
         gen_parse_integer(node->ty); x64_test(RCX, RCX); x64_jcc(CC_NZ, bad);
         x64_store(RBP, -base + 16, RAX); x64_call(skip_ws_label); x64_cmp(RSI, RDX); x64_jcc(CC_NZ, bad);
         x64_load(RAX, RBP, -base + 16); x64_jmp(done);
-        x64_bind(bad); gen_fail(node->tok, "文字列を指定された基数の int として読み取れません", EX_DATAERR);
+        x64_bind(bad); gen_fail(node->tok, QMSG_0680, EX_DATAERR);
     }
     x64_bind(done); x64_add_imm(RSP, 32); depth -= 4;
 }

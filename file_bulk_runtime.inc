@@ -8,7 +8,7 @@ static void bulk_contract_limit(Reg reg,long long maximum)
 {
     int bad=rt_label("bulk.limit.bad"),good=rt_label("bulk.limit.good");
     x64_test(reg,reg);x64_jcc(CC_S,bad);rt_cmp(reg,maximum);x64_jcc(CC_BE,good);
-    x64_bind(bad);file_fail(EX_SOFTWARE,"File limit is out of range");x64_bind(good);
+    x64_bind(bad);file_fail(EX_SOFTWARE,QMSG_0792);x64_bind(good);
 }
 static void bulk_range_error(const char *message)
 {
@@ -51,7 +51,7 @@ static void gen_file_bulk_read(void)
     rt_load(RAX,4);x64_load(R8,RAX,0);rt_load(RDI,2);x64_sub(RDI,R8);
     x64_cmp(RDX,RDI);x64_jcc(CC_A,large);x64_call(file_append_label);
     rt_load(RAX,3);x64_load(RCX,RAX,32);x64_store(RAX,24,RCX);x64_jmp(loop);
-    x64_bind(large);bulk_range_error("File exceeds max_bytes");
+    x64_bind(large);bulk_range_error(QMSG_0793);
     x64_bind(finish);rt_load(RAX,3);x64_call(file_bulk_close_label);io_rt_check();rt_load(RAX,4);rt_leave();
 }
 static void gen_file_bulk_read_entries(void)
@@ -88,7 +88,7 @@ static void gen_file_bulk_read_entries(void)
     x64_lea(RDI,RAX,8);rt_load(RSI,1);x64_add_imm(RSI,8);x64_add(RSI,RDX);x64_rep_movsb();
     rt_load(RAX,3);rt_load(RDI,8);x64_call(array_runtime_label(array_type(TY_STR),AR_APPEND));
     rt_load(RCX,7);rt_save(4,RCX);x64_jmp(loop);
-    x64_bind(too_many);bulk_range_error("File exceeds max_lines");rt_leave();
+    x64_bind(too_many);bulk_range_error(QMSG_0794);rt_leave();
     x64_bind(done);rt_load(RAX,3);rt_leave();
 }
 static void gen_file_bulk_write_text(int builtin,const char *mode)
@@ -124,7 +124,7 @@ static void gen_file_bulk_write_lines(void)
     x64_load8(RCX,RAX,8);rt_cmp(RCX,13);x64_jcc(CC_NZ,bad);
     x64_load8(RCX,RAX,9);rt_cmp(RCX,10);x64_jcc(CC_Z,valid);x64_jmp(bad);
     x64_bind(one);x64_load8(RCX,RAX,8);rt_cmp(RCX,13);x64_jcc(CC_Z,valid);rt_cmp(RCX,10);x64_jcc(CC_Z,valid);
-    x64_bind(bad);file_fail(EX_SOFTWARE,"write_lines newline must be LF, CRLF, or CR");x64_bind(valid);
+    x64_bind(bad);file_fail(EX_SOFTWARE,QMSG_0795);x64_bind(valid);
     x64_bind(validate);rt_load(RAX,2);x64_load(RDX,RAX,0);rt_load(RCX,5);x64_cmp(RCX,RDX);x64_jcc(CC_AE,validated);
     x64_load(RAX,RAX,24);x64_shl_imm(RCX,3);x64_add(RAX,RCX);x64_load(RAX,RAX,0);rt_save(8,RAX);x64_call(file_validate_label);
     x64_load(RDX,RAX,0);rt_load(RCX,6);x64_add(RCX,RDX);x64_jcc(CC_O,large);
@@ -136,8 +136,8 @@ static void gen_file_bulk_write_lines(void)
     rt_load(RAX,3);x64_load(RDX,RAX,0);rt_load(RCX,6);x64_add(RCX,RDX);x64_jcc(CC_O,large);
     rt_cmp(RCX,INT64_MAX-32);x64_jcc(CC_A,large);rt_save(6,RCX);
     x64_bind(no_separator);rt_load(RCX,5);x64_add_imm(RCX,1);rt_save(5,RCX);x64_jmp(validate);
-    x64_bind(large);file_fail(EX_SOFTWARE,"write_lines output is too large");
-    x64_bind(line_error);file_fail(EX_SOFTWARE,"write_lines elements cannot contain CR or LF");
+    x64_bind(large);file_fail(EX_SOFTWARE,QMSG_0796);
+    x64_bind(line_error);file_fail(EX_SOFTWARE,QMSG_0797);
     x64_bind(validated);bulk_open(1,"w");rt_save(7,RAX);rt_set(5,0);
     x64_bind(loop);rt_load(RAX,2);x64_load(RDX,RAX,0);rt_load(RCX,5);x64_cmp(RCX,RDX);x64_jcc(CC_AE,finish);
     x64_load(RSI,RAX,24);x64_shl_imm(RCX,3);x64_add(RSI,RCX);x64_load(RSI,RSI,0);x64_load(RDX,RSI,0);x64_add_imm(RSI,8);

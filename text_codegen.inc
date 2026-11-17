@@ -22,8 +22,8 @@ static void text_engine_call(void)
     x64_load(RAX,RBP,TQOFF(status));x64_test(RAX,RAX);x64_jcc(CC_Z,valid);
     rt_cmp(RAX,65);x64_jcc(CC_NZ,contract);
     x64_load(RAX,R14,COLLECTION_CONTEXT);x64_load(RDX,RAX,0);x64_lea(RSI,RAX,8);x64_call(write_err_label);
-    {const char *msg="文字列メソッドに不正な UTF-8 です\n";x64_lea_data(RSI,prog_add_data(prog,msg,strlen(msg)));x64_mov_imm(RDX,(long long)strlen(msg));x64_mov_imm(R8,EX_DATAERR);x64_jmp(runtime_error_label);}
-    x64_bind(contract);collection_fail("文字列メソッドの検索文字列・サイズが不正です\n");x64_bind(valid);
+    {const char *msg=QMSG_0685;x64_lea_data(RSI,prog_add_data(prog,msg,strlen(msg)));x64_mov_imm(RDX,(long long)strlen(msg));x64_mov_imm(R8,EX_DATAERR);x64_jmp(runtime_error_label);}
+    x64_bind(contract);collection_fail(QMSG_0688);x64_bind(valid);
 }
 static void gen_text_method_runtime(void)
 {

@@ -2,26 +2,26 @@
  * All later return, initialization, readonly and close analyses see the same
  * control flow. The exhaustive final case becomes the unconditional else. */
 static Node *match_node(NodeKind kind,Token *tok)
-{Node *n=calloc(1,sizeof(*n));if(!n)fatal("match を展開できません");n->kind=kind;n->tok=tok;return n;}
+{Node *n=calloc(1,sizeof(*n));if(!n)fatal(QMSG_0303);n->kind=kind;n->tok=tok;return n;}
 static void check_match(Node *node)
 {
     Node *arm,*pattern,*tail,*original_next=node->next;EnumMember *m;EnumDef *e;
     Node **arms;int count=0,i,j,*seen;
     check_expr(node->cond);
-    if(!type_is_enum(node->cond->ty))error_tok(node->tok,"match の対象は enum にしてください");
+    if(!type_is_enum(node->cond->ty))error_tok(node->tok,QMSG_0299);
     e=type_enum(node->cond->ty);ensure_enum(e);
     for(arm=node->then;arm;arm=arm->next)count++;
     arms=calloc((size_t)count+1,sizeof(*arms));seen=calloc((size_t)e->count,sizeof(*seen));
-    if(!arms||!seen)fatal("match の検査領域を確保できません");
+    if(!arms||!seen)fatal(QMSG_0300);
     for(arm=node->then,i=0;arm;arm=arm->next,i++){
         arms[i]=arm;
         for(pattern=arm->lhs;pattern;pattern=pattern->next){
             Node *next=pattern->next;Value v;Node *converted;
             pattern->next=NULL;check_expected(pattern,e->ty);converted=coerce(pattern,e->ty,pattern->tok,"case");
-            if(!is_const_expr(converted))error_tok(pattern->tok,"case は同じenum型の定数にしてください");
+            if(!is_const_expr(converted))error_tok(pattern->tok,QMSG_0110);
             v=eval_const(converted);m=enum_value_member(e->ty,v.i);
-            if(!m)error_tok(pattern->tok,"case がenumの有効値ではありません");
-            if(seen[m->index])error_tok(pattern->tok,"case %s が重複しています",m->name);
+            if(!m)error_tok(pattern->tok,QMSG_0106);
+            if(seen[m->index])error_tok(pattern->tok,QMSG_0105,m->name);
             seen[m->index]=1;
             /* Canonicalize without disturbing the pattern list. */
             pattern->kind=ND_NUM;pattern->ty=e->ty;pattern->val=v.i;pattern->lhs=pattern->rhs=NULL;pattern->next=next;
@@ -29,7 +29,7 @@ static void check_match(Node *node)
     }
     if(!node->els)for(j=0;j<e->count;j++)if(!seen[j]){
         for(m=e->members;m&&m->index!=j;m=m->next){}
-        error_tok(node->tok,"match に %s の case がありません。全メンバーまたは else を記述してください",m->name);
+        error_tok(node->tok,QMSG_0294,m->name);
     }
     tail=node->els;
     if(!tail&&count){tail=arms[--count]->then;}

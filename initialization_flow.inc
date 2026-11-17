@@ -7,7 +7,7 @@ static InitState init_state_copy(InitState s)
 {
     InitState copy = s;
     copy.ready = calloc((size_t)completion_model->field_count + 1, 1);
-    if (!copy.ready) fatal("初期化状態を確保できません");
+    if (!copy.ready) fatal(QMSG_0579);
     memcpy(copy.ready, s.ready, (size_t)completion_model->field_count);
     return copy;
 }
@@ -15,7 +15,7 @@ static void require_complete(InitState s, Token *tok)
 {
     ModelField *f;
     for (f = completion_model->fields; f; f = f->next)
-        if (!s.ready[f->index]) error_tok(tok, "未完了フィールド %s を初期化してから this 全体を使用・成功 return してください（宣言: %s:%d）", f->name, f->tok->source->filename, f->tok->line);
+        if (!s.ready[f->index]) error_tok(tok, QMSG_0705, f->name, f->tok->source->filename, f->tok->line);
 }
 static ModelField *own_init_field(Node *n)
 {
@@ -29,11 +29,11 @@ static void init_expression(Node *n, InitState s, int whole_write)
     if (!n) return;
     f = own_init_field(n);
     if (f) {
-        if (!s.ready[f->index] && !whole_write) error_tok(n->tok, "未完了フィールド %s は全体への初回代入以外に使用できません", f->name);
+        if (!s.ready[f->index] && !whole_write) error_tok(n->tok, QMSG_0704, f->name);
         return;
     }
     if (n->kind == ND_ADDR && n->lhs->kind == ND_VAR && n->lhs->var == completion_self)
-        error_tok(n->tok, "init 内では this.addr を取り出せません");
+        error_tok(n->tok, QMSG_0234);
     if (n->kind == ND_VAR && n->var == completion_self) { require_complete(s, n->tok); return; }
     for (item = n->lhs; item; item = item->next) init_expression(item, s, 0);
     for (item = n->rhs; item; item = item->next) init_expression(item, s, 0);
@@ -88,7 +88,7 @@ static InitState init_statements(Node *list, InitState s, Function *fn)
             if (fn->ret == TY_VOID || !is_const_expr(n->lhs) || eval_const(n->lhs).i) require_complete(s, n->tok);
             s.reachable = 0;
         } else {
-            if (n->kind == ND_ASSIGN && n->var == completion_self) error_tok(n->tok, "init 内で this 全体には代入できません");
+            if (n->kind == ND_ASSIGN && n->var == completion_self) error_tok(n->tok, QMSG_0233);
             init_expression(n->kind == ND_EXPR_STMT ? n->lhs : n, s, 0);
         }
     }
@@ -99,7 +99,7 @@ static void check_initializer_completion(Function *fn)
     ModelField *f; InitState s;
     completion_model = fn->model; completion_self = fn->params;
     s.ready = calloc((size_t)completion_model->field_count + 1, 1); s.reachable = 1;
-    if (!s.ready) fatal("初期化状態を確保できません");
+    if (!s.ready) fatal(QMSG_0579);
     for (f = completion_model->fields; f; f = f->next) s.ready[f->index] = !f->pending;
     s = init_statements(fn->body, s, fn);
     if (s.reachable) require_complete(s, fn->tok);

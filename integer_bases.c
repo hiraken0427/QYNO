@@ -61,7 +61,7 @@ char *integer_format_typed(long long value, int base, int prefix, Type ty, int *
     else if (integer_width(ty) < 64) n &= (UINT64_C(1) << integer_width(ty)) - 1;
     if (!integer_base_valid(base, 0)) return NULL;
     do { digits[count++] = "0123456789abcdef"[n % (unsigned)base]; n /= (unsigned)base; } while (n);
-    s = malloc((size_t)count + 4); if (!s) fatal("整数の文字列を確保できません");
+    s = malloc((size_t)count + 4); if (!s) fatal(QMSG_0662);
     if (negative) s[pos++] = '-';
     if (prefix) { s[pos++] = '0'; s[pos++] = base == 2 ? 'b' : base == 8 ? 'o' : base == 10 ? 'd' : 'x'; }
     for (i = count - 1; i >= 0; i--) s[pos++] = digits[i];

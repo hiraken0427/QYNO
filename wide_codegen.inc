@@ -2,7 +2,7 @@ static int wide_engine_label, wide_call_label;
 static int wide_codegen_op(NodeKind k)
 {return k==ND_ADD?W_ADD:k==ND_SUB?W_SUB:k==ND_MUL?W_MUL:k==ND_DIV?W_DIV:k==ND_MOD?W_MOD:k==ND_BIT_AND?W_AND:k==ND_BIT_OR?W_OR:k==ND_BIT_XOR?W_XOR:k==ND_BIT_NOT?W_NOT:k==ND_SHL?W_SHL:W_SHR;}
 static void wide_check(Token *tok)
-{int ok=new_label("wide.checked");x64_test(R8,R8);x64_jcc(CC_Z,ok);gen_fail(tok,"数値の変換・演算結果が範囲外です",EX_SOFTWARE);x64_bind(ok);}
+{int ok=new_label("wide.checked");x64_test(R8,R8);x64_jcc(CC_Z,ok);gen_fail(tok,QMSG_0649,EX_SOFTWARE);x64_bind(ok);}
 
 /* RAX=left/source, RDI=right. The bridge preserves GC state and uses the same
  * SysV ABI on both targets; the freestanding image makes no OS calls. */
@@ -10,7 +10,7 @@ static void gen_wide(int op,Type ty,Type from,int aux,Token *tok)
 {
     x64_mov_imm(R8,op);x64_mov_imm(R9,wide_tag(ty));x64_mov_imm(R10,wide_tag(from));x64_mov_imm(R11,aux);
     x64_call(wide_call_label);
-    if(tok){int ok=new_label("wide.ok");x64_test(R8,R8);x64_jcc(CC_Z,ok);gen_fail(tok,"数値の演算・変換が不正です（0除算・範囲・指数・シフト量を確認してください）",EX_SOFTWARE);x64_bind(ok);}
+    if(tok){int ok=new_label("wide.ok");x64_test(R8,R8);x64_jcc(CC_Z,ok);gen_fail(tok,QMSG_0650,EX_SOFTWARE);x64_bind(ok);}
 }
 static void wide_unpack(Reg value,Reg tag,int offset)
 {

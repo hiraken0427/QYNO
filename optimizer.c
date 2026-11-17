@@ -227,7 +227,7 @@ static int block(Graph *g, Node *source, Node *condition, int next, int other)
     if (g->block_count == g->capacity) {
         int size = g->capacity ? g->capacity * 2 : 32;
         Block *grown = realloc(g->blocks, (size_t)size * sizeof(*grown));
-        if (!grown) fatal("最適化の制御フローを確保できません");
+        if (!grown) fatal(QMSG_0701);
         g->blocks = grown; g->capacity = size;
     }
     b = &g->blocks[g->block_count]; memset(b,0,sizeof(*b));
@@ -240,7 +240,7 @@ static int build(Graph *g, Node *list, int next, int stop, int again)
     Node **items;
     int count=0,i,id,a,b,header,update;
     for(n=list;n;n=n->next) { if(++count>OPT_MAX_BLOCKS){g->failed=1;return -1;} }
-    items=malloc((size_t)(count?count:1)*sizeof(*items));if(!items)fatal("最適化の文を確保できません");
+    items=malloc((size_t)(count?count:1)*sizeof(*items));if(!items)fatal(QMSG_0702);
     for(n=list,i=0;n;n=n->next)items[i++]=n;
     for(i=count-1;i>=0&&!g->failed;i--){
         n=items[i];
@@ -338,7 +338,7 @@ static void optimize_region(Graph *context,Node *list)
     cells=(size_t)g->block_count*(size_t)(g->count?g->count:1);
     if(g->failed||entry<0||cells>OPT_MAX_CELLS){free(g->blocks);return;}
     storage=calloc(cells*2,sizeof(*storage));temporary=calloc((size_t)(g->count?g->count:1),sizeof(*temporary));
-    if(!storage||!temporary)fatal("最適化の値を確保できません");
+    if(!storage||!temporary)fatal(QMSG_0700);
     for(i=0;i<g->block_count;i++){g->blocks[i].in=storage+(size_t)i*g->count;g->blocks[i].out=storage+cells+(size_t)i*g->count;}
     g->blocks[entry].reached=1;g->blocks[entry].dirty=1;
     limit=g->block_count*4+16;

@@ -6,11 +6,7 @@
 
 static void collection_context(Token *tok)
 {
-    char prefix[1024];
-    int n = snprintf(prefix, sizeof(prefix), "QYNO 実行時エラー: %s:%d:%d: ", tok->source->filename, tok->line, tok->col);
-    if (n < 0) fatal("配列の診断を作成できません");
-    if (n >= (int)sizeof(prefix)) n = (int)sizeof(prefix) - 1;
-    x64_lea_data(R11, prog_add_str(prog, prefix, (size_t)n));
+    x64_lea_data(R11,diagnostic_context_data(tok,NULL,NULL));
     x64_store(R14, COLLECTION_CONTEXT, R11);
 }
 
@@ -22,8 +18,9 @@ static void collection_fail(const char *reason)
     x64_call(write_err_label);
     x64_lea_data(RSI, prog_add_data(prog, reason, strlen(reason)));
     x64_mov_imm(RDX, (long long)strlen(reason));
-    x64_mov_imm(R8, EX_SOFTWARE);
-    x64_jmp(runtime_error_label);
+    x64_call(write_err_label);
+    x64_load(RAX,R14,COLLECTION_CONTEXT);x64_call(diagnostic_tail_label);
+    x64_mov_imm(RAX,EX_SOFTWARE);x64_jmp(exit_label);
 }
 
 /* rax=配列。要素参照が生存する間は構造・所有元を変更しない。 */
@@ -33,7 +30,7 @@ static void array_require_unborrowed(void)
     x64_load(RCX, RAX, 32);
     x64_test(RCX, RCX);
     x64_jcc(CC_Z, ok);
-    collection_fail("要素を ref で参照している配列は追加・削除・再代入できません\n");
+    collection_fail(QMSG_0738);
     x64_bind(ok);
 }
 
@@ -87,7 +84,7 @@ static void gen_array_access_runtime(void)
     x64_load(RAX, RAX, 0);
     x64_ret();
     x64_provide(array_bounds_failure_label);x64_bind(array_bounds_failure_label);
-    collection_fail("配列の添字が範囲外です\n");
+    collection_fail(QMSG_0762);
 }
 
 /* rax=コピー元(0は初期配列)、rdi=代入先shape、rsi=不足分を埋めるか。 */
@@ -123,7 +120,7 @@ static void gen_array_copy_runtime(Type array_ty,int entry)
     x64_jcc(CC_S, unbounded);
     x64_cmp(RCX, RDX);
     x64_jcc(CC_BE, length_ok);
-    collection_fail("配列の要素数が代入先の上限を超えています\n");
+    collection_fail(QMSG_0766);
     x64_bind(length_ok);
     rt_load(RSI, 8);
     x64_test(RSI, RSI);
@@ -132,7 +129,7 @@ static void gen_array_copy_runtime(Type array_ty,int entry)
     x64_bind(unbounded);
     rt_cmp(RCX, 0x0FFFFFFFFFFFFFF7LL);
     x64_jcc(CC_BE, allocate);
-    collection_fail("配列に必要な領域が int の範囲を超えます\n");
+    collection_fail(QMSG_0750);
     x64_bind(allocate);
     rt_save(3, RCX);
     x64_mov_imm(RDI, 40);
@@ -241,9 +238,9 @@ static void gen_array_adopt_runtime(void)
     x64_load(RCX,RAX,0);x64_load(RDX,RDI,16);
     x64_test(RDX,RDX);x64_jcc(CC_S,length_ok);
     x64_cmp(RCX,RDX);x64_jcc(CC_BE,length_ok);
-    collection_fail("配列の要素数が代入先の上限を超えています\n");
+    collection_fail(QMSG_0766);
     x64_bind(length_ok);rt_cmp(RCX,0x0FFFFFFFFFFFFFF7LL);x64_jcc(CC_BE,size_ok);
-    collection_fail("配列に必要な領域が int の範囲を超えます\n");
+    collection_fail(QMSG_0750);
     x64_bind(size_ok);rt_load(RAX,1);rt_load(RDI,2);
     x64_store(RAX,8,RCX);x64_store(RAX,16,RDI);rt_leave();
 }
@@ -270,7 +267,7 @@ static void gen_array_append_runtime(Type array_ty,int entry)
     x64_jcc(CC_S, allowed);
     x64_cmp(RCX, RSI);
     x64_jcc(CC_B, allowed);
-    collection_fail("配列の追加が最大要素数を超えています\n");
+    collection_fail(QMSG_0769);
     x64_bind(allowed);
     if(array_ty){
         if(type_is_array(element)){
@@ -314,7 +311,7 @@ static void gen_array_append_runtime(Type array_ty,int entry)
     x64_bind(grow);
     rt_cmp(RDX, 0x07FFFFFFFFFFFFFBLL);
     x64_jcc(CC_BE, capacity);
-    collection_fail("配列の容量が int の範囲を超えます\n");
+    collection_fail(QMSG_0755);
     x64_bind(capacity);
     x64_add(RDX, RDX);
     x64_bind(limited);
@@ -513,7 +510,7 @@ static void gen_array_ref_runtime(void)
     x64_bind(next);
     x64_add_imm(RDI, 24); x64_add_imm(RDX, 24); x64_sub_imm(RCX, 1); x64_jmp(loop);
     x64_bind(bad);
-    collection_fail("ref 配列の上限が宣言された条件を満たしません\n");
+    collection_fail(QMSG_0327);
     x64_bind(done); rt_load(RAX, 1); rt_leave();
 }
 
@@ -523,15 +520,15 @@ static void gen_string_get_runtime(void)
     int found = rt_label("string.get.found");
     rt_enter(string_get_label, 3);
     x64_test(RDI, RDI); x64_jcc(CC_NS, valid);
-    collection_fail("文字列の添字が範囲外です\n");
+    collection_fail(QMSG_0676);
     x64_bind(valid);
     x64_call(string_scan_label);
     x64_test(R8, R8); x64_jcc(CC_Z, found);
-    collection_fail("不正な UTF-8 文字列です\n");
+    collection_fail(QMSG_0487);
     x64_bind(found);
     found = rt_label("string.get.present");
     x64_test(RDX, RDX); x64_jcc(CC_NZ, found);
-    collection_fail("文字列の添字が範囲外です\n");
+    collection_fail(QMSG_0676);
     x64_bind(found);
     rt_save(1, RDX); rt_save(2, RCX);
     x64_lea(RDI, RCX, 8); x64_call(alloc_label); rt_save(3, RAX);
@@ -549,22 +546,22 @@ static void gen_string_replace_runtime(void)
     rt_enter(string_replace_label, 9);
     rt_save(1, RAX); rt_save(2, RDI); rt_save(3, RSI);
     x64_test(RDI, RDI); x64_jcc(CC_NS, valid);
-    collection_fail("文字列の添字が範囲外です\n");
+    collection_fail(QMSG_0676);
     x64_bind(valid);
     x64_call(string_scan_label);
     x64_test(R8, R8); x64_jcc(CC_Z, found);
-    collection_fail("不正な UTF-8 文字列です\n");
+    collection_fail(QMSG_0487);
     x64_bind(found);
     found = rt_label("string.replace.present");
     x64_test(RDX, RDX); x64_jcc(CC_NZ, found);
-    collection_fail("文字列の添字が範囲外です\n");
+    collection_fail(QMSG_0676);
     x64_bind(found);
     rt_save(4, RDX); rt_save(5, RCX);
     rt_load(RAX, 1); x64_load(RAX, RAX, 0);
     x64_sub(RAX, RCX);
     rt_load(RSI, 3); x64_load(RCX, RSI, 0); x64_add(RAX, RCX);
     rt_cmp(RAX, 0x7FFFFFFFFFFFFFD0LL); x64_jcc(CC_BE, size_ok);
-    collection_fail("置換後の文字列が大きすぎます\n");
+    collection_fail(QMSG_0729);
     x64_bind(size_ok);
     rt_save(6, RAX); x64_lea(RDI, RAX, 8); x64_call(alloc_label); rt_save(7, RAX);
     rt_load(RCX, 6); x64_store(RAX, 0, RCX);
