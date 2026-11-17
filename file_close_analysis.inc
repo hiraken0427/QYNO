@@ -140,6 +140,7 @@ static FcState *fc_clone(FcState *s)
 }
 static int fc_file_type(Type ty)
 {
+    if(error_common_model(ty))return 0;
     ModelField *f;
     if (type_is_array(ty)) return fc_file_type(array_base(ty));
     if (type_is_model(ty)) {
@@ -522,7 +523,7 @@ static FcFlow *fc_try(FcContext *ctx,FcState *s,Node *n)
             unsigned rest=f->error_codes,saved=ctx->caught_codes;
             for(arm=n->els;arm;arm=arm->next){
                 Node *p;unsigned codes=arm->lhs?0:rest;
-                for(p=arm->lhs;p;p=p->next)codes|=1u<<p->val;
+                for(p=arm->lhs;p;p=p->next)if((p->val>>ERROR_CODE_SHIFT)==0&&p->val<32)codes|=1u<<(unsigned)p->val;
                 codes&=rest;if(!codes)continue;rest&=~codes;ctx->caught_codes=codes;
                 handled=fc_append(handled,fc_run(ctx,fc_clone(f->state),arm->then),n->tok);
             }

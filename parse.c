@@ -1716,8 +1716,16 @@ static Node *try_stmt(Token *start)
             do {*values=expr();values=&(*values)->next;}while(consume(","));
             expect(")");
         }
+        if(consume("as")){
+            Token *name=tok;
+            if(is_keyword(tok))error_tok(tok,QMSG_0396);
+            expect_kind(TK_IDENT,QMSG_0395);
+            arm->var=hidden_var(TY_NONE,name);arm->var->name=name->loc;
+            arm->var->name_len=name->len;arm->var->is_readonly=1;
+        }
         expect(";");saved=visible;
         if(binding){binding->vnext=visible;visible=binding;}
+        if(arm->var){arm->var->vnext=visible;visible=arm->var;}
         arm->then=block(QMSG_0108);visible=saved;
         *tail=arm;tail=&arm->next;
     }

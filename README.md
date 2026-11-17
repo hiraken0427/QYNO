@@ -1,4 +1,4 @@
-# QYNO 0.28.5
+# QYNO 0.29.0
 
 著作権およびライセンスに関する情報は、本ファイルの末尾に記載している。
 
@@ -42,11 +42,13 @@ make clean
 
 ## 新機能
 
-0.28.5では、その場で作った一次元の整数・bool・float・double配列をローカル変数へ格納する際、条件を満たすコピーを省くようにした。配列の上限と後続の容量拡大を維持し、既存の配列からコピーした値は独立したままである。余剰容量が大きい場合は従来のコピーを使う。最適化の指定は不要である。
+0.29.0では、caseごとのas束縛と、名前空間を区別するエラーコードを追加した。io.Errorの型と従来のエラー番号は維持する。
 
-割当を省くため、メモリ不足の発生箇所やGCの時点は旧版と異なる場合がある。
+lib.Errorは複数の種類のエラーを受け取る共通の型である。code、message、source、line、column、domain、errorsを持ち、情報は読み取り専用である。lib.ErrorCodeはio.ErrorCodeやtask.ErrorCodeと比較でき、表示には名前空間を含める。
 
-浮動小数点の演算順と丸めを維持し、参照や配列の操作に必要な実行時検査を残す。
+同期・非同期処理を拡張する第1段階である。async、awaitとタスクの実行機能は次段階で追加する。既存の同期関数の動作は維持する。
+
+以前の版で追加した最適化は引き続き適用する。浮動小数点の演算順と丸めを維持し、参照や配列の操作に必要な実行時検査を残す。
 
 ## 使用方法
 
@@ -128,7 +130,7 @@ and、or、xorは、boolでは論理演算、整数ではビット演算とし�
 
 ## 標準モジュール
 
-io、math、lib、timeはimportなしで使用できる。名前を省略する場合はusingが必要である。using ioを記述した場合はprintとinputを使用でき、記述しない場合はio.printとio.inputを使用する。
+io、math、lib、time、taskはimportなしで使用できる。名前を省略する場合はusingが必要である。using ioを記述した場合はprintとinputを使用でき、記述しない場合はio.printとio.inputを使用する。
 
 ioはコンソールとファイルの入出力を扱う。io.pathはパスの操作、io.dirはディレクトリの取得、移動、作成、一覧取得、削除に使用する。パスはstrで扱う。
 
@@ -139,6 +141,25 @@ io.file.removeは通常ファイルの削除、copyはコピー、moveは移動�
 io.file.read_textとread_linesは、UTF-8のファイルを文字列または行の配列として読み込む。既定の上限は64MiBであり、read_linesの行数上限は1048576である。write_textは上書き、append_textは追記、write_linesは行の配列の書き込みを行う。
 
 io.dir.existsは存在確認、createは1階層の作成、listは直下の名前一覧、removeは空のディレクトリの削除を行う。listはUTF-8のバイト順で名前を返す。上限は既定で1048576件、名前全体で64MiBである。ディレクトリへのリンクはexistsとlistで参照できるが、removeでは削除できない。空でない場合はdirectory_not_emptyとなる。
+
+caseにasを付けると、そのcase内でエラーを参照できる。io.ErrorCodeのcaseではio.Error、task.ErrorCodeのcaseではtask.Error、複数の種類を扱うcaseやcase()ではlib.Errorとなる。従来のtryに付けるasも使用できる。
+
+```text
+using io
+
+int main();
+	try;
+		print(file.read_text("sample.txt"))
+	case(ErrorCode.not_found) as error;
+		print(error.path)
+	case() as error;
+		print("{error.domain}: {error.code}")
+	return 0
+```
+
+lib.ErrorCodeは名前空間付きのエラーコードから作成し、整数への変換や入力先への指定は許可しない。task.ErrorCodeにはcancelled、timed_out、group_failed、invalid_stateを用意する。cancelledの捕捉にはcaseでの明示が必要であり、case()には含めない。
+
+libとtaskのError、ErrorCodeは、名前空間を付けるか、対象の型をusingで個別に指定して使用する。using libやusing taskではこれらの型を展開しない。
 
 mathは数学関数を提供する。lib.sizeは値のビットサイズ、lib.lengthは文字列や配列の長さ、数値の整数部分の桁数を返す。
 

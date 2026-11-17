@@ -5,6 +5,10 @@ static Value enum_convert_value(Node *site,Value v,Type to)
         if(!m)const_error(site,QMSG_0148);
         v.ty=TY_STR;v.s=m->name;v.len=(int)strlen(m->name);return v;
     }
+    if(error_common_code(to)&&error_code_domain(v.ty)>=0){
+        if(v.i)v.i|=(long long)error_code_domain(v.ty)<<ERROR_CODE_SHIFT;
+        v.ty=to;return v;
+    }
     if(type_is_enum(v.ty)){v.ty=TY_I32;return convert_value(site,v,to);}
     if(type_is_text(v.ty)){
         int a=0,b=v.len;EnumMember *m;WideRequest r={0};

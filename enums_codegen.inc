@@ -3,6 +3,12 @@ static void gen_enum_cast(Node *node)
     Type from=node->lhs->ty,to=node->ty;EnumDef *e;
     int bad=new_label("enum.cast.invalid"),done=new_label("enum.cast.done");
     gen_expr(node->lhs);
+    if(error_common_code(to)&&error_code_domain(from)>=0){
+        int done_code=new_label("error.code.zero");
+        x64_test(RAX,RAX);x64_jcc(CC_Z,done_code);
+        x64_mov_imm(RCX,(long long)error_code_domain(from)<<ERROR_CODE_SHIFT);x64_or(RAX,RCX);
+        x64_bind(done_code);return;
+    }
     if(type_is_enum(from)){
         if(to==TY_STR)x64_call(type_enum(from)->name_label);
         else if(from!=to)gen_integer_checked(TY_I32,to,node->tok);

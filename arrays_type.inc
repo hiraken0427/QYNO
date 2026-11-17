@@ -164,6 +164,12 @@ static Var *check_read_place(Node *place)
 static Var *check_place(Node *place)
 {
     Var *v = check_read_place(place);
+    {Node *part=place;
+     while(part&&part->kind==ND_INDEX){
+        if(part->field&&error_common_model(part->field->model->ty))
+            error_tok(part->tok,QMSG_0856);
+        part=part->lhs;
+     }}
     if (v->is_const || v->is_readonly)
         error_tok(place->tok, QMSG_0130);
     return v;

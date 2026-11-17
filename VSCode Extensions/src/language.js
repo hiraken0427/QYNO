@@ -11,7 +11,7 @@ function environment(project, line, character) {
     const names = new Map();
     const namespace = path => ({ name: path.split('.').at(-1), path, kind: 'namespace', documentation: `${path} 名前空間` });
     const exported = (path) => {
-        if (['io', 'io.file', 'io.path', 'io.dir', 'math', 'lib', 'lib.random', 'time'].includes(path)) return namespace(path);
+        if (['io', 'io.file', 'io.path', 'io.dir', 'math', 'lib', 'lib.random', 'time', 'task'].includes(path)) return namespace(path);
         const builtin = STANDARD.find(s => s.path === path);
         if (builtin) return builtin;
         const enumeration=STANDARD.find(s=>s.kind==='enum'&&path.startsWith(s.path+'.'));
@@ -54,7 +54,7 @@ function environment(project, line, character) {
         return [...result.values()];
     };
     for (const symbol of STANDARD) if (!symbol.path.includes('.')) names.set(symbol.name, symbol);
-    for (const root of ['io', 'math', 'lib', 'time', ...imports.map(p => p.split('.')[0])]) names.set(root, namespace(root));
+    for (const root of ['io', 'math', 'lib', 'time', 'task', ...imports.map(p => p.split('.')[0])]) names.set(root, namespace(root));
     // Resolve module aliases first; fixed-point iteration handles global forward references.
     for (let pass = 0; pass <= usings.length; pass++) for (const u of usings) if (u.alias) {
         const target = resolve(u.path);
@@ -63,7 +63,10 @@ function environment(project, line, character) {
     for (const [name, path] of aliases) names.set(name, { ...namespace(path), name });
     for (const u of usings) if (!u.alias) {
         const target = resolve(u.path);
-        if (target?.kind === 'namespace' && !target.implicit) for (const item of members(target.path)) names.set(item.name, item);
+        if (target?.kind === 'namespace' && !target.implicit) for (const item of members(target.path)) {
+            if(['lib','task'].includes(target.path)&&['Error','ErrorCode'].includes(item.name))continue;
+            names.set(item.name, item);
+        }
         else if (target) names.set(u.path.split('.').at(-1), target);
     }
     for (const symbol of visibleSymbols(model, line, character)) names.set(symbol.name, symbol);
@@ -77,6 +80,12 @@ function environment(project, line, character) {
     };
     const owner = model.scopes.filter(s => s.kind === 'model' && scopeContains(model, s.id, line, character)).at(-1)?.owner;
     const canAccess = member => member.visibility !== 'private' || member.declaringModelId === owner?.modelId;
+    for(const [name,symbol] of names)if(symbol.errorPatterns){
+        const domains=symbol.errorPatterns.map(pattern=>resolve(pattern)?.type);
+        const io=domains.length&&domains.every(type=>type==='io.ErrorCode');
+        const task=domains.length&&domains.every(type=>type==='task.ErrorCode');
+        names.set(name,{...symbol,type:symbol.legacyErrorBinding?(domains.some(type=>type==='task.ErrorCode'||type==='lib.ErrorCode')?'lib.Error':'io.Error'):io?'io.Error':task?'task.Error':'lib.Error'});
+    }
     const env={ names, resolve, members, modelType, canAccess };
     // Infer known call results and text chains for subsequent completion without
     // executing user functions or requiring a compiler during indexing.
@@ -224,7 +233,7 @@ function complete(project, line, character) {
         const enumeration=enumContext(project,env,line,character,text);
         if(enumeration)for(const member of enumeration.members)if(!env.names.has(member.name))items.push(completion(member));
         for(const symbol of STANDARD) if(symbol.path.includes('.') && env.names.get(symbol.name)?.path!==symbol.path) items.push(completion(symbol,symbol.path));
-        for (const keyword of KEYWORD_COMPLETIONS) if (!env.names.has(keyword)) items.push({ label: keyword, kind: TYPES.has(keyword) ? 'type' : 'keyword', insertText: keyword, detail: 'QYNO 0.28.5' });
+        for (const keyword of KEYWORD_COMPLETIONS) if (!env.names.has(keyword)) items.push({ label: keyword, kind: TYPES.has(keyword) ? 'type' : 'keyword', insertText: keyword, detail: 'QYNO 0.29.0' });
     }
     // A completion immediately before '(' must not insert a second argument list.
     const next = project.model.lines[line].slice(character).match(/^\s*\(/);
@@ -287,7 +296,7 @@ function signature(project, line, character) {
         const candidate = properties[last];
         if (candidate?.kind === 'function' && receiverMembers(project, env, call.path.slice(0, -last.length)).some(s => s.name === last)) symbol = candidate;
     }
-    if(symbol?.kind==='enum')return {symbol,label:call.path+'(value: integer / str / '+symbol.name+')',activeParameter:0};
+    if(symbol?.kind==='enum')return {symbol,label:call.path+(symbol.path==='lib.ErrorCode'?'(value: io.ErrorCode / task.ErrorCode / lib.ErrorCode)':'(value: integer / str / '+symbol.name+')'),activeParameter:0};
     const index=symbol?.builtin && /^(?:(?:unsigned )?int(?:_(?:8|16|32|64|128))?|str|complex(?:_(?:64|128))?)$/.test(symbol.path) && call.argName ? symbol.params.findIndex(p=>p.name===call.argName) : call.argument;
     return symbol?.kind === 'function' ? { symbol, label: functionLabel(symbol, symbol.expression || call.path), activeParameter: Math.min(Math.max(0,index), Math.max(0, symbol.params.length - 1)) } : undefined;
 }

@@ -11,7 +11,7 @@
 #include <stdio.h>
 #include "messages.h"
 
-#define QYC_VERSION "0.28.5"
+#define QYC_VERSION "0.29.0"
 
 typedef struct SourceFile SourceFile;
 typedef struct Module Module;
@@ -241,6 +241,14 @@ Type random_return_type(int b);
 int random_operation(int b);
 int builtin_may_raise(int b);
 int builtin_node_may_raise(Node *n);
+/* Tagged common error codes; nominal io/task enums keep their own values. */
+enum { ERROR_DOMAIN_IO, ERROR_DOMAIN_TASK };
+enum { ERROR_CODE_SHIFT=16, ERROR_CODE_MASK=65535, ERROR_DOMAIN_SLOT=56,
+       ERROR_TASK_CANCELLED=(ERROR_DOMAIN_TASK<<ERROR_CODE_SHIFT)|1 };
+int error_code_domain(Type ty);
+int error_common_code(Type ty);
+int error_common_model(Type ty);
+int error_recursive_field(ModelField *field);
 Type standard_type(Ast *ast,const char *ns,const char *name);
 
 /* using の1項目。参照先と宣言位置の字句スコープを保持する。 */

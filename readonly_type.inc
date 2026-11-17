@@ -4,6 +4,7 @@ static int contains_file(Type ty)
 {
     Model *m; ModelField *f;
     if (type_is_array(ty)) return contains_file(array_element(ty));
+    if(error_common_model(ty))return 0;
     if (ty == TY_FILE) return 1;
     if (!type_is_model(ty)) return 0;
     m = type_model(ty);

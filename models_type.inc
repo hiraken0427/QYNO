@@ -193,7 +193,7 @@ static void check_model_definition(Model *m)
         for (fn = cur_ast->funcs; fn; fn = fn->next) if (fn->model == m && same_name(fn->name, fn->name_len, f->name, (int)strlen(f->name))) error_tok(f->tok, QMSG_0424, f->name);
         for (other = m->fields; other != f; other = other->next)
             if (!strcmp(other->name, f->name)) error_tok(f->tok, QMSG_0420, f->name);
-        if (type_is_model(array_base(f->ty))) check_model_definition(type_model(array_base(f->ty)));
+        if (type_is_model(array_base(f->ty))&&!error_recursive_field(f)) check_model_definition(type_model(array_base(f->ty)));
         check_dims(f->dims);
         f->pending = !f->initial && !defaultable(f->ty, f->dims);
         if (f->pending && !m->initializer) error_tok(f->tok, QMSG_0421, f->name);

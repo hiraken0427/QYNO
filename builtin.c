@@ -158,3 +158,23 @@ const char *builtin_replacement(const char *ns,const char *name)
     if(!strcmp(ns,"time")&&!strcmp(name,"isoformat"))return "iso_format";
     return NULL;
 }
+
+/* Error codes keep nominal domains; the common code carries a 16-bit tag. */
+static int standard_type_named(Type ty,const char *ns,const char *name)
+{
+    Token *tok;const char *type;
+    if(type_is_enum(ty)){tok=type_enum(ty)->tok;type=type_enum(ty)->name;}
+    else if(type_is_model(ty)){tok=type_model(ty)->tok;type=type_model(ty)->name;}
+    else return 0;
+    return tok->source->module->builtin&&!strcmp(tok->source->module->name,ns)&&!strcmp(type,name);
+}
+int error_code_domain(Type ty)
+{
+    if(standard_type_named(ty,"io","ErrorCode"))return ERROR_DOMAIN_IO;
+    if(standard_type_named(ty,"task","ErrorCode"))return ERROR_DOMAIN_TASK;
+    return -1;
+}
+int error_common_code(Type ty){return standard_type_named(ty,"lib","ErrorCode");}
+int error_common_model(Type ty){return standard_type_named(ty,"lib","Error");}
+int error_recursive_field(ModelField *field)
+{return error_common_model(field->model->ty)&&type_is_array(field->ty)&&array_element(field->ty)==field->model->ty;}

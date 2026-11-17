@@ -1707,4 +1707,14 @@ extern char qyno_message_0851[76];
 #define QMSG_0851 qyno_message_0851
 extern char qyno_message_0852[16];
 #define QMSG_0852 qyno_message_0852
+extern char qyno_message_0853[58];
+#define QMSG_0853 qyno_message_0853
+extern char qyno_message_0854[97];
+#define QMSG_0854 qyno_message_0854
+extern char qyno_message_0855[78];
+#define QMSG_0855 qyno_message_0855
+extern char qyno_message_0856[52];
+#define QMSG_0856 qyno_message_0856
+extern char qyno_message_0857[55];
+#define QMSG_0857 qyno_message_0857
 #endif

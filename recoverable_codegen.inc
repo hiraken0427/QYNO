@@ -31,13 +31,25 @@ static void gen_try(Node *n)
     x64_store_imm(RBP,-n->ref_temp->offset,0);
     io_scope=&body;if(n->lhs)gen_stmt(n->lhs);gen_stmts(n->then);io_scope=outer;
     x64_jmp(finish);
-    x64_bind(caught);x64_load(RAX,R14,IO_PENDING);x64_store(RBP,-n->var->offset,RAX);
-    x64_load(RDX,RAX,24);x64_load(RDX,RDX,0);
+    x64_bind(caught);x64_load(RAX,R14,IO_PENDING);x64_store(RBP,-n->ref_temp->offset,RAX);
+    if(error_common_model(n->var->ty))x64_call(error_wrap_label);
+    x64_store(RBP,-n->var->offset,RAX);
+    x64_load(RAX,RBP,-n->ref_temp->offset);x64_load(RDX,RAX,24);x64_load(RDX,RDX,0);
+    x64_load(RCX,RAX,ERROR_DOMAIN_SLOT);x64_shl_imm(RCX,ERROR_CODE_SHIFT);x64_or(RDX,RCX);
     for(arm=n->els;arm;arm=arm->next){
         Node *p;int hit=rt_label("io.case.hit"),next=rt_label("io.case.next");
-        if(!arm->lhs)x64_jmp(hit);
+        if(!arm->lhs){
+            /* Cancellation requires an explicit handler. */
+            rt_cmp(RDX,ERROR_TASK_CANCELLED);x64_jcc(CC_NZ,hit);
+        }
         for(p=arm->lhs;p;p=p->next){rt_cmp(RDX,p->val);x64_jcc(CC_Z,hit);}
-        x64_jmp(next);x64_bind(hit);x64_store_imm(R14,IO_PENDING,0);
+        x64_jmp(next);x64_bind(hit);
+        if(arm->var){
+            x64_load(RAX,RBP,-n->ref_temp->offset);
+            if(error_common_model(arm->var->ty))x64_call(error_wrap_label);
+            x64_store(RBP,-arm->var->offset,RAX);
+        }
+        x64_store_imm(R14,IO_PENDING,0);
         io_scope=&handler;io_catch=n;gen_stmts(arm->then);io_catch=saved_catch;io_scope=outer;
         x64_jmp(finish);x64_bind(next);
     }

@@ -249,6 +249,11 @@ Ast *load_program(const char *path, const char **roots, int root_count)
             modules = standard;
         }
     }
+    if(!standard_module("task")){
+        Module *standard=allocate(sizeof(*standard));standard->name=copy_name("task",4);
+        standard->builtin=1;standard->state=2;standard->id=module_count++;
+        standard->next=modules;modules=standard;
+    }
     {
         Module *io = standard_module("io");
         static const char declarations[] =
@@ -264,6 +269,25 @@ Ast *load_program(const char *path, const char **roots, int root_count)
         select_source(io->source);
         io->ast = parse(tokenize(io->source->input));
     }
+    standard_source("lib",
+        "enum ErrorCode;\n\tno_error\n\tio_not_found=1\n\tio_permission_denied\n\tio_already_exists\n"
+        "\tio_invalid_path\n\tio_not_regular_file\n\tio_too_many_open_files\n\tio_no_space\n"
+        "\tio_read_only\n\tio_broken_pipe\n\tio_resource_busy\n\tio_io_error\n\tio_unsupported_operation\n"
+        "\tio_out_of_range\n\tio_system_error\n\tio_not_directory\n\tio_directory_not_empty\n"
+        "\ttask_cancelled=65537\n\ttask_timed_out\n\ttask_group_failed\n\ttask_invalid_state\n"
+        "model Error;\n\tErrorCode code\n\tstr message\n\tstr source\n\tint line\n\tint column\n\tstr domain\n\tError errors[]\n");
+    standard_source("task",
+        "enum ErrorCode;\n\tno_error\n\tcancelled\n\ttimed_out\n\tgroup_failed\n\tinvalid_state\n"
+        "model Error;\n\tErrorCode code\n\tstr message\n\tstr source\n\tint line\n\tint column\n\tlib.Error errors[]\n");
+    /* Qualified spellings are printable but cannot be selected as enum members.
+     * Common codes are obtained from their nominal io/task constants. */
+    {EnumDef *e;EnumMember *member;
+     for(e=standard_module("lib")->ast->enums;e;e=e->next)if(!strcmp(e->name,"ErrorCode"))
+        for(member=e->members;member;member=member->next){
+            const char *ns=!strncmp(member->name,"io_",3)?"io":!strncmp(member->name,"task_",5)?"task":NULL;
+            if(ns){const char *name=member->name+strlen(ns)+1;size_t n=strlen(ns)+strlen(name)+12;
+                char *full=allocate(n);snprintf(full,n,"%s.ErrorCode.%s",ns,name);member->name=full;member->symbol->name=full;member->symbol->name_len=(int)strlen(full);}
+        }}
     standard_source("io.file","enum SeekOrigin;\n\tbegin\n\tcurrent\n\tend\n");
     standard_source("io.path","enum PathKind;\n\tother\n\tregular_file\n\tdirectory\n\tlink\n"
         "model PathInfo;\n\tPathKind kind\n\tbool has_size\n\tint_64 size_bytes\n\tquadruple modified_at\n");
@@ -424,6 +448,13 @@ static int same_symbol(Symbol a, Symbol b)
 static void resolve_using(Using *u);
 static int symbol_accessible(Symbol symbol,Module *owner);
 
+/* General and task errors are qualified by default, keeping existing
+ * `using io` + `using lib` programs and their Error/ErrorCode names valid. */
+static int qualified_error_name(Module *module,const char *name)
+{
+    return module->builtin&&(!strcmp(module->name,"lib")||!strcmp(module->name,"task"))&&
+        (!strcmp(name,"Error")||!strcmp(name,"ErrorCode"));
+}
 static Symbol using_symbol(Using *u, const char *name)
 {
     Symbol symbol = {0};
@@ -438,6 +469,7 @@ static Symbol using_symbol(Using *u, const char *name)
     }
     resolve_using(u);
     if (u->target_module != NULL) {
+        if(qualified_error_name(u->target_module,name))return symbol;
         Symbol candidate=exported_symbol(u->target_module,name);
         return symbol_accessible(candidate,u->tok->source->module)?candidate:symbol;
     }
@@ -630,10 +662,10 @@ static void validate_using(Using *u)
         if (target->ast) {
             EnumDef *e; Model *m; Var *v;
             for(v=target->ast->global_vars;v;v=v->next)if(v->tok->source->module==target&&!v->is_private){symbol.kind=SYM_CONSTANT;symbol.constant=v;{char *name=copy_name(v->name,(size_t)v->name_len);introduced_name(u,name,symbol);free(name);}}
-            for (e=target->ast->enums;e;e=e->next) if(e->tok->source->module==target) {
+            for (e=target->ast->enums;e;e=e->next) if(e->tok->source->module==target&&!qualified_error_name(target,e->name)) {
                 symbol.kind=SYM_ENUM; symbol.enumeration=e; introduced_name(u,e->name,symbol);
             }
-            for (m=target->ast->models;m;m=m->next) if(m->tok->source->module==target) {
+            for (m=target->ast->models;m;m=m->next) if(m->tok->source->module==target&&!qualified_error_name(target,m->name)) {
                 symbol.kind=SYM_MODEL; symbol.model=m; introduced_name(u,m->name,symbol);
             }
         }

@@ -1,5 +1,5 @@
 'use strict';
-// Reference: QYNO 0.28.5. No runtime dependency on a compiler installation.
+// Reference: QYNO 0.29.0. No runtime dependency on a compiler installation.
 const callable = (path, type, params, documentation) => ({
     kind: 'function', name: path.split('.').at(-1), path, type, rank: 0,
     params: params.map(p => typeof p === 'string' ? { name: p, type: 'value', rank: 0 } : { rank: 0, ...p }),
@@ -10,6 +10,12 @@ const IO_CODES = ['no_error','not_found','permission_denied','already_exists','i
 const IO_ERROR_CODE = {name:'ErrorCode',path:'io.ErrorCode',type:'io.ErrorCode',kind:'enum',builtin:true,members:IO_CODES.map((name,enumValue)=>({name,path:'io.ErrorCode.'+name,type:'io.ErrorCode',kind:'enumMember',readonly:true,builtin:true,enumValue,documentation:'回復可能なファイルI/Oエラー分類'}))};
 const IO_ERROR = {name:'Error',path:'io.Error',type:'io.Error',kind:'model',builtin:true,members:[['code','io.ErrorCode'],['message','str'],['operation','str'],['path','str'],['os_code','int_64'],['source','str'],['line','int'],['column','int']].map(([name,type])=>({name,type,kind:'field',rank:0,visibility:'public',builtin:true,documentation:'発生時点のI/Oエラー情報'}))};
 const enumType=(path,names)=>({name:path.split('.').at(-1),path,type:path,kind:'enum',builtin:true,members:names.map((name,enumValue)=>({name,path:path+'.'+name,type:path,kind:'enumMember',readonly:true,builtin:true,enumValue}))});
+const TASK_ERROR_CODE=enumType('task.ErrorCode',['no_error','cancelled','timed_out','group_failed','invalid_state']);
+const COMMON_ERROR_CODE=enumType('lib.ErrorCode',['no_error']);
+const COMMON_ERROR={name:'Error',path:'lib.Error',type:'lib.Error',kind:'model',builtin:true,
+    members:[['code','lib.ErrorCode',0],['message','str',0],['source','str',0],['line','int',0],['column','int',0],['domain','str',0],['errors','lib.Error',1]].map(([name,type,rank])=>({name,type,rank,kind:'field',visibility:'public',readonly:true,builtin:true}))};
+const TASK_ERROR={name:'Error',path:'task.Error',type:'task.Error',kind:'model',builtin:true,
+    members:[['code','task.ErrorCode',0],['message','str',0],['source','str',0],['line','int',0],['column','int',0],['errors','lib.Error',1]].map(([name,type,rank])=>({name,type,rank,kind:'field',visibility:'public',builtin:true}))};
 const PATH_KIND=enumType('io.path.PathKind',['other','regular_file','directory','link']);
 const PATH_INFO={name:'PathInfo',path:'io.path.PathInfo',type:'io.path.PathInfo',kind:'model',builtin:true,
     members:[['kind','io.path.PathKind'],['has_size','bool'],['size_bytes','int_64'],['modified_at','quadruple']].map(([name,type])=>({name,type,kind:'field',rank:0,visibility:'public',builtin:true}))};
@@ -29,7 +35,7 @@ const RANDOM_GENERATOR={name:'Random',path:'lib.random.Random',type:'lib.random.
     initializer:{...callable('init','void',[{name:'seed',type:'unsigned int_64',defaultText:'0',optional:true}],'固定シード。省略時0。'),initializer:true,visibility:'public'},
     members:RANDOM_FUNCTIONS.map(fn=>({...fn,path:'lib.random.Random.'+fn.name,visibility:'public',readonly:false}))};
 const STANDARD = [
-    PATH_KIND, PATH_INFO, SEEK_ORIGIN, WEEKDAY, DATE_TIME, STOPWATCH, RANDOM_GENERATOR, ...RANDOM_FUNCTIONS,
+    COMMON_ERROR_CODE, COMMON_ERROR, TASK_ERROR_CODE, TASK_ERROR, PATH_KIND, PATH_INFO, SEEK_ORIGIN, WEEKDAY, DATE_TIME, STOPWATCH, RANDOM_GENERATOR, ...RANDOM_FUNCTIONS,
     callable('time.now', "quadruple", [], "UNIX時刻の秒数。日時用。OSによる時刻変更の影響を受けます。"),
     callable('time.monotonic', "quadruple", [], "後戻りしない時計の秒数。起点は非公開で、処理時間や期限の計測に使います。"),
     callable('time.cpu', "quadruple", [], "プロセスが使用したuser+kernelのCPU秒数。"),

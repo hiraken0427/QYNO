@@ -5,25 +5,51 @@ static Type io_standard_type(const char *name)
 }
 static void check_try(Node *n)
 {
-    Node *arm,*p; unsigned seen=0;int fallback=0;
-    n->var->ty=io_standard_type("Error");
-    if(n->lhs)check_stmt(n->lhs);
-    check_stmts(n->then);
-    for(arm=n->els;arm;arm=arm->next) {
+    Node *arm,*p,*earlier,*previous;int fallback=0,common=0;
+    Type io_code=io_standard_type("ErrorCode");
+    /* Resolve patterns first, so every binding has its final nominal type
+     * before its handler is checked. The body cannot see these bindings. */
+    for(arm=n->els;arm;arm=arm->next){
+        int domain=-1;
         if(fallback)error_tok(arm->tok,QMSG_0111);
         if(!arm->lhs)fallback=1;
         for(p=arm->lhs;p;p=p->next){
-            Value v;Node *next=p->next,*c;p->next=NULL;
-            check_expected(p,io_standard_type("ErrorCode"));
-            c=coerce(p,io_standard_type("ErrorCode"),p->tok,"case");
-            if(!is_const_expr(c))error_tok(p->tok,QMSG_0109);
-            v=eval_const(c);
-            if(v.i==0)error_tok(p->tok,QMSG_0304);
-            if(seen&(1u<<v.i))error_tok(p->tok,QMSG_0107);
-            seen|=1u<<v.i;p->kind=ND_NUM;p->ty=io_standard_type("ErrorCode");p->val=v.i;p->lhs=p->rhs=NULL;p->next=next;
+            Value v;Node *next=p->next;int d;long long packed;
+            p->next=NULL;
+            if(enum_unbound_name(p))check_expected(p,io_code);else check_expr(p);
+            d=error_code_domain(p->ty);
+            if(type_is_integer(p->ty)&&is_const_expr(p)){
+                /* Preserve the existing numeric io.ErrorCode conversion.
+                 * Numeric spellings never select a different domain. */
+                Node *converted=coerce(p,io_code,p->tok,"case");
+                v=eval_const(converted);d=0;
+            }else{
+                if(d<0&&!error_common_code(p->ty))error_tok(p->tok,QMSG_0855);
+                if(!is_const_expr(p))error_tok(p->tok,QMSG_0855);
+                v=eval_const(p);
+            }
+            packed=error_common_code(p->ty)?v.i:((long long)d<<ERROR_CODE_SHIFT)|v.i;
+            d=(int)(packed>>ERROR_CODE_SHIFT);
+            if(!(packed&ERROR_CODE_MASK))error_tok(p->tok,QMSG_0304);
+            for(earlier=n->els;earlier;earlier=earlier->next){
+                for(previous=earlier->lhs;previous&&previous!=p;previous=previous->next)
+                    if(previous->kind==ND_NUM&&previous->val==packed)error_tok(p->tok,QMSG_0107);
+                if(earlier==arm)break;
+            }
+            if(domain==-1)domain=d;else if(domain!=d)domain=2;
+            if(d)common=1;
+            p->cmp_ty=d?standard_type(cur_ast,"task","ErrorCode"):io_code;
+            p->kind=ND_NUM;p->ty=standard_type(cur_ast,"lib","ErrorCode");
+            p->val=packed;p->lhs=p->rhs=NULL;p->next=next;
         }
-        check_stmts(arm->then);
+        arm->val=domain;
+        if(arm->var)arm->var->ty=domain==0?io_standard_type("Error"):
+            domain==1?standard_type(cur_ast,"task","Error"):standard_type(cur_ast,"lib","Error");
     }
+    n->var->ty=common?standard_type(cur_ast,"lib","Error"):io_standard_type("Error");
+    if(n->lhs)check_stmt(n->lhs);
+    check_stmts(n->then);
+    for(arm=n->els;arm;arm=arm->next)check_stmts(arm->then);
     check_stmts(n->rhs);
 }
 static void check_try_open(Node *n)
