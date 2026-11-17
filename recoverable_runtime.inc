@@ -1,5 +1,6 @@
 /* Public io.Error fields retain the ordinary model layout. Error records add
- * hidden previous/source pointers at 40/48 and the nominal domain at 56.
+ * hidden previous/source pointers at 40/48, the nominal domain at 56,
+ * and an immutable await trace chain at 64.
  * Public copies contain fields only; throw preserves the original record. */
 static void io_classify(int os_code,int code,int done)
 {
@@ -9,7 +10,7 @@ static void io_classify(int os_code,int code,int done)
 static void io_emit_error_fields(int failure)
 {
     int i;
-    x64_mov_imm(RDI,64);x64_call(alloc_label);rt_save(3,RAX);
+    x64_mov_imm(RDI,72);x64_call(alloc_label);rt_save(3,RAX);
     x64_store_imm(RAX,ERROR_DOMAIN_SLOT,ERROR_DOMAIN_IO); /* error domain: io */
     x64_store_imm(RAX,0,8);x64_store_imm(RAX,8,8);
     x64_mov_imm(RDI,64);x64_call(alloc_label);rt_save(4,RAX);
@@ -70,6 +71,13 @@ static void gen_recoverable_runtime(void)
       x64_bind(task);x64_store_imm(R14,FILE_PATH,0);x64_store_imm(R14,FILE_OS_ERROR,0);
       x64_bind(report);}
      x64_load(RAX,RDX,8);rt_load(R8,3);x64_call(io_report_label);
+     {int trace=rt_label("async.error.trace"),traced=rt_label("async.error.traced");
+      rt_load(RAX,1);x64_load(RAX,RAX,64);rt_save(2,RAX);x64_bind(trace);
+      rt_load(RAX,2);x64_test(RAX,RAX);x64_jcc(CC_Z,traced);
+      file_emit_err(QMSG_0881);
+      rt_load(RAX,2);x64_load(RAX,RAX,0);x64_load(RDX,RAX,0);x64_lea(RSI,RAX,8);x64_call(write_err_label);
+      file_emit_err("\n");rt_load(RAX,2);x64_load(RAX,RAX,0);x64_call(diagnostic_tail_label);
+      rt_load(RAX,2);x64_load(RAX,RAX,8);rt_save(2,RAX);x64_jmp(trace);x64_bind(traced);}
      rt_load(RAX,1);x64_load(RAX,RAX,40);rt_save(1,RAX);x64_jmp(loop);
      x64_bind(done);rt_load(RAX,3);x64_jmp(exit_label);}
 

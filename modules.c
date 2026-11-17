@@ -277,6 +277,7 @@ Ast *load_program(const char *path, const char **roots, int root_count)
         "\ttask_cancelled=65537\n\ttask_timed_out\n\ttask_group_failed\n\ttask_invalid_state\n"
         "model Error;\n\tErrorCode code\n\tstr message\n\tstr source\n\tint line\n\tint column\n\tstr domain\n\tError errors[]\n");
     standard_source("task",
+        "enum State;\n\tpending\n\trunning\n\twaiting\n\tcancelling\n\tcompleted\n\tfailed\n\tcancelled\n"
         "enum ErrorCode;\n\tno_error\n\tcancelled\n\ttimed_out\n\tgroup_failed\n\tinvalid_state\n"
         "model Error;\n\tErrorCode code\n\tstr message\n\tstr source\n\tint line\n\tint column\n\tlib.Error errors[]\n");
     /* Qualified spellings are printable but cannot be selected as enum members.

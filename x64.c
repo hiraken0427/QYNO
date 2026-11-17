@@ -721,6 +721,15 @@ void x64_jcc(Cond cc, int label)
     emit(b, 6, "%s %s", name, labels[label].name);
 }
 
+void x64_lea_label(Reg dst, int label)
+{
+    unsigned char b[7] = {0x48,0x8d,0x05,0,0,0,0};
+    if(dst>=8)b[0]|=4;
+    b[2]|=(unsigned char)((dst&7)<<3);
+    add_fixup(label,prog->text.len+3);
+    emit(b,7,"lea %s, [rip+%s]",reg64_names[dst],labels[label].name);
+}
+
 /* call rel32：E8 cd */
 void x64_call(int label)
 {

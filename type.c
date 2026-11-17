@@ -33,6 +33,7 @@
 
 const char *type_name(Type ty)
 {
+    if (type_is_task(ty)) return task_type_name(ty);
     if (type_is_array(ty)) return array_type_name(ty);
     if (type_is_enum(ty)) {
         if(error_common_code(ty))return "lib.ErrorCode";
@@ -173,7 +174,7 @@ static int is_float_literal(Node *node)
     case ND_INT_PARSE:
     case ND_INT_FORMAT:
     case ND_BUILTIN:
-        if(node->kind==ND_BUILTIN&&(node->val>=BI_FILE_OPEN||builtin_is_random((int)node->val)||builtin_is_directory((int)node->val)||(builtin_is_time((int)node->val)&&!time_pure_builtin((int)node->val))))return 0;
+        if(node->kind==ND_BUILTIN&&(node->val==BI_TASK_YIELD||node->val==BI_TIME_SLEEP_ASYNC||node->val>=BI_FILE_OPEN||builtin_is_random((int)node->val)||builtin_is_directory((int)node->val)||(builtin_is_time((int)node->val)&&!time_pure_builtin((int)node->val))))return 0;
         for (arg = node->lhs; arg != NULL; arg = arg->next) {
             if (!is_float_literal(arg)) {
                 return 0;
@@ -589,6 +590,15 @@ static void check_builtin(Node *node)
     Value v;
 
     b = (Builtin)node->val;
+    if (b==BI_TASK_YIELD || b==BI_TIME_SLEEP_ASYNC) {
+        if (!cur_func || !cur_func->is_async) error_tok(node->tok,QMSG_0861);
+        if (node->nargs != (b==BI_TASK_YIELD?0:1)) error_tok(node->tok,QMSG_0862);
+        if (b==BI_TIME_SLEEP_ASYNC) {
+            Node probe=*node; probe.val=BI_TIME_SLEEP;
+            check_time_builtin(&probe); node->lhs=probe.lhs;
+        }
+        node->ty=task_type(TY_VOID); return;
+    }
     if(node->lhs&&(b==BI_INT||b==BI_STR)){
         check_expr(node->lhs);
         if(type_is_enum(node->lhs->ty)){
@@ -870,7 +880,9 @@ static void check_call(Node *node)
     node->lhs = head.next;
     /* ref は変数の別名。同じ場所を複数の引数に渡しても、通常の実行順で読み書きする。 */
     node->func = fn;
-    node->ty = fn->ret;
+    if (fn->is_async && (!cur_func || !cur_func->is_async))
+        error_tok(node->tok,QMSG_0861);
+    node->ty = fn->is_async ? task_type(fn->ret) : fn->ret;
 
 }
 
@@ -879,6 +891,7 @@ static void check_expr(Node *node)
     Type ty;
     Node *cmp;
 
+    if(node->kind==ND_VAR && node->var && node->explicit_value && type_is_task(node->var->ty))error_tok(node->tok,QMSG_0870);
     if (node->kind == ND_VAR && node->var && type_is_interface(node->var->ty) &&
         (allowed_interface_use != node || node->explicit_value))
         error_tok(node->tok, QMSG_0269);
@@ -891,6 +904,11 @@ static void check_expr(Node *node)
     if(node->kind==ND_VAR&&!node->var&&enum_initial_owner)enum_context_name(node,enum_initial_owner->ty);
     if (node->kind == ND_VAR && node->var == NULL) resolve_module_name(node);
     switch (node->kind) {
+    case ND_AWAIT:
+        if (!cur_func || !cur_func->is_async) error_tok(node->tok,QMSG_0863);
+        check_expr(node->lhs);
+        if (!type_is_task(node->lhs->ty)) error_tok(node->tok,QMSG_0864);
+        node->ty=task_result(node->lhs->ty); return;
     case ND_ENUM_CONVERT:check_enum_conversion(node);return;
     case ND_UNIT: node->ty=TY_VOID;return;
     case ND_WIDE: return;
@@ -916,6 +934,11 @@ static void check_expr(Node *node)
         check_expr(node->lhs); node->ty = node->lhs->ty; return;
     case ND_FIELD:
         check_expr(node->lhs);
+        if (type_is_task(node->lhs->ty)) {
+            if (!strcmp(node->name,"done")) {node->kind=ND_TASK_DONE;node->ty=TY_BOOL;return;}
+            if (!strcmp(node->name,"state")) {node->kind=ND_TASK_STATE;node->ty=standard_type(cur_ast,"task","State");return;}
+            error_tok(node->tok,QMSG_0865);
+        }
         if (type_is_complex(node->lhs->ty)) {
             if (!strcmp(node->name, "real")) node->kind = ND_CREAL;
             else if (!strcmp(node->name, "imag")) node->kind = ND_CIMAG;
@@ -978,6 +1001,7 @@ static void check_expr(Node *node)
         return;
     case ND_ADDR:
         check_expr(node->lhs);
+        if(type_is_task(node->lhs->ty))error_tok(node->tok,QMSG_0866);
         if (node->lhs->var->is_readonly)
             error_tok(node->tok, QMSG_0319);
         if (node->lhs->var->is_const) {
@@ -1838,7 +1862,7 @@ static int is_const_expr(Node *node)
     case ND_INT_PARSE:
     case ND_INT_FORMAT:
     case ND_BUILTIN:
-        if(node->kind==ND_BUILTIN&&(node->val>=BI_FILE_OPEN||builtin_is_random((int)node->val)||builtin_is_directory((int)node->val)||(builtin_is_time((int)node->val)&&!time_pure_builtin((int)node->val))))return 0;
+        if(node->kind==ND_BUILTIN&&(node->val==BI_TASK_YIELD||node->val==BI_TIME_SLEEP_ASYNC||node->val>=BI_FILE_OPEN||builtin_is_random((int)node->val)||builtin_is_directory((int)node->val)||(builtin_is_time((int)node->val)&&!time_pure_builtin((int)node->val))))return 0;
         for (cmp = node->lhs; cmp != NULL; cmp = cmp->next) {
             if (!is_const_expr(cmp)) {
                 return 0;
@@ -2009,6 +2033,7 @@ static void check_print_parts(Node *list)
             continue;
         }
         check_expr(part);
+        if(type_is_task(array_base(part->ty)))error_tok(part->tok,QMSG_0877);
         if (part->format_base && !type_is_integer(part->ty)) error_tok(part->tok, QMSG_0598);
         if (part->ty == TY_FILE || (type_is_array(part->ty) && array_base(part->ty) == TY_FILE))
             error_tok(part->tok, QMSG_0180);
@@ -2087,6 +2112,7 @@ static void check_stmt(Node *node)
     case ND_THROW:return;
     case ND_MATCH:check_match(node);return;
     case ND_DECL:
+        if (type_is_task(node->var->ty) && !node->lhs) error_tok(node->tok,QMSG_0867);
         if (node->var->is_const) {
             if (node->var->const_state == 2) return;
             if (node->var->const_state == 1)
@@ -2103,6 +2129,10 @@ static void check_stmt(Node *node)
             }
             concrete_only(node->lhs->ty, node->lhs->tok);
             node->var->ty = node->lhs->ty;
+        }
+        if (type_is_task(array_base(node->var->ty))) {
+            if(node->var->is_const || node->var->is_global || node->var->is_ref || !cur_func || !cur_func->is_async)
+                error_tok(node->tok,QMSG_0868);
         }
         if (node->var->is_ref) {
             check_dims(node->var->dims);
@@ -2153,6 +2183,7 @@ static void check_stmt(Node *node)
         allow_void = 1;
         check_expr(node->lhs);
         allow_void = 0;
+        if (type_is_task(node->lhs->ty))error_tok(node->tok,QMSG_0869);
         return;
     case ND_IF:
         check_expr(node->cond);
@@ -2247,6 +2278,7 @@ static void check_stmts(Node *list)
 #include "generic_functions.inc"
 #include "module_visibility_type.inc"
 #include "return_inference.inc"
+#include "async_type.inc"
 
 static void ensure_const(Var *v)
 {
@@ -2369,6 +2401,7 @@ void typecheck(Ast *ast, Target out_target)
     check_implementations(ast);
     for (fn = ast->funcs; fn; fn = fn->next) if (fn->is_initializer) check_initializer_completion(fn);
     specialize_interfaces(ast);
+    check_async_program(ast);
     check_io_effects(ast);
     check_file_closes(ast);
     warn_unused_inferred_locals(ast);

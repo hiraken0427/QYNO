@@ -397,6 +397,11 @@ static FcMap *fc_eval(FcContext *ctx, FcState *s, Node *n)
         }
         return fc_call(ctx, s, n->init);
     }
+    if (n->kind == ND_CALL && n->func->is_async) {
+        for(p=n->lhs;p;p=p->next)fc_eval(ctx,s,p);
+        return fc_empty();
+    }
+    if(n->kind==ND_AWAIT){fc_eval(ctx,s,n->lhs);fc_error(ctx,s,n,~0u);return fc_empty();}
     if (n->kind == ND_CALL) return fc_call(ctx, s, n);
     if (n->kind == ND_MODEL_COPY || n->kind == ND_ARRAY_COPY) {
         m = fc_eval(ctx, s, n->lhs);

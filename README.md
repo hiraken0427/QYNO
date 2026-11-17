@@ -1,4 +1,4 @@
-# QYNO 0.29.0
+# QYNO 0.29.1
 
 著作権およびライセンスに関する情報は、本ファイルの末尾に記載している。
 
@@ -34,7 +34,7 @@ Linux x64では、ソースコードを取得したディレクトリで次の�
 make
 ```
 
-生成されるコンパイラはqycである。ビルド時の生成物は次のコマンドで削除できる。
+生成されるコンパイラはqycである。非同期実行基盤のソースを変更した場合は、Linux x64でmake async-blobを実行して同梱ヘッダーを更新する。再生成にはGCC、binutils、Python 3を使用する。ビルド時の生成物は次のコマンドで削除できる。
 
 ```sh
 make clean
@@ -42,13 +42,35 @@ make clean
 
 ## 新機能
 
-0.29.0では、caseごとのas束縛と、名前空間を区別するエラーコードを追加した。io.Errorの型と従来のエラー番号は維持する。
+0.29.1では、async関数とawait、タスク型を追加した。タスクは呼び出した時点で開始し、未完了の処理をawaitすると中断する。実行は1本のイベントループで行う。
 
-lib.Errorは複数の種類のエラーを受け取る共通の型である。code、message、source、line、column、domain、errorsを持ち、情報は読み取り専用である。lib.ErrorCodeはio.ErrorCodeやtask.ErrorCodeと比較でき、表示には名前空間を含める。
+タスクはautoで受け取る。型を明示する場合はasync intやasync strと記述する。async voidも待機でき、awaitの結果は()である。通常の関数とmainは従来どおり同期処理を行う。
 
-同期・非同期処理を拡張する第1段階である。async、awaitとタスクの実行機能は次段階で追加する。既存の同期関数の動作は維持する。
+```text
+using io
 
-以前の版で追加した最適化は引き続き適用する。浮動小数点の演算順と丸めを維持し、参照や配列の操作に必要な実行時検査を残す。
+async int work(int value);
+	await time.sleep_async(0.01)
+	return value * 2
+
+async int main();
+	auto first = work(3)
+	async int second = work(4)
+	int a = await first
+	int b = await second
+	print("{a} {b}")
+	return 0
+```
+
+async mainは引数なし、void指定、str配列の引数に対応する。task.yieldは次の実行機会へ制御を譲り、time.sleep_asyncは指定した秒数を待つタスクを返す。0秒の待機でも一度は制御を譲る。job.doneとjob.stateで状態を確認できる。
+
+配列を返す関数はasync int work()[]の形で定義する。受け取り側のasync int job[]は配列を返す1件のタスクである。タスクの配列はauto jobs = [work(), work()]の形で推論する。同じタスクを複数回awaitでき、配列とmodelの結果は取得ごとにコピーする。
+
+作成した子タスクは関数が所有し、子の終了を待ってから親が完了する。未確認の子のエラーは親へ引き継ぐ。タスクのエラーはawaitで通知し、caseで処理できる。中断中の変数、結果、エラーはGCが保持する。未処理のエラーには発生位置とawaitの経路を表示する。
+
+タスクの作成とawaitはasync関数内に限る。タスクを式文で捨てること、ref引数、addr、file、interfaceを別タスクへ渡すことは許可しない。asyncメソッド、finally内の非同期処理、永続的な参照ローカル変数は未対応である。fileはasync関数内のローカルとして使用でき、明示的なcloseが必要である。
+
+現段階では各実行中タスクに1MiBのスタック領域を確保する。終了後はGCの回収対象とする。同期関数の最適化は維持し、async関数の本体では中断をまたぐ最適化を行わない。タスクグループ、キャンセル、期限指定、ファイル操作の非同期APIは今後追加する。
 
 ## 使用方法
 

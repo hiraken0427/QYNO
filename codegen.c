@@ -44,6 +44,8 @@
 #include "optimizer.h"
 #include "machine_ir.h"
 #include "wide_blob.h"
+#include "async_runtime.h"
+#include "async_blob.h"
 #include <math.h>
 
 #include <stdlib.h>
@@ -59,6 +61,14 @@
 static Program *prog;
 static FILE *text;
 static Target target;
+static int async_enabled;
+static int async_engine_label,async_create_label,async_await_label,async_run_label;
+static int async_yield_label,async_delay_label,async_alloc_label,async_clock_label,async_sleep_label;
+static void gen_async_init(void);
+static void gen_async_call(Function *fn,int nargs);
+static void gen_async_await(Node *node);
+static void gen_async_builtin(Node *node);
+
 static void gen_grapheme_call(void);
 static void gen_input_state_init(void);
 static void gen_lineedit_init(void);
@@ -86,6 +96,7 @@ static void gen_print_value(Node *expr);
 #define IO_COLUMN 336
 static int io_raise_label, io_empty_label, io_unhandled_label, io_report_label;
 static void gen_io_check(void);
+static void file_emit_err(const char *text_value);
 static void gen_copy_check(Type ty)
 {
     if (optimizer_copy_effects(ty) & OPT_RAISE) gen_io_check();
@@ -264,6 +275,7 @@ static void gen_entry_windows(void)
 
     /* ここから終了処理（rax が終了コード。実行時エラーもここへ来る） */
     x64_bind(exit_label);
+    if(async_enabled)x64_load(R15,R14,ASYNC_STATE_TOP);
     x64_mov(RSP, R15);
     x64_mov(RBX, RAX);
     x64_call(file_cleanup_label);
@@ -286,6 +298,7 @@ static void gen_entry_linux(void)
     gen_entry_main();
     x64_load(R11,R14,IO_PENDING);x64_test(R11,R11);x64_jcc(CC_NZ,io_unhandled_label);
     x64_bind(exit_label);
+    if(async_enabled)x64_load(R15,R14,ASYNC_STATE_TOP);
     x64_mov(RSP, R15);
     x64_mov(RBX, RAX);
     x64_call(file_cleanup_label);
@@ -2040,7 +2053,7 @@ static void gen_builtin(Node *node)
 #define ST_WWIDTH     (ST_RAW + 16)     /* 画面の幅 */
 #define ST_HOUT       (ST_RAW + 24)     /* 標準出力のハンドル */
 #define ST_WOLDEND    (ST_RAW + 32)     /* 前回描いた行の終わりの位置（行 × 幅 + 列） */
-#define STATE_SIZE    392
+#define STATE_SIZE    ASYNC_STATE_SIZE
 
 #define STD_INPUT_HANDLE (-10)
 
@@ -2077,6 +2090,7 @@ static void gen_input_state_init(void)
     x64_mov_imm(RDI, STATE_SIZE);
     x64_call(alloc_label);
     x64_mov(R14, RAX);
+    x64_store(R14,ASYNC_STATE_TOP,R15);
     x64_store_imm(R14, OUTPUT_SINK, 0);
     if (target == TARGET_LINUX) {
         gen_lineedit_init();
@@ -5406,6 +5420,7 @@ static void gen_invoke(Node *node)
     IoScope *saved_scope;
     Node *saved_catch;
     int saved_return, i;
+    if(node->func->is_async){gen_async_call(node->func,node->nargs);return;}
     if (!plan || plan->owner != emitting_function) { x64_call(node->func->label); return; }
     for (i = 0; i < plan->param_count; i++) {
         x64_load(RAX, RSP, (plan->param_count - 1 - i) * 8);
@@ -5555,6 +5570,10 @@ static void gen_expr_inner(Node *node)
     case ND_SAVED:
         x64_load(RAX, RBP, -(int)node->val);
         return;
+    case ND_AWAIT:gen_async_await(node);return;
+    case ND_TASK_DONE:case ND_TASK_STATE:
+        gen_expr(node->lhs);x64_load(RAX,RAX,(int)offsetof(AsyncTask,state));
+        if(node->kind==ND_TASK_DONE){x64_mov_imm(RCX,4);x64_cmp(RAX,RCX);x64_setcc(CC_AE,RAX);}return;
     case ND_UNIT:x64_xor(RAX,RAX);return;
     case ND_WIDE: gen_wide_literal(node);return;
     case ND_NUM:
@@ -5590,6 +5609,7 @@ static void gen_expr_inner(Node *node)
         gen_call(node);
         return;
     case ND_BUILTIN:
+        if(node->val==BI_TASK_YIELD||node->val==BI_TIME_SLEEP_ASYNC){gen_async_builtin(node);return;}
         if (node->val == BI_COMPLEX) { gen_complex_constructor(node); return; }
         if(builtin_is_random((int)node->val))gen_random_builtin(node);
         else if(builtin_is_directory((int)node->val))gen_directory_builtin(node);
@@ -6168,6 +6188,7 @@ static void gen_stmt(Node *node)
 
 #include "recoverable_codegen.inc"
 #include "time_codegen.inc"
+#include "async_codegen.inc"
 #include "regalloc_codegen.inc"
 
 static void gen_function(Function *fn)
@@ -6183,6 +6204,7 @@ static void gen_function(Function *fn)
 
     x64_bind(fn->label);
 
+    if(async_enabled)gen_async_stack_check(fn);
     /* プロローグ：ローカル変数の領域を確保する */
     x64_push(RBP);
     x64_mov(RBP, RSP);
@@ -6249,6 +6271,7 @@ static void codegen_pass(Ast *ast, Program *out_prog, FILE *out_text, Target out
     prog = out_prog;
     text = out_text;
     target = out_target;
+    async_enabled=0;for(fn=ast->funcs;fn;fn=fn->next)if(fn->is_async&&!fn->is_template)async_enabled=1;
     size_codes=size_codes_tail=NULL;
     typed_arrays_reset();diagnostic_context_reset();
     depth = 0;
@@ -6259,6 +6282,10 @@ static void codegen_pass(Ast *ast, Program *out_prog, FILE *out_text, Target out
     emitting_models = ast->models;emitting_enums=ast->enums;
     time_date_type=standard_type(ast,"time","DateTime");
     x64_begin(prog, text);
+    async_engine_label=new_label("async.engine");async_create_label=new_label("async.create");
+    async_await_label=new_label("async.await");async_run_label=new_label("async.run");
+    async_yield_label=new_label("async.yield");async_delay_label=new_label("async.delay");
+    async_alloc_label=new_label("async.alloc");async_clock_label=new_label("async.clock");async_sleep_label=new_label("async.sleep");
     path_call_label=new_label("path.call");
     random_call_label=new_label("random.call");
     text_method_label=new_label("text.method");
@@ -6285,6 +6312,7 @@ static void codegen_pass(Ast *ast, Program *out_prog, FILE *out_text, Target out
         if (fn->is_template) continue;
         snprintf(label_name, sizeof(label_name), ".L.module.%d.function.%d.%.*s", fn->tok->source->module->id, function_index++, fn->name_len, fn->name);
         fn->label = x64_new_label(label_name);
+        if(fn->is_async)fn->async_label=new_label("async.invoke");
         if (!fn->model && fn->tok->source->module==ast->entry && fn->name_len == 4 && strncmp(fn->name, "main", 4) == 0) {
             main_label = fn->label;main_function=fn;
         }
@@ -6449,6 +6477,7 @@ static void codegen_pass(Ast *ast, Program *out_prog, FILE *out_text, Target out
     gen_random_runtime();
     gen_text_method_runtime();
     gen_model_runtime();
+    gen_async_runtime(ast);
 
     /* ユーザーのプログラム */
     for (fn = ast->funcs; fn != NULL; fn = fn->next) {

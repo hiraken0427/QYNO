@@ -70,7 +70,7 @@ static int candidate(Function *fn)
     Var *v;
     int count = 0, cost = 0;
     unsigned forbidden = OPT_RAISE | OPT_ALLOCATE | OPT_EXTERNAL | OPT_RESOURCE | OPT_ESCAPE;
-    if (fn->is_template || fn->is_internal || fn->is_initializer || !fn->opt_ready ||
+    if (fn->is_async || fn->is_template || fn->is_internal || fn->is_initializer || !fn->opt_ready ||
         !value_type(fn->ret) || (fn->opt_effects & forbidden)) return 0;
     for (v = fn->params; v; v = v->next) {
         if (++count > INLINE_VARS) return 0;
@@ -177,7 +177,7 @@ void optimizer_inline(Ast *ast)
 {
     Function *fn;
     for (fn = ast->funcs; fn; fn = fn->next) fn->opt_inline_cost = candidate(fn);
-    for (fn = ast->funcs; fn; fn = fn->next) if (!fn->is_template) {
+    for (fn = ast->funcs; fn; fn = fn->next) if (!fn->is_template && !fn->is_async) {
         int budget = INLINE_GROWTH, base = fn->stack_size;
         expand(fn, fn->body, &budget, base);
     }

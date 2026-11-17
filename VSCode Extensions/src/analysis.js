@@ -1,7 +1,7 @@
 'use strict';
 
 const TYPES = new Set(['complex', 'complex_64', 'complex_128', 'int', 'int_8', 'int_16', 'int_32', 'int_64', 'int_128', 'half', 'quadruple', 'unsigned', 'float', 'double', 'bool', 'str', 'char', 'file', 'void', 'Void', 'auto']);
-const KEYWORDS = new Set([...TYPES, 'const', 'ref', 'val', 'return', 'if', 'else', 'for', 'while', 'break', 'continue', 'and', 'or', 'xor', 'bnot', 'not', 'true', 'false', 'none', 'import', 'using', 'as', 'print', 'input', 'struct', 'enum', 'match', 'case', 'try', 'finally', 'throw', 'of', 'model', 'interface', 'implements', 'public', 'private', 'readonly']);
+const KEYWORDS = new Set([...TYPES, 'async', 'await', 'const', 'ref', 'val', 'return', 'if', 'else', 'for', 'while', 'break', 'continue', 'and', 'or', 'xor', 'bnot', 'not', 'true', 'false', 'none', 'import', 'using', 'as', 'print', 'input', 'struct', 'enum', 'match', 'case', 'try', 'finally', 'throw', 'of', 'model', 'interface', 'implements', 'public', 'private', 'readonly']);
 const identifierStart = c => /[A-Za-z_]/.test(c || '');
 const identifierPart = c => /[A-Za-z0-9_]/.test(c || '');
 
@@ -129,10 +129,12 @@ function rankOf(tokens) { return tokens.filter(t => t.value === '[').length; }
 function visibilityLabel(symbol) { return symbol.declaringModelId ? `${symbol.visibility || 'public'} ` : symbol.moduleVisibility ? `${symbol.moduleVisibility} ` : ''; }
 function typeLabel(symbol) { if(symbol.range)return symbol.name; return `${visibilityLabel(symbol)}${symbol.kind === 'constant' ? 'const ' : ''}${symbol.ref ? `ref ${symbol.readonly ? 'readonly ' : ''}` : ''}${symbol.type} ${symbol.name}${'[]'.repeat(symbol.rank || 0)}${symbol.kind === 'field' && symbol.readonly ? ' (readonly)' : ''}${symbol.defaultText !== undefined ? `=${symbol.defaultText}` : ''}`; }
 function functionLabel(symbol, name = symbol.name) {
-    return `${visibilityLabel(symbol)}${symbol.readonly ? 'readonly ' : ''}${symbol.type} ${name}(${symbol.params.map(typeLabel).join(', ')})${'[]'.repeat(symbol.rank || 0)}`;
+    return `${visibilityLabel(symbol)}${symbol.readonly ? 'readonly ' : ''}${symbol.async ? 'async ' : ''}${symbol.type} ${name}(${symbol.params.map(typeLabel).join(', ')})${'[]'.repeat(symbol.rank || 0)}`;
 }
 
 function readType(tokens, start) {
+    const task = tokens[start]?.value === 'async';
+    if (task) start++;
     let end = start;
     const unsigned = tokens[start]?.value === 'unsigned';
     if (unsigned) {
@@ -142,7 +144,7 @@ function readType(tokens, start) {
     if (tokens[end]?.kind !== 'id' || KEYWORDS.has(tokens[end].value) && !TYPES.has(tokens[end].value)) return null;
     while (tokens[end + 1]?.value === '.' && tokens[end + 2]?.kind === 'id') end += 2;
     if (tokens[end + 1]?.kind !== 'id') return null;
-    return { name: tokens.slice(start, end + 1).map(t => t.value).join(unsigned ? ' ' : ''), end: end + 1 };
+    return { name: (task ? 'async ' : '') + tokens.slice(start, end + 1).map(t => t.value).join(unsigned ? ' ' : ''), end: end + 1, task };
 }
 
 function analyze(text, uri = '') {
@@ -233,7 +235,7 @@ function analyze(text, uri = '') {
                         ...(equal < 0 ? {} : { defaultText: lines[line].slice(part[equal].end, part.at(-1).end).trim() }) });
                     if (parameter) params.push(parameter);
                 }
-                const fn = declare(name, { ...member, readonly, initializer: scope.kind === 'model' && name.value === 'init', kind: 'function', type, rank: end < 0 ? 0 : rankOf(ts.slice(end + 1).filter(t => t.value !== '=')), params, scopeId: scope.id, bodyScopeId: body.id, visibleAfter: 0 });
+                const fn = declare(name, { ...member, readonly, initializer: scope.kind === 'model' && name.value === 'init', kind: 'function', async: declaredType.task, type: type.replace(/^async /, ''), rank: end < 0 ? 0 : rankOf(ts.slice(end + 1).filter(t => t.value !== '=')), params, scopeId: scope.id, bodyScopeId: body.id, visibleAfter: 0 });
                 body.owner = fn;
                 if (['model', 'interface'].includes(scope.kind)) {
                     scope.owner?.members.push(fn);
@@ -257,7 +259,7 @@ function analyze(text, uri = '') {
             const name = ts[0].value, ancestors = new Set(stack.map(s => s.id));
             const bound = symbols.some(s => s.name === name && ancestors.has(s.scopeId) &&
                 ['variable', 'constant', 'parameter', 'function', 'model', 'interface', 'enum'].includes(s.kind));
-            const namespace = ['io', 'math', 'lib', 'time', ...imports.map(i => i.path.split('.')[0]),
+            const namespace = ['io', 'math', 'lib', 'time', 'task', ...imports.map(i => i.path.split('.')[0]),
                 ...usings.filter(u => ancestors.has(u.scopeId)).map(u => u.alias)].includes(name);
             if (!bound && !namespace) declare(ts[0], { kind: 'variable', type: 'auto', implicit: true, scopeId: scope.id, initializerText: lines[line].slice(ts[1].end).trim() });
         }

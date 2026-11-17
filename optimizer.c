@@ -395,7 +395,7 @@ void optimize_program(Ast *ast)
 {
     Function *fn;
     int changed;
-    for(fn=ast->funcs;fn;fn=fn->next)if(!fn->is_template){
+    for(fn=ast->funcs;fn;fn=fn->next)if(!fn->is_template && !fn->is_async){
         Graph g={0};Var *v;
         for(v=fn->params;v&&g.count<OPT_MAX_VARS;v=v->next)if(scalar_type(v->ty)){
             g.vars[g.count]=v;g.eligible[g.count++]=!v->is_ref;
@@ -409,7 +409,7 @@ void optimize_program(Ast *ast)
     }
     do{
         changed=0;
-        for(fn=ast->funcs;fn;fn=fn->next)if(!fn->is_template){
+        for(fn=ast->funcs;fn;fn=fn->next)if(!fn->is_template && !fn->is_async){
             unsigned effects=optimizer_effects(fn->body);
             if((effects|fn->opt_effects)!=fn->opt_effects){fn->opt_effects|=effects;changed=1;}
         }

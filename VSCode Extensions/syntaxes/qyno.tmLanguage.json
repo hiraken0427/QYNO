@@ -59,6 +59,27 @@
       "include": "#embedded-strings"
     },
     {
+      "match": "^\\s*(?:(public|private)\\s+)?(async)\\s+((?:unsigned\\s+)?[A-Za-z_]\\w*(?:\\.[A-Za-z_]\\w*)*)\\s+([A-Za-z_]\\w*)(?=\\s*\\()",
+      "captures": {
+        "1": {
+          "name": "storage.modifier.qyno"
+        },
+        "2": {
+          "name": "keyword.control.qyno"
+        },
+        "3": {
+          "name": "storage.type.qyno"
+        },
+        "4": {
+          "name": "entity.name.function.qyno"
+        }
+      }
+    },
+    {
+      "match": "\\b(?:async|await)\\b",
+      "name": "keyword.control.qyno"
+    },
+    {
       "match": "^\\s*(?:(public|private)\\s+)?(?:(readonly)\\s+)?((?!(?:match|try|case|finally|throw|if|while|for|print|input|return|(?:unsigned\\s+)?int(?:_(?:8|16|32|64|128))?|half|float|double|quadruple|bool|str|char|file|void|Void|auto|complex(?:_(?:64|128))?)\\b)[A-Za-z_]\\w*)(?=\\s*\\([^\\n]*\\)\\s*(?:;|=))",
       "captures": {
         "1": {
@@ -126,7 +147,7 @@
       }
     },
     {
-      "match": "\\b(?:return|try|finally|throw|match|case|if|else|for|while|break|continue)\\b",
+      "match": "\\b(?:async|await|return|try|finally|throw|match|case|if|else|for|while|break|continue)\\b",
       "name": "keyword.control.qyno"
     },
     {
@@ -335,6 +356,10 @@
     },
     "interpolation-expression": {
       "patterns": [
+        {
+          "match": "\\bawait\\b",
+          "name": "keyword.control.qyno"
+        },
         {
           "include": "#embedded-strings"
         },

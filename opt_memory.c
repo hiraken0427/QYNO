@@ -133,13 +133,13 @@ void optimizer_memory(Ast *ast)
     Function *fn;
     Var *v;
     int changed, rounds = 0;
-    for (fn = ast->funcs; fn; fn = fn->next) if (!fn->is_template) {
+    for (fn = ast->funcs; fn; fn = fn->next) if (!fn->is_template && !fn->is_async) {
         addressed(fn->body,0);
         for(v=fn->params;v;v=v->next)if(v->ty==TY_ADDR)fn->opt_unknown_memory=1;
     }
     do {
         changed = 0;
-        for (fn = ast->funcs; fn; fn = fn->next) if (!fn->is_template) {
+        for (fn = ast->funcs; fn; fn = fn->next) if (!fn->is_template && !fn->is_async) {
             changed|=escaping_arguments(fn->body,0,0);
             if(!fn->opt_unknown_memory&&unknown_memory(fn->body,0)){fn->opt_unknown_memory=1;changed=1;}
             for (v = fn->params; v; v = v->next) if (v->is_ref) {

@@ -859,6 +859,30 @@ char qyno_message_0854[97] = "Create a common error code from a namespaced error
 char qyno_message_0855[78] = "case requires an io.ErrorCode or task.ErrorCode constant";
 char qyno_message_0856[52] = "Common error metadata is readonly";
 char qyno_message_0857[55] = "A common error code cannot be an input destination";
+char qyno_message_0858[80] = "Use async with a concrete value type for a task declaration";
+char qyno_message_0859[73] = "Async model and interface methods are not supported yet";
+char qyno_message_0860[86] = "A task parameter requires a concrete value type and cannot use ref";
+char qyno_message_0861[56] = "Tasks can only be created inside an async function";
+char qyno_message_0862[58] = "Invalid number of arguments for the async operation";
+char qyno_message_0863[53] = "await requires an async function";
+char qyno_message_0864[49] = "await requires a task";
+char qyno_message_0865[89] = "Tasks only expose the readonly state and done properties";
+char qyno_message_0866[43] = "A task has no address property";
+char qyno_message_0867[46] = "A task variable must be initialized";
+char qyno_message_0868[94] = "Task handles must be non-ref local variables in an async function";
+char qyno_message_0869[65] = "Keep the task in a variable or await it instead of discarding it";
+char qyno_message_0870[75] = "A task has no value property; use await";
+char qyno_message_0871[67] = "A function cannot return task handles";
+char qyno_message_0872[103] = "An async result cannot contain task, ref, addr, file, or interface values";
+char qyno_message_0873[92] = "An async parameter cannot contain ref, addr, file, or interface values";
+char qyno_message_0874[88] = "Persistent ref, addr, and interface locals are not supported inside async functions yet";
+char qyno_message_0875[59] = "Task parameters require an async function";
+char qyno_message_0876[64] = "A finally block cannot create or await tasks yet";
+char qyno_message_0877[74] = "Await a task before printing its result";
+char qyno_message_0878[90] = "Appending a task requires an initialized task handle";
+char qyno_message_0879[49] = "The task wait dependency is cyclic";
+char qyno_message_0880[58] = "Async task stack limit exceeded";
+char qyno_message_0881[27] = "Awaited from:\n";
 static const Message messages[] = {
     {qyno_message_0000, "\tInput | ", "\t入力 | "},
     {qyno_message_0001, "(Default is input name.exe for Windows, no extension for Linux) \n", "                       （既定は Windows 向けなら 入力名.exe、Linux 向けなら拡張子なし）\n"},
@@ -1718,6 +1742,30 @@ static const Message messages[] = {
     {qyno_message_0855, "case requires an io.ErrorCode or task.ErrorCode constant", "case は io.ErrorCode または task.ErrorCode の定数にしてください"},
     {qyno_message_0856, "Common error metadata is readonly", "共通エラーの情報は読み取り専用です"},
     {qyno_message_0857, "A common error code cannot be an input destination", "共通エラーコードは入力先にできません"},
+    {qyno_message_0858, "Use async with a concrete value type for a task declaration", "タスク変数は async に具体的な型を続けて宣言してください"},
+    {qyno_message_0859, "Async model and interface methods are not supported yet", "async の model メソッドと interface メソッドは未対応です"},
+    {qyno_message_0860, "A task parameter requires a concrete value type and cannot use ref", "タスク引数には具体的な型を指定し、ref は付けないでください"},
+    {qyno_message_0861, "Tasks can only be created inside an async function", "タスクは async 関数内でのみ作成できます"},
+    {qyno_message_0862, "Invalid number of arguments for the async operation", "非同期処理の引数の数が正しくありません"},
+    {qyno_message_0863, "await requires an async function", "await は async 関数内で使用してください"},
+    {qyno_message_0864, "await requires a task", "await の対象はタスクにしてください"},
+    {qyno_message_0865, "Tasks only expose the readonly state and done properties", "タスクで使用できるプロパティは読み取り専用の state と done です"},
+    {qyno_message_0866, "A task has no address property", "タスクの addr は取得できません"},
+    {qyno_message_0867, "A task variable must be initialized", "タスク変数には初期値が必要です"},
+    {qyno_message_0868, "Task handles must be non-ref local variables in an async function", "タスクは async 関数内の ref ではないローカル変数で保持してください"},
+    {qyno_message_0869, "Keep the task in a variable or await it instead of discarding it", "タスクは変数で保持するか await してください"},
+    {qyno_message_0870, "A task has no value property; use await", "タスクの結果は value ではなく await で取得してください"},
+    {qyno_message_0871, "A function cannot return task handles", "タスクを関数の戻り値に含めることはできません"},
+    {qyno_message_0872, "An async result cannot contain task, ref, addr, file, or interface values", "async 関数の結果にタスク、ref、addr、file、interface を含めることはできません"},
+    {qyno_message_0873, "An async parameter cannot contain ref, addr, file, or interface values", "async 関数の引数に ref、addr、file、interface を含めることはできません"},
+    {qyno_message_0874, "Persistent ref, addr, and interface locals are not supported inside async functions yet", "async 関数内の ref、addr、interface ローカル変数は未対応です"},
+    {qyno_message_0875, "Task parameters require an async function", "タスク引数は async 関数で使用してください"},
+    {qyno_message_0876, "A finally block cannot create or await tasks yet", "finally 内でのタスクの作成と await は未対応です"},
+    {qyno_message_0877, "Await a task before printing its result", "タスクの結果は await で取得してから表示してください"},
+    {qyno_message_0878, "Appending a task requires an initialized task handle", "タスク配列への append には初期化済みのタスクを指定してください"},
+    {qyno_message_0879, "The task wait dependency is cyclic", "タスクの待機関係が循環しています"},
+    {qyno_message_0880, "Async task stack limit exceeded", "非同期タスクのスタック上限を超えました"},
+    {qyno_message_0881, "Awaited from:\n", "await の呼び出し元:\n"},
 };
 void messages_select(int japanese)
 {

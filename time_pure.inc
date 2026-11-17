@@ -128,12 +128,13 @@ static void time_execute(TimeRequest *r)
     }
     switch(op){
     case T_ELAPSED:case T_SLEEP_UNTIL:r->out=tb(a);return;
-    case T_WAIT_PARTS:{
+    case T_WAIT_PARTS:case T_ASYNC_PARTS:{
         int64_t sec,ns,ms;Q fraction;
         if(a<0||a>(Q)INT64_MAX){r->status=70;return;}
-        if(a>86400)a=86400;
+        if(op==T_WAIT_PARTS && a>86400)a=86400;
         sec=(int64_t)a;fraction=(a-(Q)sec)*(Q)1000000000;ns=(int64_t)fraction;if((Q)ns<fraction)ns++;
         if(ns==1000000000){sec++;ns=0;}
+        if(op==T_ASYNC_PARTS){r->out.lo=(uint64_t)sec;r->out.hi=(uint64_t)ns;return;}
         fraction=a*(Q)1000;ms=(int64_t)fraction;if((Q)ms<fraction)ms++;
         r->out.lo=(uint64_t)sec;r->out.hi=(uint64_t)ns;r->used=ms;return;}
 
