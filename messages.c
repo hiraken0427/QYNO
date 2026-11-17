@@ -854,6 +854,11 @@ char qyno_message_0849[72] = "File path operations do not accept ref arguments";
 char qyno_message_0850[66] = "File paths require str or char";
 char qyno_message_0851[76] = "Moving across filesystems is unsupported";
 char qyno_message_0852[16] = "seek offset";
+char qyno_message_0853[58] = "A common error code cannot be converted to an integer";
+char qyno_message_0854[97] = "Create a common error code from a namespaced error code";
+char qyno_message_0855[78] = "case requires an io.ErrorCode or task.ErrorCode constant";
+char qyno_message_0856[52] = "Common error metadata is readonly";
+char qyno_message_0857[55] = "A common error code cannot be an input destination";
 static const Message messages[] = {
     {qyno_message_0000, "\tInput | ", "\t入力 | "},
     {qyno_message_0001, "(Default is input name.exe for Windows, no extension for Linux) \n", "                       （既定は Windows 向けなら 入力名.exe、Linux 向けなら拡張子なし）\n"},
@@ -1708,6 +1713,11 @@ static const Message messages[] = {
     {qyno_message_0850, "File paths require str or char", "ファイルのパスは str または char にしてください"},
     {qyno_message_0851, "Moving across filesystems is unsupported", "異なるファイルシステムへの移動には対応していません"},
     {qyno_message_0852, "seek offset", "seek の offset"},
+    {qyno_message_0853, "A common error code cannot be converted to an integer", "共通エラーコードは整数に変換できません"},
+    {qyno_message_0854, "Create a common error code from a namespaced error code", "共通エラーコードは名前空間付きのエラーコードから作成してください"},
+    {qyno_message_0855, "case requires an io.ErrorCode or task.ErrorCode constant", "case は io.ErrorCode または task.ErrorCode の定数にしてください"},
+    {qyno_message_0856, "Common error metadata is readonly", "共通エラーの情報は読み取り専用です"},
+    {qyno_message_0857, "A common error code cannot be an input destination", "共通エラーコードは入力先にできません"},
 };
 void messages_select(int japanese)
 {

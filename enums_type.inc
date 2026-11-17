@@ -66,6 +66,11 @@ static void check_enum_conversion(Node *node)
     if(node->nargs!=1)error_tok(node->tok,QMSG_0157);
     if(node->lhs->kind==ND_REFARG)error_tok(node->tok,QMSG_0155);
     check_expected(node->lhs,to);
+    if(error_common_code(to)){
+        if(node->lhs->ty!=to&&error_code_domain(node->lhs->ty)<0)
+            error_tok(node->tok,QMSG_0854);
+        node->ty=to;if(is_const_expr(node))(void)eval_const(node);return;
+    }
     if(node->lhs->ty!=to&&!type_is_integer(node->lhs->ty)&&!type_is_text(node->lhs->ty))
         error_tok(node->tok,QMSG_0158);
     node->ty=to;

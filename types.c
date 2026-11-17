@@ -233,5 +233,8 @@ int type_is_enum(Type ty) { return (int)ty>=TY_ARRAY && types[(int)ty-TY_ARRAY].
 EnumDef *type_enum(Type ty) { return types[(int)ty-TY_ARRAY].enumeration; }
 Type enum_type(EnumDef *definition) { DynamicType e={0};e.enumeration=definition;return add_type(e); }
 EnumMember *enum_find(EnumDef *definition,const char *name) {
-    EnumMember *m;for(m=definition->members;m;m=m->next)if(!strcmp(m->name,name))return m;return NULL;
+    EnumMember *m;
+    if(error_common_code(definition->ty)&&strcmp(name,"no_error"))return NULL;
+    for(m=definition->members;m;m=m->next)if(!strcmp(m->name,name))return m;
+    return NULL;
 }

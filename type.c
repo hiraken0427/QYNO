@@ -34,8 +34,21 @@
 const char *type_name(Type ty)
 {
     if (type_is_array(ty)) return array_type_name(ty);
-    if (type_is_enum(ty)) return type_enum(ty)->name;
-    if (type_is_model(ty)) return type_model(ty)->name;
+    if (type_is_enum(ty)) {
+        if(error_common_code(ty))return "lib.ErrorCode";
+        if(error_code_domain(ty)==ERROR_DOMAIN_IO)return "io.ErrorCode";
+        if(error_code_domain(ty)==ERROR_DOMAIN_TASK)return "task.ErrorCode";
+        return type_enum(ty)->name;
+    }
+    if (type_is_model(ty)) {
+        Model *model=type_model(ty);Module *owner=model->tok->source->module;
+        if(owner->builtin&&!strcmp(model->name,"Error")){
+            if(!strcmp(owner->name,"lib"))return "lib.Error";
+            if(!strcmp(owner->name,"io"))return "io.Error";
+            if(!strcmp(owner->name,"task"))return "task.Error";
+        }
+        return model->name;
+    }
     if (type_is_interface(ty)) return type_interface(ty)->name;
     switch (ty) {
     case TY_I128: return "int_128";
@@ -249,6 +262,10 @@ static Node *convert(Node *expr, Type to)
     if (from == to) {
         return expr;
     }
+    if(error_common_code(to)){
+        if(error_code_domain(from)>=0)return new_cast(expr,to);
+        return NULL;
+    }
     if(type_is_enum(to)&&type_is_integer(from)&&is_const_expr(expr)){
         Value v=eval_const(expr);
         if(type_is_wide(v.ty))v=wide_calculate(expr,W_CONVERT,v,(Value){0},TY_I32,0);
@@ -384,6 +401,10 @@ static void check_cmp(Node *cmp)
     }
     if(type_is_enum(cmp->lhs->ty)&&type_is_integer(cmp->rhs->ty))cmp->rhs=coerce(cmp->rhs,cmp->lhs->ty,cmp->rhs->tok,QMSG_0161);
     if(type_is_enum(cmp->rhs->ty)&&type_is_integer(cmp->lhs->ty))cmp->lhs=coerce(cmp->lhs,cmp->rhs->ty,cmp->lhs->tok,QMSG_0161);
+    if(error_common_code(cmp->lhs->ty)&&error_code_domain(cmp->rhs->ty)>=0)
+        cmp->rhs=new_cast(cmp->rhs,cmp->lhs->ty);
+    else if(error_common_code(cmp->rhs->ty)&&error_code_domain(cmp->lhs->ty)>=0)
+        cmp->lhs=new_cast(cmp->lhs,cmp->rhs->ty);
     l = cmp->lhs->ty;
     r = cmp->rhs->ty;
     kind = (CmpKind)cmp->val;
@@ -573,6 +594,8 @@ static void check_builtin(Node *node)
         if(type_is_enum(node->lhs->ty)){
             if(node->nargs!=1)error_tok(node->tok,QMSG_0156);
             if(node->lhs->arg_name)error_tok(node->lhs->arg_name,QMSG_0140);
+            if(b==BI_INT&&error_common_code(node->lhs->ty))
+                error_tok(node->tok,QMSG_0853);
             node->kind=ND_CAST;node->ty=b==BI_STR?TY_STR:node->cmp_ty?node->cmp_ty:TY_INT;
             if(is_const_expr(node))(void)eval_const(node);
             return;
@@ -694,6 +717,7 @@ static void check_input(Node *node)
         check_expr(f->var);
         check_place(f->var);
         ty = f->var->ty;
+        if(error_common_code(ty))error_tok(f->var->tok,QMSG_0857);
         if (f->base && !type_is_integer(ty)) error_tok(f->var->tok, QMSG_0597);
         if (!is_number(ty) && !type_is_enum(ty) && ty != TY_BOOL && ty != TY_VOID && !type_is_text(ty))
             error_tok(f->var->tok, QMSG_0024, type_name(ty));

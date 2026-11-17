@@ -79,6 +79,15 @@ static void gen_model_runtime(void)
         x64_test(RAX, RAX); x64_jcc(CC_NZ, from_value);
         collection_fail(QMSG_0703);
         x64_bind(from_value);
+        if(error_common_model(m->ty)){
+            /* Common errors are immutable values; sharing their tree avoids
+             * recursively copying diagnostic history on every transfer. */
+            rt_load(RAX,1);rt_leave();
+        }else{
+        if(error_common_model(m->ty)){
+            /* Common error trees are immutable, including through copies. */
+            rt_load(RAX,1);rt_leave();
+        }else{
         gen_model_allocate(m); rt_save(2, RAX);
         for (f = m->fields; f; f = f->next) {
             rt_load(RAX, 1); x64_load(RAX, RAX, 24); x64_load(RAX, RAX, f->index * 8);
@@ -86,6 +95,8 @@ static void gen_model_runtime(void)
             rt_load(RDX, 2); x64_load(RDX, RDX, 24); x64_store(RDX, f->index * 8, RAX);
         }
         rt_load(RAX, 2); rt_leave();
+        }
+        }
         rt_enter(m->equal_label, 4); rt_save(1, RAX); rt_save(2, RDI);
         for (f = m->fields; f; f = f->next) {
             rt_load(RAX, 1); x64_load(RAX, RAX, 24); x64_load(RAX, RAX, f->index * 8);

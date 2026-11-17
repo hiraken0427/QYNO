@@ -14,6 +14,7 @@ static int contains_initializer(Type ty)
 {
     Model *m; ModelField *f;
     if (type_is_array(ty)) return contains_initializer(array_element(ty));
+    if(error_common_model(ty))return 0;
     if (!type_is_model(ty)) return 0;
     m = type_model(ty);
     if (m->init_state) return m->init_state != 2;

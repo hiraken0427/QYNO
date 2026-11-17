@@ -164,6 +164,7 @@ static int pow_float_label;
 static int write_err_label;
 static int runtime_error_label;
 static int diagnostic_tail_label;
+static int error_wrap_label;
 typedef struct DiagnosticContext DiagnosticContext;
 struct DiagnosticContext {
     DiagnosticContext *next;SourceFile *source;int line,col,len;
@@ -6065,7 +6066,7 @@ static void gen_stmt(Node *node)
     switch (node->kind) {
     case ND_TRY:gen_try(node);return;
     case ND_THROW:
-        x64_load(RAX,RBP,-io_catch->var->offset);x64_store(R14,IO_PENDING,RAX);gen_io_check();return;
+        x64_load(RAX,RBP,-io_catch->ref_temp->offset);x64_store(R14,IO_PENDING,RAX);gen_io_check();return;
     case ND_BUILD_REJECT: {
         char reason[256];
         gen_creation_context(node->tok); x64_store(R14, COLLECTION_CONTEXT, RAX);
@@ -6334,6 +6335,7 @@ static void codegen_pass(Ast *ast, Program *out_prog, FILE *out_text, Target out
     pow_float_label = x64_new_label(".L.qy_pow_float");
     write_err_label = x64_new_label(".L.qy_write_err");
     diagnostic_tail_label = x64_new_label(".L.qy_diagnostic_tail");
+    error_wrap_label=x64_new_label(".L.qy_error_wrap");
     runtime_error_label = x64_new_label(".L.qy_runtime_error");
     exit_label = x64_new_label(".L.qy_exit");
     round_labels[0] = x64_new_label(".L.qy_round");

@@ -279,11 +279,18 @@ function analyze(text, uri = '') {
             const body=newScope(line,indent+1,'match',scope);body.targetText=ts.slice(2,ts.findLastIndex(t=>t.value===')')).map(t=>t.value).join('');stack.push(body);
         } else if(ts[0].value==='try'){
             const as=ts.findIndex(t=>t.value==='as');
-            tryHeaders.set(`${scope.id}:${indent}`,as<0?null:ts[as+1]);
+            tryHeaders.set(`${scope.id}:${indent}`,{binding:as<0?null:ts[as+1],patterns:[]});
             if(ts.some(t=>t.value===';'))stack.push(newScope(line,indent+1,'try',scope));
         } else if(ts[0].value==='case'&&ts[1]?.value==='('&&ts.some(t=>t.value===';')){
-            const body=newScope(line,indent+1,'case',scope),binding=tryHeaders.get(`${scope.id}:${indent}`);
-            if(binding)declare(binding,{kind:'variable',type:'io.Error',readonly:true,scopeId:body.id,visibleAfter:0});
+            const body=newScope(line,indent+1,'case',scope),header=tryHeaders.get(`${scope.id}:${indent}`);
+            const end=ts.findLastIndex(t=>t.value===')');
+            const patterns=ts.slice(2,end).map(t=>t.value).join('').split(',').filter(Boolean);
+            if(header){
+                header.patterns.push(...patterns);
+                if(header.binding)declare(header.binding,{kind:'variable',type:'io.Error',errorPatterns:header.patterns,legacyErrorBinding:true,readonly:true,scopeId:body.id,visibleAfter:0});
+            }
+            const as=ts.findIndex((t,i)=>i>end&&t.value==='as');
+            if(as>=0)declare(ts[as+1],{kind:'variable',type:'lib.Error',errorPatterns:patterns,readonly:true,scopeId:body.id,visibleAfter:0});
             stack.push(body);
         } else if(ts[0].value==='finally'&&ts.some(t=>t.value===';')){
             tryHeaders.delete(`${scope.id}:${indent}`);stack.push(newScope(line,indent+1,'finally',scope));
