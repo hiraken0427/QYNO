@@ -333,7 +333,7 @@ void optimizer_ranges(Ast *ast)
 {
     Function *fn;
     Var *v;
-    for(fn=ast->funcs;fn;fn=fn->next)if(!fn->is_template){
+    for(fn=ast->funcs;fn;fn=fn->next)if(!fn->is_template && !fn->is_async){
         Context c={0};Facts state;
         c.fn=fn;c.count=1;c.budget=65536;
         for(v=fn->params;v&&c.count<RANGE_SYMBOLS;v=v->next)

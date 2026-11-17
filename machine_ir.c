@@ -296,7 +296,7 @@ void optimizer_machine(Ast *ast)
 {
     Function *fn;
     int budget;
-    for(fn=ast->funcs;fn;fn=fn->next)if(!fn->is_template){
+    for(fn=ast->funcs;fn;fn=fn->next)if(!fn->is_template && !fn->is_async){
         budget=65536;lower(fn,fn->body,0,&budget);
         machine_plan_function(fn);
     }

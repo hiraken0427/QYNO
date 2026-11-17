@@ -75,7 +75,7 @@ static const char *keywords[] = {
     "complex", "complex_64", "complex_128", "int", "int_8", "int_16", "int_32", "int_64", "int_128", "half", "quadruple", "unsigned", "float", "double", "bool", "str", "char", "void", "Void", "file", "const", "auto",
     "true", "false", "return", "print", "if", "else", "for", "while",
     "break", "continue", "and", "or", "xor", "bnot", "not", "struct", "enum", "match", "case", "try", "finally", "throw", "import", "of", "using", "input",
-    "ref", "val", "none", "as", "interface", "implements", "model", "public", "private", "readonly",
+    "async", "await", "ref", "val", "none", "as", "interface", "implements", "model", "public", "private", "readonly",
     NULL
 };
 
@@ -847,7 +847,9 @@ static Node *power(void)
     Node *node;
     Token *op;
 
-    node = postfix();
+    op = tok;
+    if (consume("await")) node = new_unary(ND_AWAIT, postfix(), op);
+    else node = postfix();
     op = tok;
     if (consume("^")) {
         return new_binary(ND_POW, node, unary(), op);
@@ -1288,6 +1290,7 @@ static Node *declaration_ref(Token *start, int is_const, int is_ref)
     Token *name;
     Type ty;
     ArrayDim *dims;
+    int task_decl = consume("async");
     int short_const = is_const && tok->kind == TK_IDENT && !is_keyword(tok) && equal(tok->next, "=");
     int infer = short_const || equal(tok, "auto");
 
@@ -1309,6 +1312,10 @@ static Node *declaration_ref(Token *start, int is_const, int is_ref)
         error_tok(tok, QMSG_0099);
     }
     dims = infer ? NULL : dimensions(&ty);
+    if (task_decl) {
+        if (infer || is_ref || is_const) error_tok(start, QMSG_0858);
+        ty = task_type(ty);
+    }
     node = new_node(ND_DECL, start);
     if (consume("=")) {
         node->lhs = expr();
@@ -1828,7 +1835,11 @@ static Node *stmt(void)
         }
         return node;
     }
-    if (equal(tok, "auto")) return declaration(start, 0);
+    if (equal(tok, "auto") || equal(tok, "async")) return declaration(start, 0);
+    if (equal(tok, "await")) {
+        node = new_unary(ND_EXPR_STMT, expr(), start);
+        expect_kind(TK_NEWLINE, QMSG_0668); return node;
+    }
     ty = type_keyword(tok);
     if (ty != TY_NONE && !(ty == TY_FILE && equal(tok->next, "."))) {
         return declaration(start, 0);
@@ -1897,12 +1908,16 @@ static Function *function_def(int is_readonly)
     Type ty;
     int i;
     int count;
+    int async_fn = consume("async");
     int omitted = tok->kind == TK_IDENT && !is_keyword(tok) && equal(tok->next, "(");
 
     fn = calloc(1, sizeof(Function));
     if (fn == NULL) {
         fatal(QMSG_0437);
     }
+    fn->is_async = async_fn;
+    if (async_fn && (parsing_model || parsing_interface))
+        error_tok(tok, QMSG_0859);
     fn->is_readonly = is_readonly;
     fn->infer_return = omitted || equal(tok, "auto");
     fn->ret = fn->infer_return ? TY_NONE : return_type(tok);
@@ -1948,6 +1963,7 @@ static Function *function_def(int is_readonly)
     if (!equal(tok, ")")) {
         for (;;) {
             int param_ref = 0, param_readonly = 0, param_infer, param_omitted;
+            int task_param = consume("async");
             if (consume("ref")) {
                 param_ref = 1;
                 param_readonly = consume("readonly");
@@ -1984,6 +2000,10 @@ static Function *function_def(int is_readonly)
             if (param_infer && equal(tok, "["))
                 error_tok(tok, QMSG_0646);
             v->dims = dimensions(&v->ty);
+            if (task_param) {
+                if (param_infer || param_ref) error_tok(v->tok, QMSG_0860);
+                v->ty = task_type(v->ty);
+            }
             if (consume("=")) {
                 if (!fn->is_initializer) error_tok(v->tok, QMSG_0693);
                 v->default_arg = expr();

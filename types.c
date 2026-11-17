@@ -3,6 +3,7 @@
 #include <string.h>
 
 typedef struct {
+    int is_task;
     EnumDef *enumeration;
     Model *model;
     Interface *contract;
@@ -20,7 +21,7 @@ static int count;
 
 int type_is_array(Type ty)
 {
-    return (int)ty >= TY_ARRAY && types[(int)ty - TY_ARRAY].enumeration == NULL && types[(int)ty - TY_ARRAY].model == NULL && types[(int)ty - TY_ARRAY].contract == NULL && types[(int)ty - TY_ARRAY].path == NULL;
+    return (int)ty >= TY_ARRAY && !types[(int)ty - TY_ARRAY].is_task && types[(int)ty - TY_ARRAY].enumeration == NULL && types[(int)ty - TY_ARRAY].model == NULL && types[(int)ty - TY_ARRAY].contract == NULL && types[(int)ty - TY_ARRAY].path == NULL;
 }
 
 Type array_type(Type element)
@@ -30,7 +31,7 @@ Type array_type(Type element)
     DynamicType *grown;
     const char *name;
     for (i = 0; i < count; i++) {
-        if (!types[i].enumeration && !types[i].model && !types[i].contract && !types[i].path && types[i].element == element) {
+        if (!types[i].is_task && !types[i].enumeration && !types[i].model && !types[i].contract && !types[i].path && types[i].element == element) {
             return (Type)(TY_ARRAY + i);
         }
     }
@@ -87,6 +88,17 @@ static Type add_type(DynamicType entry)
     if (!grown) fatal(QMSG_0589);
     types = grown; types[count] = entry; return (Type)(TY_ARRAY + count++);
 }
+int type_is_task(Type ty) { return (int)ty >= TY_ARRAY && types[(int)ty-TY_ARRAY].is_task; }
+Type task_result(Type ty) { return types[(int)ty-TY_ARRAY].element; }
+const char *task_type_name(Type ty) { return types[(int)ty-TY_ARRAY].name; }
+Type task_type(Type result)
+{
+    DynamicType e = {0}; int i; size_t n;
+    for(i=0;i<count;i++)if(types[i].is_task && types[i].element==result)return (Type)(TY_ARRAY+i);
+    e.is_task=1;e.element=result;n=strlen(type_name(result))+7;e.name=malloc(n);
+    if(!e.name)fatal(QMSG_0589);
+    snprintf(e.name,n,"async %s",type_name(result));return add_type(e);
+}
 Type model_type(Model *model)
 {
     DynamicType e = {0}; e.model = model; return add_type(e);
@@ -116,7 +128,7 @@ Type resolve_type(Type ty)
     if (types[index].resolved) return types[index].resolved;
     if (types[index].path) result = resolve_module_type(types[index].tok, types[index].path, types[index].scope);
     else if (types[index].enumeration || types[index].model || types[index].contract) return ty;
-    else { element = resolve_type(types[index].element); result = array_type(element); }
+    else { element = resolve_type(types[index].element); result = types[index].is_task ? task_type(element) : array_type(element); }
     types[index].resolved = result; return result;
 }
 void resolve_model_types(Ast *ast)

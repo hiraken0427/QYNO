@@ -11,7 +11,7 @@
 #include <stdio.h>
 #include "messages.h"
 
-#define QYC_VERSION "0.29.0"
+#define QYC_VERSION "0.29.1"
 
 typedef struct SourceFile SourceFile;
 typedef struct Module Module;
@@ -215,6 +215,7 @@ typedef enum {
     BI_PATH_NORMALIZE, BI_PATH_WITH_EXTENSION,
     BI_DIR_CURRENT, BI_DIR_CHANGE, BI_PATH_ABSOLUTE,
     BI_DIR_EXISTS, BI_DIR_CREATE, BI_DIR_LIST, BI_DIR_REMOVE,
+    BI_TASK_YIELD, BI_TIME_SLEEP_ASYNC,
     BI_FILE_OPEN,
     BI_FILE_CLOSE,
     BI_FILE_IS_OPEN,
@@ -305,6 +306,7 @@ struct Var {
 
 typedef enum {
     ND_ENUM_CONVERT, ND_MATCH, ND_CASE, ND_TRY, ND_THROW,
+    ND_AWAIT, ND_TASK_DONE, ND_TASK_STATE,
     ND_UNIT,
     ND_WIDE,
     ND_ADD,     /* + （str 同士なら連結） */
@@ -446,6 +448,8 @@ struct Node {
 };
 
 struct Function {
+    int is_async;
+    int async_label;
     Function *next;
     Interface *contract; /* signature-only interface method */
     int is_template;
@@ -646,6 +650,10 @@ Ast *parse(Token *tok);
 /* type.c：工程4 型検査（式の型を決め、必要な型変換を挿入する） */
 const char *type_name(Type ty);
 int type_is_text(Type ty);
+int type_is_task(Type ty);
+Type task_type(Type result);
+Type task_result(Type ty);
+const char *task_type_name(Type ty);
 int type_is_array(Type ty);
 Type array_type(Type element);
 Type array_element(Type array);
@@ -812,6 +820,7 @@ void x64_lea_data(Reg dst, size_t data_offset);
 void x64_jmp(int label);
 void x64_jcc(Cond cc, int label);
 void x64_call(int label);
+void x64_lea_label(Reg dst, int label);
 void x64_call_import(Import imp);
 void x64_syscall(void);
 void x64_int3(void);

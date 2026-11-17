@@ -187,7 +187,10 @@ static void check_method(Node *node)
     if (node->val == AM_APPEND && expression_max_length(node->lhs) == 0) {
         const_error(node, QMSG_0482);
     }
-    if (node->val == AM_APPEND && node->nargs == 0) expected = 0;
+    if (node->val == AM_APPEND && node->nargs == 0) {
+        if(type_is_task(array_element(node->lhs->ty)))error_tok(node->tok,QMSG_0878);
+        expected = 0;
+    }
     if (node->nargs != expected) {
         error_tok(node->tok, QMSG_0389, expected);
     }

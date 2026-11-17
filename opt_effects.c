@@ -38,6 +38,8 @@ unsigned optimizer_local_effects(const Node *n)
 {
     if (!n) return 0;
     switch (n->kind) {
+    case ND_AWAIT: return OPT_ALL;
+    case ND_TASK_DONE: case ND_TASK_STATE: return OPT_READ;
     case ND_NUM: case ND_FNUM: case ND_BOOL: case ND_STRLIT:
     case ND_STR: case ND_UNIT: case ND_WIDE: case ND_NONE:
     case ND_CMP: case ND_AND: case ND_OR:
@@ -71,7 +73,7 @@ unsigned optimizer_local_effects(const Node *n)
         return OPT_READ | OPT_TRAP | (n->kind == ND_INDEX && n->lhs ?
             (type_is_text(n->lhs->ty) ? OPT_ALLOCATE : OPT_CONTEXT) : 0);
     case ND_CALL: case ND_CONSTRUCT:
-        return function_effects(n->func);
+        return n->func && n->func->is_async ? OPT_ALL : function_effects(n->func);
     case ND_MODEL_NEW:
         return function_effects(type_model(n->ty)->default_builder);
     case ND_MODEL_INIT: case ND_MODEL_SEED:

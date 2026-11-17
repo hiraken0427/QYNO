@@ -3,6 +3,7 @@
 static void check_export_type(Type ty,Token *site)
 {
     int hidden=0;Type base=array_base(ty);
+    if(type_is_task(base)){check_export_type(task_result(base),site);return;}
     if(type_is_enum(base))hidden=type_enum(base)->is_private;
     else if(type_is_model(base))hidden=type_model(base)->is_private;
     else if(type_is_interface(base))hidden=type_interface(base)->is_private;

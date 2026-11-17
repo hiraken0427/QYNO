@@ -5,7 +5,7 @@ enum {
 #define TIME_API(id,name,min,max,args,result) T_##id,
 #include "time_api.def"
 #undef TIME_API
-    T_COUNT, T_WAIT_PARTS
+    T_COUNT, T_WAIT_PARTS, T_ASYNC_PARTS
 };
 typedef struct {
     int64_t year,month,day,hour,minute;

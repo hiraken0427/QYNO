@@ -6,7 +6,10 @@ static void gen_entry_main(void)
         collection_context(main_function->tok);gen_os_context(main_function->tok,"runtime","arguments");
         x64_call(arguments_label);x64_push(RAX);
     }
-    x64_call(main_label);
+    if(main_function->is_async){
+        gen_async_init();gen_async_call(main_function,main_function->param_count);
+        x64_call(async_run_label);
+    }else x64_call(main_label);
     if(main_function->param_count)x64_add_imm(RSP,8);
 }
 #define ARGS_REQUEST (-208)

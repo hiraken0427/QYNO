@@ -124,7 +124,7 @@ static void walk(Function *fn,Node *n,int depth,TransferBudget *budget,ArrayTran
 void optimizer_transfers(Ast *ast)
 {
     Function *fn;
-    for(fn=ast->funcs;fn;fn=fn->next)if(!fn->is_template){
+    for(fn=ast->funcs;fn;fn=fn->next)if(!fn->is_template && !fn->is_async){
         TransferBudget budget={QYNO_ARRAY_TRANSFER_BUDGET,0};
         ArrayTransferPlan *plans=NULL,*p,*next;int count=0;
         walk(fn,fn->body,0,&budget,&plans,&count);
