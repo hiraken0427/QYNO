@@ -33,6 +33,7 @@
 
 const char *type_name(Type ty)
 {
+    if(ty==TY_GROUP)return "task.Group";
     if (type_is_task(ty)) return task_type_name(ty);
     if (type_is_array(ty)) return array_type_name(ty);
     if (type_is_enum(ty)) {
@@ -174,7 +175,7 @@ static int is_float_literal(Node *node)
     case ND_INT_PARSE:
     case ND_INT_FORMAT:
     case ND_BUILTIN:
-        if(node->kind==ND_BUILTIN&&(node->val==BI_TASK_YIELD||node->val==BI_TIME_SLEEP_ASYNC||node->val>=BI_FILE_OPEN||builtin_is_random((int)node->val)||builtin_is_directory((int)node->val)||(builtin_is_time((int)node->val)&&!time_pure_builtin((int)node->val))))return 0;
+        if(node->kind==ND_BUILTIN&&(node->val==BI_TASK_YIELD||node->val==BI_TIME_SLEEP_ASYNC||node->val==BI_TASK_GROUP||node->val==BI_TASK_ALL||node->val==BI_TASK_TIMEOUT||node->val>=BI_FILE_OPEN||builtin_is_random((int)node->val)||builtin_is_directory((int)node->val)||(builtin_is_time((int)node->val)&&!time_pure_builtin((int)node->val))))return 0;
         for (arg = node->lhs; arg != NULL; arg = arg->next) {
             if (!is_float_literal(arg)) {
                 return 0;
@@ -188,6 +189,8 @@ static int is_float_literal(Node *node)
 
 static void ensure_const(Var *v);
 static void check_stmt(Node *node);
+static int allow_group_factory;
+static int checking_explicit_group;
 static void check_builtin(Node *node);
 static void check_input(Node *node);
 static void check_ref_arg(Node *arg, Var *param, int index);
@@ -590,6 +593,33 @@ static void check_builtin(Node *node)
     Value v;
 
     b = (Builtin)node->val;
+    if(b==BI_TASK_GROUP){
+        if(!allow_group_factory || !cur_func || !cur_func->is_async || node->nargs)
+            error_tok(node->tok,QMSG_0882);
+        node->ty=TY_GROUP;return;
+    }
+    if(b==BI_TASK_ALL || b==BI_TASK_TIMEOUT){
+        Node *a=node->lhs;Type result;int count=0;
+        if(!cur_func || !cur_func->is_async)error_tok(node->tok,QMSG_0861);
+        if(!a || (b==BI_TASK_TIMEOUT && node->nargs!=2))error_tok(node->tok,QMSG_0883);
+        check_expr(a);
+        if(b==BI_TASK_TIMEOUT){
+            Node probe=*node;Node *seconds=a->next;Node *next=seconds->next;
+            if(!type_is_task(a->ty))error_tok(a->tok,QMSG_0884);
+            probe.val=BI_TIME_SLEEP;probe.lhs=seconds;probe.nargs=1;seconds->next=NULL;
+            check_time_builtin(&probe);probe.lhs->next=next;a->next=probe.lhs;
+            node->ty=a->ty;return;
+        }
+        if(node->nargs==1 && type_is_array(a->ty) && type_is_task(array_element(a->ty))){
+            node->random_flags=1;result=task_result(array_element(a->ty));
+        }else{
+            result=TY_NONE;
+            for(;a;a=a->next){check_expr(a);if(!type_is_task(a->ty))error_tok(a->tok,QMSG_0885);
+                if(count && task_result(a->ty)!=result)error_tok(a->tok,QMSG_0885);
+                result=task_result(a->ty);count++;}
+        }
+        node->ty=task_type(array_type(result));return;
+    }
     if (b==BI_TASK_YIELD || b==BI_TIME_SLEEP_ASYNC) {
         if (!cur_func || !cur_func->is_async) error_tok(node->tok,QMSG_0861);
         if (node->nargs != (b==BI_TASK_YIELD?0:1)) error_tok(node->tok,QMSG_0862);
@@ -891,7 +921,7 @@ static void check_expr(Node *node)
     Type ty;
     Node *cmp;
 
-    if(node->kind==ND_VAR && node->var && node->explicit_value && type_is_task(node->var->ty))error_tok(node->tok,QMSG_0870);
+    if(node->kind==ND_VAR && node->var && node->explicit_value && (node->var->ty==TY_GROUP || type_is_task(node->var->ty)))error_tok(node->tok,QMSG_0870);
     if (node->kind == ND_VAR && node->var && type_is_interface(node->var->ty) &&
         (allowed_interface_use != node || node->explicit_value))
         error_tok(node->tok, QMSG_0269);
@@ -947,6 +977,13 @@ static void check_expr(Node *node)
         }
         check_model_field(node); return;
     case ND_MODEL_METHOD:
+        if(node->lhs){
+            check_interface_receiver(node->lhs);
+            if(type_is_task(node->lhs->ty) || node->lhs->ty==TY_GROUP){
+                if(strcmp(node->name,"cancel") || node->nargs)error_tok(node->tok,QMSG_0886);
+                node->kind=node->lhs->ty==TY_GROUP?ND_GROUP_CANCEL:ND_TASK_CANCEL;node->ty=TY_BOOL;return;
+            }
+        }
         check_model_method(node); return;
     case ND_TEXT_METHOD:return;
     case ND_ARRAY_LITERAL:
@@ -1862,7 +1899,7 @@ static int is_const_expr(Node *node)
     case ND_INT_PARSE:
     case ND_INT_FORMAT:
     case ND_BUILTIN:
-        if(node->kind==ND_BUILTIN&&(node->val==BI_TASK_YIELD||node->val==BI_TIME_SLEEP_ASYNC||node->val>=BI_FILE_OPEN||builtin_is_random((int)node->val)||builtin_is_directory((int)node->val)||(builtin_is_time((int)node->val)&&!time_pure_builtin((int)node->val))))return 0;
+        if(node->kind==ND_BUILTIN&&(node->val==BI_TASK_YIELD||node->val==BI_TIME_SLEEP_ASYNC||node->val==BI_TASK_GROUP||node->val==BI_TASK_ALL||node->val==BI_TASK_TIMEOUT||node->val>=BI_FILE_OPEN||builtin_is_random((int)node->val)||builtin_is_directory((int)node->val)||(builtin_is_time((int)node->val)&&!time_pure_builtin((int)node->val))))return 0;
         for (cmp = node->lhs; cmp != NULL; cmp = cmp->next) {
             if (!is_const_expr(cmp)) {
                 return 0;
@@ -2033,7 +2070,7 @@ static void check_print_parts(Node *list)
             continue;
         }
         check_expr(part);
-        if(type_is_task(array_base(part->ty)))error_tok(part->tok,QMSG_0877);
+        if(part->ty==TY_GROUP || type_is_task(array_base(part->ty)))error_tok(part->tok,QMSG_0877);
         if (part->format_base && !type_is_integer(part->ty)) error_tok(part->tok, QMSG_0598);
         if (part->ty == TY_FILE || (type_is_array(part->ty) && array_base(part->ty) == TY_FILE))
             error_tok(part->tok, QMSG_0180);
@@ -2078,6 +2115,7 @@ static int stmt_returns(Node *node)
         for(arm=node->els;arm;arm=arm->next)if(!stmts_return(arm->then))return 0;
         return 1;
     }
+    case ND_GROUP:return stmts_return(node->then);
     case ND_RETURN:
         return 1;
     case ND_IF:
@@ -2108,6 +2146,11 @@ static int stmts_return(Node *list)
 static void check_stmt(Node *node)
 {
     switch (node->kind) {
+    case ND_GROUP:
+        {int old=checking_explicit_group;
+         allow_group_factory=1;check_expr(node->lhs);allow_group_factory=0;
+         if(node->lhs->kind!=ND_BUILTIN || node->lhs->val!=BI_TASK_GROUP)error_tok(node->tok,QMSG_0887);
+         checking_explicit_group=old+1;check_stmts(node->then);checking_explicit_group=old;return;}
     case ND_TRY:check_try(node);return;
     case ND_THROW:return;
     case ND_MATCH:check_match(node);return;
@@ -2183,7 +2226,7 @@ static void check_stmt(Node *node)
         allow_void = 1;
         check_expr(node->lhs);
         allow_void = 0;
-        if (type_is_task(node->lhs->ty))error_tok(node->tok,QMSG_0869);
+        if (type_is_task(node->lhs->ty) && !checking_explicit_group)error_tok(node->tok,QMSG_0869);
         return;
     case ND_IF:
         check_expr(node->cond);

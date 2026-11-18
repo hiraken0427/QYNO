@@ -1,7 +1,7 @@
 'use strict';
 
 const TYPES = new Set(['complex', 'complex_64', 'complex_128', 'int', 'int_8', 'int_16', 'int_32', 'int_64', 'int_128', 'half', 'quadruple', 'unsigned', 'float', 'double', 'bool', 'str', 'char', 'file', 'void', 'Void', 'auto']);
-const KEYWORDS = new Set([...TYPES, 'async', 'await', 'const', 'ref', 'val', 'return', 'if', 'else', 'for', 'while', 'break', 'continue', 'and', 'or', 'xor', 'bnot', 'not', 'true', 'false', 'none', 'import', 'using', 'as', 'print', 'input', 'struct', 'enum', 'match', 'case', 'try', 'finally', 'throw', 'of', 'model', 'interface', 'implements', 'public', 'private', 'readonly']);
+const KEYWORDS = new Set([...TYPES, 'async', 'await', 'with', 'const', 'ref', 'val', 'return', 'if', 'else', 'for', 'while', 'break', 'continue', 'and', 'or', 'xor', 'bnot', 'not', 'true', 'false', 'none', 'import', 'using', 'as', 'print', 'input', 'struct', 'enum', 'match', 'case', 'try', 'finally', 'throw', 'of', 'model', 'interface', 'implements', 'public', 'private', 'readonly']);
 const identifierStart = c => /[A-Za-z_]/.test(c || '');
 const identifierPart = c => /[A-Za-z0-9_]/.test(c || '');
 
@@ -179,6 +179,12 @@ function analyze(text, uri = '') {
                 (ts[0].value === 'import' ? imports : usings).push(item);
             }
             continue;
+        }
+        if(ts[0].value==='async' && ts[1]?.value==='with') {
+            const body=newScope(line,indent+1,'asyncGroup',scope);
+            const as=ts.findIndex(t=>t.value==='as');
+            if(as>=0)declare(ts[as+1],{kind:'variable',type:'task.Group',rank:0,readonly:true,scopeId:body.id,visibleAfter:0});
+            stack.push(body);continue;
         }
         const visibilityOffset=['public','private'].includes(ts[0]?.value)?1:0;
         if (['model', 'interface', 'enum'].includes(ts[visibilityOffset]?.value) && ts[visibilityOffset+1]?.kind === 'id') {

@@ -129,7 +129,8 @@ function receiverSymbol(env, text, includePrivate = false) {
     const memberOf = (symbol,name) => {
         if(symbol.kind==='enum')return symbol.members.find(m=>m.name===name);
         if(symbol.kind==='namespace')return env.resolve(symbol.path+'.'+name);
-        if(symbol.type?.startsWith('async ') && !symbol.taskArray)return name==='done'?{name,type:'bool',kind:'field',rank:0,readonly:true}:name==='state'?{name,type:'task.State',kind:'field',rank:0,readonly:true}:undefined;
+        if(symbol.type==='task.Group')return name==='cancel'?properties.cancel:undefined;
+        if(symbol.type?.startsWith('async ') && !symbol.taskArray)return name==='cancel'?properties.cancel:name==='done'?{name,type:'bool',kind:'field',rank:0,readonly:true}:name==='state'?{name,type:'task.State',kind:'field',rank:0,readonly:true}:undefined;
         if(name==='value')return env.modelType(symbol)?.kind==='interface'?undefined:symbol;
         if(!symbol.rank && ['str','char'].includes(symbol.type)) {
             if(name==='length')return properties.length;
@@ -163,7 +164,12 @@ function receiverSymbol(env, text, includePrivate = false) {
                 symbol=symbol.taskArray?{...valueOf(symbol),taskArray:symbol.taskArray-1,rank:symbol.taskArray===1?symbol.resultRank:Math.max(0,symbol.rank-1)}:{...valueOf(symbol),readonly:symbol.readonly,rank:Math.max(0,(symbol.rank||0)-1),type:symbol.rank?symbol.type:'char'};i=end+1;
             }else if(token.value==='('){
                 const end=closing(tokens,i);if(end<0 || !['function','model','enum'].includes(symbol.kind))break;
-                symbol=valueOf(symbol);i=end+1;
+                if(symbol.builtin && ['task.all','task.with_timeout'].includes(symbol.path)) {
+                    const argumentsText=text.slice(tokens[i].end,tokens[end].start),argTokens=split(lexLine(argumentsText))[0];
+                    const first=argTokens?.length && receiverSymbol(env,argumentsText.slice(argTokens[0].start,argTokens.at(-1).end),includePrivate);
+                    symbol=first?.type?.startsWith('async ')?{...first,kind:'variable',readonly:false,taskArray:0,rank:symbol.path==='task.all'?(first.taskArray?first.resultRank||0:first.rank||0)+1:first.rank||0}:valueOf(symbol);
+                } else symbol=valueOf(symbol);
+                i=end+1;
             }else break;
         }
         if(symbol && i===tokens.length)return {...symbol,expression:text.slice(tokens[start].start).replace(/\.\s*$/,'')};
@@ -174,7 +180,8 @@ function receiverSymbol(env, text, includePrivate = false) {
 function receiverMembers(project, env, text) {
     const symbol = receiverSymbol(env, text.slice(0, -1));
     if (!symbol || !['variable', 'constant', 'parameter', 'field'].includes(symbol.kind)) return [];
-    if(symbol.type?.startsWith('async ') && !symbol.taskArray)return [{name:'done',type:'bool',kind:'field',rank:0,readonly:true},{name:'state',type:'task.State',kind:'field',rank:0,readonly:true}];
+    if(symbol.type==='task.Group')return [properties.cancel];
+    if(symbol.type?.startsWith('async ') && !symbol.taskArray)return [properties.cancel,{name:'done',type:'bool',kind:'field',rank:0,readonly:true},{name:'state',type:'task.State',kind:'field',rank:0,readonly:true}];
     const rank = symbol.rank || 0, result = [];
     const contract = env.modelType(symbol)?.kind === 'interface';
     if (!contract && /^[A-Za-z_]\w*\.$/.test(text.trim())) {
@@ -249,7 +256,7 @@ function complete(project, line, character) {
         const enumeration=enumContext(project,env,line,character,text);
         if(enumeration)for(const member of enumeration.members)if(!env.names.has(member.name))items.push(completion(member));
         for(const symbol of STANDARD) if(symbol.path.includes('.') && env.names.get(symbol.name)?.path!==symbol.path) items.push(completion(symbol,symbol.path));
-        for (const keyword of KEYWORD_COMPLETIONS) if (!env.names.has(keyword)) items.push({ label: keyword, kind: TYPES.has(keyword) ? 'type' : 'keyword', insertText: keyword, detail: 'QYNO 0.29.1' });
+        for (const keyword of KEYWORD_COMPLETIONS) if (!env.names.has(keyword)) items.push({ label: keyword, kind: TYPES.has(keyword) ? 'type' : 'keyword', insertText: keyword, detail: 'QYNO 0.29.2' });
     }
     // A completion immediately before '(' must not insert a second argument list.
     const next = project.model.lines[line].slice(character).match(/^\s*\(/);
@@ -300,7 +307,7 @@ function callAt(model, line, character) {
 function signature(project, line, character) {
     const env = environment(project, line, character);
     const init = initializationContext(project, env, line, character, receiverSymbol);
-    if (init?.model.initializer) {
+    if (init?.model?.initializer) {
         const symbol = init.model.initializer;
         return { symbol, label: functionLabel(symbol, `${init.model.name}.init`), activeParameter: Math.max(0, symbol.params.findIndex(p => p.name === init.key?.value)) };
     }

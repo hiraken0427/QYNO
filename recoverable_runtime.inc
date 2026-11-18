@@ -10,7 +10,7 @@ static void io_classify(int os_code,int code,int done)
 static void io_emit_error_fields(int failure)
 {
     int i;
-    x64_mov_imm(RDI,72);x64_call(alloc_label);rt_save(3,RAX);
+    x64_mov_imm(RDI,80);x64_call(alloc_label);rt_save(3,RAX);
     x64_store_imm(RAX,ERROR_DOMAIN_SLOT,ERROR_DOMAIN_IO); /* error domain: io */
     x64_store_imm(RAX,0,8);x64_store_imm(RAX,8,8);
     x64_mov_imm(RDI,64);x64_call(alloc_label);rt_save(4,RAX);
@@ -57,7 +57,8 @@ static void gen_recoverable_runtime(void)
 
     /* Unhandled propagated error and any superseded cleanup errors. */
     {int loop=rt_label("io.report.loop"),done=rt_label("io.report.done"),io=rt_label("error.exit.io"),exit_ready=rt_label("error.exit.ready");
-     rt_enter(io_unhandled_label,3);x64_load(RAX,R14,IO_PENDING);rt_save(1,RAX);rt_set(3,EX_IOERR);
+     rt_enter(io_unhandled_label,5);x64_load(RAX,R14,IO_PENDING);rt_save(1,RAX);rt_set(3,EX_IOERR);
+     x64_mov_imm(RDI,2064);x64_call(alloc_label);rt_save(5,RAX);rt_load(RAX,1);
      x64_load(RCX,RAX,ERROR_DOMAIN_SLOT);x64_test(RCX,RCX);x64_jcc(CC_Z,io);
      x64_load(RCX,RAX,24);x64_load(RCX,RCX,0);rt_set(3,EX_SOFTWARE);
      rt_cmp(RCX,1);x64_jcc(CC_NZ,exit_ready);rt_set(3,130);x64_jmp(io);
@@ -78,6 +79,11 @@ static void gen_recoverable_runtime(void)
       rt_load(RAX,2);x64_load(RAX,RAX,0);x64_load(RDX,RAX,0);x64_lea(RSI,RAX,8);x64_call(write_err_label);
       file_emit_err("\n");rt_load(RAX,2);x64_load(RAX,RAX,0);x64_call(diagnostic_tail_label);
       rt_load(RAX,2);x64_load(RAX,RAX,8);rt_save(2,RAX);x64_jmp(trace);x64_bind(traced);}
+     {int related=rt_label("error.related.loop"),end=rt_label("error.related.done");
+      rt_load(RAX,1);x64_load(RAX,RAX,72);x64_test(RAX,RAX);x64_jcc(CC_Z,end);x64_load(RAX,RAX,0);x64_test(RAX,RAX);x64_jcc(CC_Z,end);rt_save(2,RAX);rt_set(4,0);
+      x64_bind(related);rt_load(RAX,2);rt_load(RCX,4);x64_load(RDX,RAX,0);x64_cmp(RCX,RDX);x64_jcc(CC_AE,end);
+      x64_load(RAX,RAX,24);x64_shl_imm(RCX,3);x64_add(RAX,RCX);x64_load(RAX,RAX,0);rt_load(RDI,5);x64_call(related_report_label);
+      rt_load(RCX,4);x64_add_imm(RCX,1);rt_save(4,RCX);x64_jmp(related);x64_bind(end);}
      rt_load(RAX,1);x64_load(RAX,RAX,40);rt_save(1,RAX);x64_jmp(loop);
      x64_bind(done);rt_load(RAX,3);x64_jmp(exit_label);}
 
@@ -122,5 +128,6 @@ static void gen_common_error_runtime(void)
     rt_load(RCX,5);x64_test(RCX,RCX);
     {int done=rt_label("error.wrap.done");x64_jcc(CC_Z,done);
      rt_load(RDX,4);x64_load(RAX,RDX,40);rt_load(RCX,3);x64_store(RCX,48,RAX);x64_bind(done);}
+    {int no_meta=rt_label("error.wrap.no.meta");rt_load(RAX,1);x64_load(RAX,RAX,72);x64_test(RAX,RAX);x64_jcc(CC_Z,no_meta);x64_load(RAX,RAX,0);x64_test(RAX,RAX);x64_jcc(CC_Z,no_meta);rt_load(RCX,3);x64_store(RCX,48,RAX);x64_bind(no_meta);}
     rt_load(RAX,2);rt_leave();
 }

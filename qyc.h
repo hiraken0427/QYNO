@@ -11,7 +11,7 @@
 #include <stdio.h>
 #include "messages.h"
 
-#define QYC_VERSION "0.29.1"
+#define QYC_VERSION "0.29.2"
 
 typedef struct SourceFile SourceFile;
 typedef struct Module Module;
@@ -161,6 +161,7 @@ typedef enum {
     TY_FILE,    /* 共有されるファイル管理領域。0 は未オープン */
     TY_VOID,    /* unique value (), logical width zero; scalar ABI slot retained */
     TY_ADDR,    /* 変数の場所（x.addr・none。指す先の型は cmp_ty） */
+    TY_GROUP,   /* lexical async ownership scope, opaque */
     TY_ARRAY    /* この値以降は types.c で管理する配列・モデル・interface・未解決の名前付き型のID */
 } Type;
 
@@ -215,7 +216,7 @@ typedef enum {
     BI_PATH_NORMALIZE, BI_PATH_WITH_EXTENSION,
     BI_DIR_CURRENT, BI_DIR_CHANGE, BI_PATH_ABSOLUTE,
     BI_DIR_EXISTS, BI_DIR_CREATE, BI_DIR_LIST, BI_DIR_REMOVE,
-    BI_TASK_YIELD, BI_TIME_SLEEP_ASYNC,
+    BI_TASK_YIELD, BI_TIME_SLEEP_ASYNC, BI_TASK_GROUP, BI_TASK_ALL, BI_TASK_TIMEOUT,
     BI_FILE_OPEN,
     BI_FILE_CLOSE,
     BI_FILE_IS_OPEN,
@@ -273,6 +274,7 @@ struct Using {
     int state;         /* 0:未解決、1:解決中、2:解決済み */
 };
 struct Var {
+    int task_scope, task_origin;
     EnumMember *enum_member;
     Var *next;          /* 関数内の全変数の並び */
     Var *vnext;         /* 見えている変数の並び（スコープ） */
@@ -306,6 +308,7 @@ struct Var {
 
 typedef enum {
     ND_ENUM_CONVERT, ND_MATCH, ND_CASE, ND_TRY, ND_THROW,
+    ND_GROUP, ND_TASK_CANCEL, ND_GROUP_CANCEL,
     ND_AWAIT, ND_TASK_DONE, ND_TASK_STATE,
     ND_UNIT,
     ND_WIDE,
@@ -382,6 +385,7 @@ typedef enum { AM_APPEND, AM_REMOVE_AT, AM_CLEAR } ArrayMethod;
 typedef enum { UPDATE_SET, UPDATE_ADD, UPDATE_SUB, UPDATE_INC, UPDATE_DEC } UpdateKind;
 
 struct Node {
+    int async_scope;
     NodeKind kind;
     Node *next;         /* 次の文、または print の次の部分 */
     Node *lhs;          /* 左辺（単項演算・return・宣言・代入では式） */

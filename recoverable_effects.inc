@@ -3,6 +3,7 @@ static void io_controls(Node *list,int caught,int final_loop,int loops)
 {
     Node *n,*arm;
     for(n=list;n;n=n->next){
+        if(n->kind==ND_GROUP){io_controls(n->then,caught,final_loop,loops);continue;}
         if(n->kind==ND_TRY){
             io_controls(n->lhs,caught,final_loop,loops);io_controls(n->then,caught,final_loop,loops);
             for(arm=n->els;arm;arm=arm->next)io_controls(arm->then,1,final_loop,loops);
@@ -27,7 +28,7 @@ static int io_effect_nodes(Node *n,int caught,int mark)
             effect|=io_effect_nodes(n->els,caught,mark);effect|=io_effect_nodes(n->rhs,caught,mark);continue;
         }
         if(n->kind==ND_BUILTIN&&builtin_node_may_raise(n))effect=1;
-        if(n->kind==ND_THROW || n->kind==ND_AWAIT)effect=1;
+        if(n->kind==ND_THROW || n->kind==ND_AWAIT || n->kind==ND_GROUP)effect=1;
         if(type_is_array(n->ty)&&type_is_model(array_base(n->ty))){Function *fn=type_model(array_base(n->ty))->default_builder;if(fn){effect|=fn->io_effect;if(mark&&caught)fn->io_caught=1;}}
         if(n->kind==ND_CALL||n->kind==ND_CONSTRUCT||n->kind==ND_MODEL_NEW){
             Function *fn=n->kind==ND_MODEL_NEW?type_model(n->ty)->default_builder:n->func;

@@ -401,7 +401,7 @@ static FcMap *fc_eval(FcContext *ctx, FcState *s, Node *n)
         for(p=n->lhs;p;p=p->next)fc_eval(ctx,s,p);
         return fc_empty();
     }
-    if(n->kind==ND_AWAIT){fc_eval(ctx,s,n->lhs);fc_error(ctx,s,n,~0u);return fc_empty();}
+    if(n->kind==ND_AWAIT){fc_error(ctx,s,n,~0u);fc_eval(ctx,s,n->lhs);fc_error(ctx,s,n,~0u);return fc_empty();}
     if (n->kind == ND_CALL) return fc_call(ctx, s, n);
     if (n->kind == ND_MODEL_COPY || n->kind == ND_ARRAY_COPY) {
         m = fc_eval(ctx, s, n->lhs);
@@ -547,6 +547,11 @@ static FcFlow *fc_try(FcContext *ctx,FcState *s,Node *n)
 }
 static FcFlow *fc_step(FcContext *ctx, FcState *s, Node *n)
 {
+    if(n->kind==ND_GROUP){
+        FcFlow *out=fc_run(ctx,s,n->then),*f;
+        for(f=out;f;f=f->next)if(f->kind!=4)fc_error(ctx,f->state,n,~0u);
+        return out;
+    }
     if(n->kind==ND_TRY)return fc_try(ctx,s,n);
     if(n->kind==ND_THROW){FcFlow *f=fc_flow(s,4,NULL);f->error_codes=ctx->caught_codes?ctx->caught_codes:0xFFFEu;return f;}
     if (n->kind == ND_BUILD_REJECT) return NULL;
@@ -595,6 +600,7 @@ static FcFlow *fc_step(FcContext *ctx, FcState *s, Node *n)
     }
     if (n->kind == ND_RETURN) {
         FcFlow *f = fc_flow(s, 1, fc_eval(ctx, s, n->lhs));
+        if(ctx->info->fn->is_async)fc_error(ctx,s,n,~0u);
         if(n->lhs&&n->lhs->ty==TY_BOOL){
             int id=f->value->success_id;
             f->truth=fc_truth(ctx,s,n->lhs);

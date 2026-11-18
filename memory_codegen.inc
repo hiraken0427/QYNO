@@ -94,54 +94,19 @@ static void gen_raw_memory(void)
 }
 
 /* 候補 rax が領域内部を指すなら、その領域と含まれる参照をマークする。 */
+/* R9 is the collector's intrusive work queue. Managed block headers are
+ * at least 8-byte aligned, leaving low bits for mark/finalizer flags. */
 static void gen_gc_mark(void)
 {
-    int search = rt_label("mark.search");
-    int next = rt_label("mark.next");
-    int scan = rt_label("mark.scan");
-    int done = rt_label("mark.done");
-    rt_enter(gc_mark_label, 3);
-    /* 回収対象全体のアドレス範囲外の整数・浮動小数点値を先に除外する。 */
-    x64_cmp(RAX, RBX);
-    x64_jcc(CC_B, done);
-    x64_cmp(RAX, R10);
-    x64_jcc(CC_AE, done);
-    x64_mov(RDX, R12);
-    x64_bind(search);
-    x64_test(RDX, RDX);
-    x64_jcc(CC_Z, done);
-    x64_lea(RCX, RDX, 24);
-    x64_cmp(RAX, RCX);
-    x64_jcc(CC_B, next);
-    x64_load(RDI, RDX, 8);
-    x64_add(RCX, RDI);
-    x64_cmp(RAX, RCX);
-    x64_jcc(CC_AE, next);
-    x64_load(RCX, RDX, 16);
-    x64_mov(RDI, RCX); x64_and_imm(RDI, 1);
-    x64_test(RDI, RDI);
-    x64_jcc(CC_NZ, done);
-    x64_mov_imm(RDI, 1); x64_or(RCX, RDI); x64_store(RDX, 16, RCX);
-    rt_save(2, RDX);
-    rt_set(3, 0);
-    x64_bind(scan);
-    rt_load(RDX, 2);
-    rt_load(RCX, 3);
-    x64_load(RDI, RDX, 8);
-    x64_cmp(RCX, RDI);
-    x64_jcc(CC_AE, done);
-    x64_add(RDX, RCX);
-    x64_load(RAX, RDX, 24);
-    x64_call(gc_mark_label);
-    rt_load(RCX, 3);
-    x64_add_imm(RCX, 8);
-    rt_save(3, RCX);
-    x64_jmp(scan);
-    x64_bind(next);
-    x64_load(RDX, RDX, 0);
-    x64_jmp(search);
-    x64_bind(done);
-    rt_leave();
+    int search=rt_label("mark.search"),next=rt_label("mark.next"),done=rt_label("mark.done");
+    rt_enter(gc_mark_label,0);
+    x64_cmp(RAX,RBX);x64_jcc(CC_B,done);x64_cmp(RAX,R10);x64_jcc(CC_AE,done);x64_mov(RDX,R12);
+    x64_bind(search);x64_test(RDX,RDX);x64_jcc(CC_Z,done);
+    x64_lea(RCX,RDX,24);x64_cmp(RAX,RCX);x64_jcc(CC_B,next);
+    x64_load(RDI,RDX,8);x64_add(RCX,RDI);x64_cmp(RAX,RCX);x64_jcc(CC_AE,next);
+    x64_load(RCX,RDX,16);x64_mov(RDI,RCX);x64_and_imm(RDI,1);x64_test(RDI,RDI);x64_jcc(CC_NZ,done);
+    x64_mov_imm(RDI,1);x64_or(RCX,RDI);x64_or(RCX,R9);x64_store(RDX,16,RCX);x64_mov(R9,RDX);x64_jmp(done);
+    x64_bind(next);x64_load(RDX,RDX,0);x64_jmp(search);x64_bind(done);rt_leave();
 }
 
 static void gen_gc_collect(void)
@@ -157,7 +122,9 @@ static void gen_gc_collect(void)
     int done = rt_label("gc.done");
     int min_done = rt_label("gc.min.done");
     int max_done = rt_label("gc.max.done");
-    rt_enter(gc_collect_label, 4);
+    int drain=rt_label("gc.work"),scan=rt_label("gc.work.scan"),scanned=rt_label("gc.work.scanned");
+    rt_enter(gc_collect_label, 6);
+    x64_xor(R9,R9);
     rt_save(1, RAX);
     x64_mov_imm(RBX, -1);
     x64_xor(R10, R10);
@@ -165,7 +132,7 @@ static void gen_gc_collect(void)
     x64_bind(reset);
     x64_test(RDX, RDX);
     x64_jcc(CC_Z, roots);
-    x64_load(RCX, RDX, 16); x64_and_imm(RCX, -2); x64_store(RDX, 16, RCX);
+    x64_load(RCX, RDX, 16); x64_and_imm(RCX, 2); x64_store(RDX, 16, RCX);
     x64_lea(RAX, RDX, 24);
     x64_cmp(RAX, RBX);
     x64_jcc(CC_AE, min_done);
@@ -183,12 +150,18 @@ static void gen_gc_collect(void)
     x64_bind(root_loop);
     rt_load(RDX, 1);
     x64_cmp(RDX, R15);
-    x64_jcc(CC_AE, sweep);
+    x64_jcc(CC_AE, drain);
     x64_load(RAX, RDX, 0);
     x64_add_imm(RDX, 8);
     rt_save(1, RDX);
     x64_call(gc_mark_label);
     x64_jmp(root_loop);
+    x64_bind(drain);x64_test(R9,R9);x64_jcc(CC_Z,sweep);
+    rt_save(5,R9);x64_load(RCX,R9,16);x64_mov(RDX,RCX);x64_and_imm(RCX,-4);x64_and_imm(RDX,3);x64_store(R9,16,RDX);x64_mov(R9,RCX);rt_set(6,0);
+    x64_bind(scan);rt_load(RDX,5);rt_load(RCX,6);x64_load(RDI,RDX,8);x64_cmp(RCX,RDI);x64_jcc(CC_AE,scanned);
+    x64_add(RDX,RCX);x64_load(RAX,RDX,24);x64_call(gc_mark_label);
+    rt_load(RCX,6);x64_add_imm(RCX,8);rt_save(6,RCX);x64_jmp(scan);
+    x64_bind(scanned);x64_jmp(drain);
     x64_bind(sweep);
     rt_set(2, 0); /* 前の領域 */
     rt_save(3, R12);

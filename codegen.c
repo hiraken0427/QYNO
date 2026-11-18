@@ -61,9 +61,15 @@
 static Program *prog;
 static FILE *text;
 static Target target;
+static Ast *emitting_ast;
 static int async_enabled;
 static int async_engine_label,async_create_label,async_await_label,async_run_label;
 static int async_yield_label,async_delay_label,async_alloc_label,async_clock_label,async_sleep_label;
+static int async_group_enter_label,async_group_close_label,async_cancel_label,async_group_cancel_label;
+static int async_all_label,async_timeout_label,async_check_label,async_link_label;
+static void gen_async_checkpoint(Token *tok);
+static void gen_async_group(Node *node);
+static void gen_async_group_close(Node *node);
 static void gen_async_init(void);
 static void gen_async_call(Function *fn,int nargs);
 static void gen_async_await(Node *node);
@@ -94,7 +100,7 @@ static void gen_print_value(Node *expr);
 #define IO_OPERATION 320
 #define IO_LINE 328
 #define IO_COLUMN 336
-static int io_raise_label, io_empty_label, io_unhandled_label, io_report_label;
+static int io_raise_label, io_empty_label, io_unhandled_label, io_report_label,related_report_label;
 static void gen_io_check(void);
 static void file_emit_err(const char *text_value);
 static void gen_copy_check(Type ty)
@@ -1454,6 +1460,7 @@ static void gen_char_check(Token *tok, int code)
 #include "typed_arrays_codegen.inc"
 #include "recoverable_runtime.inc"
 #include "file_runtime.inc"
+#include "related_errors_codegen.inc"
 #include "complex_codegen.inc"
 
 static void gen_cast(Node *node)
@@ -5570,6 +5577,9 @@ static void gen_expr_inner(Node *node)
     case ND_SAVED:
         x64_load(RAX, RBP, -(int)node->val);
         return;
+    case ND_TASK_CANCEL:case ND_GROUP_CANCEL:
+        gen_expr(node->lhs);gen_os_context(node->tok,"task","cancel");
+        x64_call(node->kind==ND_TASK_CANCEL?async_cancel_label:async_group_cancel_label);return;
     case ND_AWAIT:gen_async_await(node);return;
     case ND_TASK_DONE:case ND_TASK_STATE:
         gen_expr(node->lhs);x64_load(RAX,RAX,(int)offsetof(AsyncTask,state));
@@ -5609,7 +5619,7 @@ static void gen_expr_inner(Node *node)
         gen_call(node);
         return;
     case ND_BUILTIN:
-        if(node->val==BI_TASK_YIELD||node->val==BI_TIME_SLEEP_ASYNC){gen_async_builtin(node);return;}
+        if(node->val==BI_TASK_YIELD||node->val==BI_TIME_SLEEP_ASYNC||node->val==BI_TASK_ALL||node->val==BI_TASK_TIMEOUT){gen_async_builtin(node);return;}
         if (node->val == BI_COMPLEX) { gen_complex_constructor(node); return; }
         if(builtin_is_random((int)node->val))gen_random_builtin(node);
         else if(builtin_is_directory((int)node->val))gen_directory_builtin(node);
@@ -6084,6 +6094,7 @@ static void gen_for(Node *node)
 static void gen_stmt(Node *node)
 {
     switch (node->kind) {
+    case ND_GROUP:gen_async_group(node);return;
     case ND_TRY:gen_try(node);return;
     case ND_THROW:
         x64_load(RAX,RBP,-io_catch->ref_temp->offset);x64_store(R14,IO_PENDING,RAX);gen_io_check();return;
@@ -6170,6 +6181,7 @@ static void gen_stmt(Node *node)
         } else {
             x64_mov_imm(RAX, 0);
         }
+        if(emitting_function->is_async)gen_async_checkpoint(node->tok);
         push();gen_io_finalizers(0);pop(RAX);
         x64_jmp(return_label);
         return;
@@ -6220,6 +6232,7 @@ static void gen_function(Function *fn)
 
     gen_stmts(fn->body);
 
+    if(fn->is_async)gen_async_checkpoint(fn->tok);
     /* return がなかったとき（main と void の関数）は 0 を返す */
     x64_mov_imm(RAX, 0);
 
@@ -6271,6 +6284,7 @@ static void codegen_pass(Ast *ast, Program *out_prog, FILE *out_text, Target out
     prog = out_prog;
     text = out_text;
     target = out_target;
+    emitting_ast=ast;
     async_enabled=0;for(fn=ast->funcs;fn;fn=fn->next)if(fn->is_async&&!fn->is_template)async_enabled=1;
     size_codes=size_codes_tail=NULL;
     typed_arrays_reset();diagnostic_context_reset();
@@ -6286,6 +6300,10 @@ static void codegen_pass(Ast *ast, Program *out_prog, FILE *out_text, Target out
     async_await_label=new_label("async.await");async_run_label=new_label("async.run");
     async_yield_label=new_label("async.yield");async_delay_label=new_label("async.delay");
     async_alloc_label=new_label("async.alloc");async_clock_label=new_label("async.clock");async_sleep_label=new_label("async.sleep");
+    async_group_enter_label=new_label("async.group.enter");async_group_close_label=new_label("async.group.close");
+    async_cancel_label=new_label("async.cancel");async_group_cancel_label=new_label("async.group.cancel");
+    async_all_label=new_label("async.all");async_timeout_label=new_label("async.timeout");
+    async_check_label=new_label("async.check");async_link_label=new_label("async.error.link");
     path_call_label=new_label("path.call");
     random_call_label=new_label("random.call");
     text_method_label=new_label("text.method");
@@ -6363,7 +6381,7 @@ static void codegen_pass(Ast *ast, Program *out_prog, FILE *out_text, Target out
     pow_float_label = x64_new_label(".L.qy_pow_float");
     write_err_label = x64_new_label(".L.qy_write_err");
     diagnostic_tail_label = x64_new_label(".L.qy_diagnostic_tail");
-    error_wrap_label=x64_new_label(".L.qy_error_wrap");
+    error_wrap_label=x64_new_label(".L.qy_error_wrap");related_report_label=new_label("error.related.report");
     runtime_error_label = x64_new_label(".L.qy_runtime_error");
     exit_label = x64_new_label(".L.qy_exit");
     round_labels[0] = x64_new_label(".L.qy_round");
@@ -6469,6 +6487,7 @@ static void codegen_pass(Ast *ast, Program *out_prog, FILE *out_text, Target out
     gen_complex_runtime();
     gen_input_routines();
     gen_file_runtime();
+    gen_related_error_runtime();
     gen_time_runtime();
     gen_directory_runtime();
     gen_file_mutation_runtime();

@@ -1,4 +1,4 @@
-# QYNO 0.29.1
+# QYNO 0.29.2
 
 著作権およびライセンスに関する情報は、本ファイルの末尾に記載している。
 
@@ -42,35 +42,48 @@ make clean
 
 ## 新機能
 
-0.29.1では、async関数とawait、タスク型を追加した。タスクは呼び出した時点で開始し、未完了の処理をawaitすると中断する。実行は1本のイベントループで行う。
-
-タスクはautoで受け取る。型を明示する場合はasync intやasync strと記述する。async voidも待機でき、awaitの結果は()である。通常の関数とmainは従来どおり同期処理を行う。
+0.29.2では、タスクグループ、キャンセル、複数タスクの待機、タイムアウトを追加した。withを予約語に追加する。既存のasync 型名とautoによる宣言、呼び出した時点で開始する方式は維持する。
 
 ```text
 using io
 
 async int work(int value);
-	await time.sleep_async(0.01)
+	await time.sleep_async(0.1)
 	return value * 2
 
 async int main();
-	auto first = work(3)
-	async int second = work(4)
-	int a = await first
-	int b = await second
-	print("{a} {b}")
+	try;
+		async with task.group();
+			auto first = work(3)
+			auto second = work(4)
+			auto results = await task.with_timeout(task.all(first, second), 1.0)
+			print(results)
+	case(task.ErrorCode.timed_out);
+		print("時間切れ")
+	case(task.ErrorCode.group_failed) as error;
+		print(error.message)
 	return 0
 ```
 
-async mainは引数なし、void指定、str配列の引数に対応する。task.yieldは次の実行機会へ制御を譲り、time.sleep_asyncは指定した秒数を待つタスクを返す。0秒の待機でも一度は制御を譲る。job.doneとjob.stateで状態を確認できる。
+async with task.group()は、その中で作成したタスクを管理する。名前が必要ならas groupを付ける。ブロック末尾、return、外側へ出るbreakやcontinueでは、全員の終了と後始末を待つ。エラー時は残りへキャンセルを要求する。内側で作ったタスクを外側の変数や配列へ保存することはできない。
 
-配列を返す関数はasync int work()[]の形で定義する。受け取り側のasync int job[]は配列を返す1件のタスクである。タスクの配列はauto jobs = [work(), work()]の形で推論する。同じタスクを複数回awaitでき、配列とmodelの結果は取得ごとにコピーする。
+job.cancel()とgroup.cancel()は停止を要求し、最初の有効な要求でtrueを返す。終了の確認にはawaitを用いる。グループへの要求は子を対象とし、本文を実行する親自身をキャンセルしない。自分へのキャンセル要求は、caseで捕捉しても次の確認点で再通知する。
 
-作成した子タスクは関数が所有し、子の終了を待ってから親が完了する。未確認の子のエラーは親へ引き継ぐ。タスクのエラーはawaitで通知し、caseで処理できる。中断中の変数、結果、エラーはGCが保持する。未処理のエラーには発生位置とawaitの経路を表示する。
+task.allは同じ完了型のタスクをまとめ、入力順の配列を返すタスクを作る。引数を並べる形とタスク配列を渡す形を使用できる。失敗すると残りへキャンセルを要求し、回収後にgroup_failedを通知する。原因はerror.errorsに格納する。同じタスクを複数回指定した場合、結果は各位置へコピーし、原因の収集は1回とする。
 
-タスクの作成とawaitはasync関数内に限る。タスクを式文で捨てること、ref引数、addr、file、interfaceを別タスクへ渡すことは許可しない。asyncメソッド、finally内の非同期処理、永続的な参照ローカル変数は未対応である。fileはasync関数内のローカルとして使用でき、明示的なcloseが必要である。
+task.with_timeoutは秒数を指定し、元の完了型を維持したタスクを返す。期限切れでは対象をキャンセルし、後始末を待ってtimed_outを通知する。後始末の時間も復帰までの時間に含まれる。対象が完了済みなら0秒でもその結果を採用する。期限はAPIを呼び出した時点から数え、引数のタスクが最初の中断まで実行する同期部分は含めない。
 
-現段階では各実行中タスクに1MiBのスタック領域を確保する。終了後はGCの回収対象とする。同期関数の最適化は維持し、async関数の本体では中断をまたぐ最適化を行わない。タスクグループ、キャンセル、期限指定、ファイル操作の非同期APIは今後追加する。
+子を明示的にawaitした場合は、従来どおり元のio.Errorなどを受け取る。awaitせずに所有スコープの終了へ持ち越した通常の失敗は、1件でもgroup_failedへ集約する。0.29.1で元のI/Oエラーとして終了していた場合、未処理の終了コードは74から70へ変わる。
+
+async mainは引数なし、void指定、str配列の引数に対応する。async voidも待機でき、結果は()である。task.yield()とtime.sleep_async(0)は少なくとも一度イベントループへ制御を譲る。job.doneとjob.stateで状態を確認できる。同じタスクを複数回awaitでき、配列とmodelの結果は取得ごとにコピーする。
+
+タスクの配列にはautoを使用する。配列を返すタスクを明示する場合はasync int job[]と記述する。タスクを式文で捨てられるのは、明示的なグループの本文内に限る。
+
+実行は1本のイベントループで行い、キャンセルはawaitなどの確認点で通知する。同期の計算ループやtime.sleepはイベントループを待たせる。長い計算で制御を譲る場合はawait task.yield()を記述する。case()はキャンセルを捕捉せず、case(task.ErrorCode.cancelled)を明示する。
+
+asyncメソッド、finally内の非同期処理、永続的な参照ローカル変数は未対応である。ref、addr、file、interfaceを別タスクへ渡すことは許可しない。fileはasync関数内のローカルとして使用でき、明示的なcloseが必要である。finallyはキャンセル時も実行し、同期のcloseとcancelを使用できる。
+
+各ユーザータスクは1MiBのスタック領域を使用し、中断中の変数、結果、エラー、グループと待機情報をGCが保持する。allと期限付きタスクにはユーザー関数用のスタックを追加確保しない。ファイル操作の非同期APIとCPU並列処理は今後追加する。
 
 ## 使用方法
 
