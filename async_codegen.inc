@@ -45,14 +45,20 @@ static void gen_async_init(void)
     x64_lea_data(RCX,empty_str_offset);x64_store(RAX,(int)offsetof(AsyncRuntime,empty_string),RCX);
     {const char *message=QMSG_0879;
      x64_lea_data(RCX,prog_add_str(prog,message,strlen(message)));x64_store(RAX,(int)offsetof(AsyncRuntime,invalid_message),RCX);}
+    {int offsets[]={(int)offsetof(AsyncRuntime,cancel_message),(int)offsetof(AsyncRuntime,group_message),(int)offsetof(AsyncRuntime,timeout_message),(int)offsetof(AsyncRuntime,io_domain),(int)offsetof(AsyncRuntime,task_domain)};
+     const char *messages[]={QMSG_0890,QMSG_0891,QMSG_0892,"io","task"};
+     for(i=0;i<5;i++){x64_lea_data(RCX,prog_add_str(prog,messages[i],strlen(messages[i])));x64_store(RAX,offsets[i],RCX);}}
+    collection_shape(array_type(standard_type(emitting_ast,"lib","Error")),NULL,RCX);x64_store(RAX,(int)offsetof(AsyncRuntime,error_shape),RCX);
     async_store_heap();
 }
 static void gen_async_call(Function *fn,int nargs)
 {
+    gen_os_context(fn->tok,"task","function");
     x64_lea_label(RAX,fn->async_label);x64_mov_imm(RDI,nargs);x64_mov(RSI,RSP);x64_call(async_create_label);
 }
 static void gen_async_await(Node *node)
 {
+    gen_async_checkpoint(node->tok);
     gen_expr(node->lhs);gen_os_context(node->tok,"task","await");x64_call(async_await_label);gen_io_check();
     if(type_is_model(node->ty)){x64_call(type_model(node->ty)->copy_label);gen_copy_check(node->ty);}
     else if(type_is_array(node->ty)){
@@ -61,6 +67,19 @@ static void gen_async_await(Node *node)
 }
 static void gen_async_builtin(Node *node)
 {
+    if(node->val==BI_TASK_ALL){
+        Node *a;
+        for(a=node->lhs;a;a=a->next){gen_expr(a);push();}
+        gen_os_context(node->tok,"task","all");
+        collection_shape(task_result(node->ty),NULL,RSI);
+        if(node->random_flags)x64_load(RAX,RSP,0);else x64_mov(RAX,RSP);
+        x64_mov_imm(RDI,node->nargs);x64_mov_imm(RDX,node->random_flags);x64_call(async_all_label);
+        x64_add_imm(RSP,node->nargs*8);depth-=node->nargs;gen_io_check();return;
+    }
+    if(node->val==BI_TASK_TIMEOUT){
+        gen_expr(node->lhs);push();gen_expr(node->lhs->next);x64_mov(RDI,RAX);pop(RAX);
+        gen_os_context(node->tok,"task","with_timeout");x64_call(async_timeout_label);gen_io_check();return;
+    }
     if(node->lhs)gen_expr(node->lhs);
     gen_os_context(node->tok,"task",node->val==BI_TASK_YIELD?"yield":"sleep_async");
     x64_call(node->val==BI_TASK_YIELD?async_yield_label:async_delay_label);gen_io_check();
@@ -87,6 +106,18 @@ static void gen_async_stack_check(Function *fn)
     gen_fail(fn->tok,QMSG_0880,EX_SOFTWARE);
     x64_bind(native);
 }
+static void gen_async_checkpoint(Token *tok)
+{gen_os_context(tok,"task","checkpoint");x64_call(async_check_label);gen_io_check();}
+static void gen_async_group_close(Node *node)
+{gen_os_context(node->tok,"task","group");x64_load(RAX,RBP,-node->var->offset);x64_call(async_group_close_label);gen_io_check();}
+static void gen_async_group(Node *node)
+{
+    int failed=rt_label("async.group.failure"),done=rt_label("async.group.done");
+    IoScope *outer=io_scope,body={outer,node,failed,depth,loop_depth};
+    gen_os_context(node->tok,"task","group");x64_call(async_group_enter_label);x64_store(RBP,-node->var->offset,RAX);
+    io_scope=&body;gen_stmts(node->then);io_scope=outer;gen_async_group_close(node);x64_jmp(done);
+    x64_bind(failed);gen_async_group_close(node);x64_bind(done);
+}
 static void gen_async_runtime(Ast *ast)
 {
     Function *fn;int i;
@@ -100,15 +131,35 @@ static void gen_async_runtime(Ast *ast)
          if(i<2){rt_load(RAX,1);x64_store(RBP,ASQ+(int)offsetof(AsyncRequest,task),RAX);}
          async_engine();rt_leave();
      }}
+    {int ops[]={ASYNC_GROUP_ENTER,ASYNC_GROUP_CLOSE,ASYNC_CANCEL,ASYNC_GROUP_CANCEL,ASYNC_CHECK,ASYNC_ERROR_LINK};
+     int labels[]={async_group_enter_label,async_group_close_label,async_cancel_label,async_group_cancel_label,async_check_label,async_link_label};
+     for(i=0;i<6;i++){
+         rt_enter(labels[i],80);rt_save(1,RAX);rt_save(2,RDI);async_request(ops[i]);rt_load(RAX,1);
+         x64_store(RBP,ASQ+(int)offsetof(AsyncRequest,task),RAX);x64_store(RBP,ASQ+(int)offsetof(AsyncRequest,group),RAX);
+         rt_load(RAX,2);x64_store(RBP,ASQ+(int)offsetof(AsyncRequest,args),RAX);async_engine();
+         if(ops[i]==ASYNC_CHECK)rt_load(RAX,1);
+         rt_leave();
+     }}
+    rt_enter(async_all_label,80);rt_save(1,RAX);rt_save(2,RDI);rt_save(3,RSI);rt_save(4,RDX);
+    async_request(ASYNC_ALL);rt_load(RAX,1);x64_store(RBP,ASQ+(int)offsetof(AsyncRequest,args),RAX);
+    rt_load(RAX,2);x64_store(RBP,ASQ+(int)offsetof(AsyncRequest,nargs),RAX);
+    rt_load(RAX,3);x64_store(RBP,ASQ+(int)offsetof(AsyncRequest,shape),RAX);
+    rt_load(RAX,4);x64_store(RBP,ASQ+(int)offsetof(AsyncRequest,flags),RAX);async_engine();rt_leave();
     /* Validate in binary128 and round only the OS wait interval up to ns. */
-    rt_enter(async_delay_label,80);rt_save(1,RAX);time_request_init(T_SLEEP);
+    {int mode;
+    for(mode=0;mode<2;mode++){
+    rt_enter(mode?async_timeout_label:async_delay_label,80);rt_save(1,RAX);rt_save(2,RDI);
+    if(mode)x64_mov(RAX,RDI);
+    time_request_init(T_SLEEP);
     x64_load(RCX,RAX,0);x64_store(RBP,TQ+(int)offsetof(TimeRequest,args),RCX);
     x64_load(RCX,RAX,8);x64_store(RBP,TQ+(int)offsetof(TimeRequest,args)+8,RCX);time_engine_call();
     {int valid=rt_label("async.delay.valid");x64_load(RAX,RBP,TQ+(int)offsetof(TimeRequest,status));x64_test(RAX,RAX);x64_jcc(CC_Z,valid);file_fail(EX_SOFTWARE,QMSG_0333);x64_bind(valid);}
     x64_store_imm(RBP,TQ+(int)offsetof(TimeRequest,op),T_ASYNC_PARTS);time_engine_call();
-    async_request(ASYNC_DELAY);
+    async_request(mode?ASYNC_TIMEOUT:ASYNC_DELAY);
+    if(mode){rt_load(RAX,1);x64_store(RBP,ASQ+(int)offsetof(AsyncRequest,task),RAX);}
     for(i=0;i<2;i++){x64_load(RAX,RBP,TQ+(int)offsetof(TimeRequest,out)+i*8);x64_store(RBP,ASQ+(int)offsetof(AsyncRequest,delay)+i*8,RAX);}
     async_engine();rt_leave();
+    }}
 
     async_c_enter(async_alloc_label);rt_load(RDI,7);x64_call(alloc_label);async_c_leave();
     async_c_enter(async_clock_label);x64_mov_imm(RDI,1);x64_call(time_clock_label);

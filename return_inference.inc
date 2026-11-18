@@ -25,7 +25,7 @@ static void infer_returns(Node *list, Type *result)
         else if(n->kind==ND_TRY){Node *arm;infer_returns(n->then,result);for(arm=n->els;arm;arm=arm->next)infer_returns(arm->then,result);}
         else if (n->kind == ND_IF) {
             infer_returns(n->then, result); infer_returns(n->els, result);
-        } else if (n->kind == ND_FOR || n->kind == ND_WHILE) infer_returns(n->then, result);
+        } else if (n->kind == ND_GROUP || n->kind == ND_FOR || n->kind == ND_WHILE) infer_returns(n->then, result);
     }
 }
 
@@ -40,7 +40,7 @@ static void convert_inferred_returns(Node *list, Function *fn)
         } else if(n->kind==ND_TRY){Node *arm;convert_inferred_returns(n->then,fn);for(arm=n->els;arm;arm=arm->next)convert_inferred_returns(arm->then,fn);
         } else if (n->kind == ND_IF) {
             convert_inferred_returns(n->then, fn); convert_inferred_returns(n->els, fn);
-        } else if (n->kind == ND_FOR || n->kind == ND_WHILE) convert_inferred_returns(n->then, fn);
+        } else if (n->kind == ND_GROUP || n->kind == ND_FOR || n->kind == ND_WHILE) convert_inferred_returns(n->then, fn);
     }
 }
 
@@ -48,7 +48,7 @@ static void ensure_function(Function *fn, Token *site)
 {
     Function *saved_func;
     Node *saved_interface;
-    int saved_allow;
+    int saved_allow,saved_group;
     Var *p;
     if (fn->check_state == 2 || fn->is_internal) return;
     check_export_function(fn);
@@ -57,7 +57,7 @@ static void ensure_function(Function *fn, Token *site)
             fn->name_len, fn->name);
     if (++function_check_depth > MAX_FUNCTION_DEPTH)
         error_tok(site, QMSG_0639, MAX_FUNCTION_DEPTH);
-    saved_func = cur_func; saved_allow = allow_void;
+    saved_func = cur_func; saved_allow = allow_void;saved_group=checking_explicit_group;checking_explicit_group=0;
     saved_interface = allowed_interface_use;
     cur_func = fn; allow_void = 0; allowed_interface_use = NULL; fn->check_state = 1;
     check_dims(fn->return_dims);
@@ -82,5 +82,5 @@ static void ensure_function(Function *fn, Token *site)
             fn->name_len, fn->name);
     fn->check_state = 2;
     check_export_function(fn);
-    cur_func = saved_func; allow_void = saved_allow; allowed_interface_use = saved_interface; function_check_depth--;
+    cur_func = saved_func; allow_void = saved_allow;checking_explicit_group=saved_group; allowed_interface_use = saved_interface; function_check_depth--;
 }

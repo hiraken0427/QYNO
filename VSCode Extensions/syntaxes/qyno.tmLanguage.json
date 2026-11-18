@@ -76,7 +76,7 @@
       }
     },
     {
-      "match": "\\b(?:async|await)\\b",
+      "match": "\\b(?:async|await|with)\\b",
       "name": "keyword.control.qyno"
     },
     {
@@ -147,7 +147,7 @@
       }
     },
     {
-      "match": "\\b(?:async|await|return|try|finally|throw|match|case|if|else|for|while|break|continue)\\b",
+      "match": "\\b(?:async|await|with|return|with|try|finally|throw|match|case|if|else|for|while|break|continue)\\b",
       "name": "keyword.control.qyno"
     },
     {
@@ -237,7 +237,7 @@
     "calls": {
       "patterns": [
         {
-          "match": "\\b(?:print|input|sqrt|abs|round|ceil|floor|open|close|is_open|read|read_line|write|exists|current|change|absolute|append|remove_at|clear|read_text|read_lines|write_text|append_text|write_lines|create|list|remove|copy|move|info|iso_format)(?=\\s*\\()",
+          "match": "\\b(?:print|input|sqrt|abs|round|ceil|floor|open|close|is_open|read|read_line|write|exists|current|change|absolute|append|remove_at|clear|cancel|all|with_timeout|group|yield|read_text|read_lines|write_text|append_text|write_lines|create|list|remove|copy|move|info|iso_format)(?=\\s*\\()",
           "name": "support.function.qyno"
         },
         {

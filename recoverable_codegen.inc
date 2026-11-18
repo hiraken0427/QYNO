@@ -4,7 +4,8 @@ static void gen_io_finalizers(int target_loop)
     IoScope *s=io_scope;
     if(!s || (target_loop && s->loops<target_loop))return;
     io_scope=s->outer;
-    if(s->node->rhs)gen_stmts(s->node->rhs);
+    if(s->node->kind==ND_GROUP)gen_async_group_close(s->node);
+    else if(s->node->rhs)gen_stmts(s->node->rhs);
     gen_io_finalizers(target_loop);
     io_scope=s;
 }
@@ -16,6 +17,10 @@ static void gen_io_finally(Node *n,IoScope *outer)
     x64_bind(failure);
     /* Keep the displaced error for unhandled-error diagnostics. */
     x64_load(RAX,R14,IO_PENDING);x64_load(RDX,RBP,-n->ref_temp->offset);
+    if(emitting_function->is_async){
+        int skip=rt_label("error.link.unchanged");x64_test(RDX,RDX);x64_jcc(CC_Z,skip);x64_cmp(RAX,RDX);x64_jcc(CC_Z,skip);
+        x64_mov(RDI,RDX);x64_call(async_link_label);x64_store(R14,IO_PENDING,RAX);x64_bind(skip);
+    }else
     {int link=rt_label("io.error.link"),skip=rt_label("io.error.link.skip");
      x64_test(RDX,RDX);x64_jcc(CC_Z,skip);x64_cmp(RAX,RDX);x64_jcc(CC_Z,skip);
      x64_bind(link);x64_load(RCX,RAX,40);x64_test(RCX,RCX);

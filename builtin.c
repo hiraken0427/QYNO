@@ -47,6 +47,7 @@ static const BuiltinInfo builtins[BI_COUNT] = {
     { "io.dir", "exists" }, { "io.dir", "create" },
     { "io.dir", "list" }, { "io.dir", "remove" },
     { "task", "yield" }, { "time", "sleep_async" },
+    { "task", "group" }, { "task", "all" }, { "task", "with_timeout" },
     { "io.file", "open" },
     { "io.file", "close" },
     { "io.file", "is_open" },
@@ -135,7 +136,7 @@ const TimeSpec *time_spec(int op)
 }
 int builtin_may_raise(int b)
 {
-    return b==BI_TASK_YIELD || b==BI_TIME_SLEEP_ASYNC || (builtin_is_random(b)&&random_operation(b)!=0)||builtin_is_directory(b)||(b>=BI_FILE_OPEN&&b!=BI_FILE_IS_OPEN&&b!=BI_FILE_TRY_OPEN)||
+    return b==BI_TASK_YIELD || b==BI_TIME_SLEEP_ASYNC || b==BI_TASK_ALL || b==BI_TASK_TIMEOUT || (builtin_is_random(b)&&random_operation(b)!=0)||builtin_is_directory(b)||(b>=BI_FILE_OPEN&&b!=BI_FILE_IS_OPEN&&b!=BI_FILE_TRY_OPEN)||
         (builtin_is_time(b)&&(b<=BI_TIME_SLEEP_UNTIL||b>=BI_TIME_TICKS));
 }
 int builtin_node_may_raise(Node *n)

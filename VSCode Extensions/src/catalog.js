@@ -1,5 +1,5 @@
 'use strict';
-// Reference: QYNO 0.29.1. No runtime dependency on a compiler installation.
+// Reference: QYNO 0.29.2. No runtime dependency on a compiler installation.
 const callable = (path, type, params, documentation) => ({
     kind: 'function', name: path.split('.').at(-1), path, type, rank: 0,
     params: params.map(p => typeof p === 'string' ? { name: p, type: 'value', rank: 0 } : { rank: 0, ...p }),
@@ -37,6 +37,9 @@ const RANDOM_GENERATOR={name:'Random',path:'lib.random.Random',type:'lib.random.
     members:RANDOM_FUNCTIONS.map(fn=>({...fn,path:'lib.random.Random.'+fn.name,visibility:'public',readonly:false}))};
 const STANDARD = [
     TASK_STATE,
+    callable('task.group','task.Group',[],'async withで子タスクの終了と後始末を管理する。'),
+    callable('task.all','auto',[{name:'jobs',type:'tasks'}],'同じ完了型のタスクを待ち、入力順の配列を返すタスクを作る。'),
+    callable('task.with_timeout','auto',[{name:'job',type:'task'},{name:'seconds',type:'quadruple'}],'期限切れでは対象をキャンセルし、後始末を待って通知する。'),
     callable('task.yield','async void',[],'次の実行機会へ制御を譲るタスクを返す。'),
     callable('time.sleep_async','async void',[{name:'seconds',type:'quadruple'}],'指定した秒数を待つタスクを返す。'),
     COMMON_ERROR_CODE, COMMON_ERROR, TASK_ERROR_CODE, TASK_ERROR, PATH_KIND, PATH_INFO, SEEK_ORIGIN, WEEKDAY, DATE_TIME, STOPWATCH, RANDOM_GENERATOR, ...RANDOM_FUNCTIONS,
@@ -121,7 +124,7 @@ const STANDARD = [
     callable('io.file.write_bytes', 'int_64', [{name:'destination',type:'file'},{name:'data',type:'unsigned int_8',rank:1}], 'wb/abへ全要素を1バイトずつ書き、バイト数を返します。dataは読み取り専用で観測しref不要。UTF-8・改行変換は行いません。'),
     callable('io.file.exists', 'bool', [{ name: 'path', type: 'str', placeholder: '"path.txt"' }], '通常ファイルの存在を確認します。相対パスは実行時の作業ディレクトリが基準です。')
 ];
-const KEYWORD_COMPLETIONS = ['complex', 'complex_64', 'complex_128', 'int', 'int_8', 'int_16', 'int_32', 'int_64', 'int_128', 'half', 'quadruple', 'unsigned', 'float', 'double', 'bool', 'str', 'char', 'file', 'void', 'Void', 'auto', 'const', 'ref', 'val', 'return', 'if', 'else', 'for', 'while', 'break', 'continue', 'and', 'or', 'xor', 'bnot', 'not', 'true', 'false', 'none', 'import', 'using', 'as', 'enum', 'match', 'case', 'async', 'await', 'try', 'finally', 'throw', 'model', 'interface', 'implements', 'public', 'private', 'readonly'];
+const KEYWORD_COMPLETIONS = ['complex', 'complex_64', 'complex_128', 'int', 'int_8', 'int_16', 'int_32', 'int_64', 'int_128', 'half', 'quadruple', 'unsigned', 'float', 'double', 'bool', 'str', 'char', 'file', 'void', 'Void', 'auto', 'const', 'ref', 'val', 'return', 'if', 'else', 'for', 'while', 'break', 'continue', 'and', 'or', 'xor', 'bnot', 'not', 'true', 'false', 'none', 'import', 'using', 'as', 'enum', 'match', 'case', 'async', 'await', 'with', 'try', 'finally', 'throw', 'model', 'interface', 'implements', 'public', 'private', 'readonly'];
 const TEXT_METHODS = [
     callable('contains','bool',[{name:'value',type:'str / char'}],'書記素境界で完全一致する部分を含むか。空検索はtrue。'),
     callable('starts_with','bool',[{name:'value',type:'str / char'}],'書記素境界で先頭から完全一致するか。'),
@@ -132,6 +135,7 @@ const TEXT_METHODS = [
     callable('replace','str',[{name:'old',type:'str / char'},{name:'new',type:'str / char'}],'元の文字列の重ならない一致を全置換。空oldはエラー。')
 ].map(method=>({...method,readonly:true}));
 const properties = {
+    cancel: {...callable('cancel','bool',[],'キャンセルを要求する。最初の有効な要求ならtrue。'),readonly:true},
     real: { name:'real',kind:'property',type:'float',readonly:true,documentation:'複素数の実部。読み取り専用です。' },
     imag: { name:'imag',kind:'property',type:'float',readonly:true,documentation:'複素数の虚部。読み取り専用です。' },
     length: { name: 'length', kind: 'property', type: 'int_64', documentation: '配列の要素数、または文字列のUnicode拡張書記素クラスタの数。読み取り専用です。' },

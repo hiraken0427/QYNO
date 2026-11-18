@@ -61,7 +61,8 @@ function initializationContext(project, env, line, character, receiver, valueOnl
     }
     if(valueOnly)return expected(tokens.length);
     const frame = stack.at(-1);
-    if (frame?.kind !== '{' || !frame.model) return undefined;
+    if (frame?.kind !== '{') return undefined;
+    if (!frame.model) return {...frame,candidates:[]};
     return { ...frame, candidates: named(frame).filter(p => frame.model.initializer || env.canAccess(p)),
         keySymbol: named(frame).find(p => p.name === frame.key?.value) };
 }

@@ -17,6 +17,7 @@ static int implements_type(Type concrete, Type contract)
 }
 static void concrete_only(Type ty, Token *tok)
 {
+    if(array_base(ty)==TY_GROUP)error_tok(tok,QMSG_0888);
     if (type_is_interface(array_base(ty))) error_tok(tok, QMSG_0257);
 }
 static int same_dimensions(ArrayDim *a, ArrayDim *b)
@@ -66,7 +67,7 @@ static void check_interface_positions(Ast *ast)
     for (v = ast->global_vars; v; v = v->next) concrete_only(v->ty, v->tok);
     for (fn = ast->funcs; fn; fn = fn->next) {
         concrete_only(fn->ret, fn->tok);
-        for (v = fn->locals; v; v = v->next) concrete_only(v->ty, v->tok);
+        for (v = fn->locals; v; v = v->next) if(v->ty!=TY_GROUP)concrete_only(v->ty, v->tok);
         for (v = fn->params; v; v = v->next) {
             if (type_is_interface(v->ty) && v->is_ref && !fn->is_initializer) fn->is_template = 1;
             else concrete_only(v->ty, v->tok);

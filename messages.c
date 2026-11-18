@@ -883,6 +883,19 @@ char qyno_message_0878[90] = "Appending a task requires an initialized task hand
 char qyno_message_0879[49] = "The task wait dependency is cyclic";
 char qyno_message_0880[58] = "Async task stack limit exceeded";
 char qyno_message_0881[27] = "Awaited from:\n";
+char qyno_message_0882[65] = "task.group() is only valid in an async with statement";
+char qyno_message_0883[52] = "Invalid arguments for the task operation";
+char qyno_message_0884[60] = "with_timeout requires a task";
+char qyno_message_0885[77] = "all requires tasks with the same completed value type";
+char qyno_message_0886[71] = "Use cancel() without arguments on a task or group";
+char qyno_message_0887[59] = "async with requires task.group()";
+char qyno_message_0888[67] = "A group cannot be copied, stored, or passed as a value";
+char qyno_message_0889[85] = "A task cannot escape the group where it was created";
+char qyno_message_0890[43] = "The task was cancelled";
+char qyno_message_0891[55] = "One or more tasks failed";
+char qyno_message_0892[37] = "The task timed out";
+char qyno_message_0893[18] = "Related error: ";
+char qyno_message_0894[47] = "Additional related errors omitted\n";
 static const Message messages[] = {
     {qyno_message_0000, "\tInput | ", "\t入力 | "},
     {qyno_message_0001, "(Default is input name.exe for Windows, no extension for Linux) \n", "                       （既定は Windows 向けなら 入力名.exe、Linux 向けなら拡張子なし）\n"},
@@ -1766,6 +1779,19 @@ static const Message messages[] = {
     {qyno_message_0879, "The task wait dependency is cyclic", "タスクの待機関係が循環しています"},
     {qyno_message_0880, "Async task stack limit exceeded", "非同期タスクのスタック上限を超えました"},
     {qyno_message_0881, "Awaited from:\n", "await の呼び出し元:\n"},
+    {qyno_message_0882, "task.group() is only valid in an async with statement", "task.group() は async with の宣言で使用してください"},
+    {qyno_message_0883, "Invalid arguments for the task operation", "タスク操作の引数が正しくありません"},
+    {qyno_message_0884, "with_timeout requires a task", "with_timeout の第1引数はタスクにしてください"},
+    {qyno_message_0885, "all requires tasks with the same completed value type", "all には完了値の型が一致するタスクを指定してください"},
+    {qyno_message_0886, "Use cancel() without arguments on a task or group", "タスクとグループの cancel() に引数は指定できません"},
+    {qyno_message_0887, "async with requires task.group()", "async with には task.group() を指定してください"},
+    {qyno_message_0888, "A group cannot be copied, stored, or passed as a value", "グループのコピー、格納、引数渡しはできません"},
+    {qyno_message_0889, "A task cannot escape the group where it was created", "タスクを作成元のグループの外側へ保存することはできません"},
+    {qyno_message_0890, "The task was cancelled", "タスクがキャンセルされました"},
+    {qyno_message_0891, "One or more tasks failed", "タスクグループでエラーが発生しました"},
+    {qyno_message_0892, "The task timed out", "タスクの期限を超えました"},
+    {qyno_message_0893, "Related error: ", "関連エラー: "},
+    {qyno_message_0894, "Additional related errors omitted\n", "以降の関連エラーを省略しました\n"},
 };
 void messages_select(int japanese)
 {

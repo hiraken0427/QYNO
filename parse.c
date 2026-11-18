@@ -61,6 +61,7 @@ static Ast *ast;
 static Function *cur_fn;        /* 解析中の関数（ファイル先頭の const の解析中は NULL） */
 static Var *visible;        /* 今見えている変数（内側のブロックから外側へ vnext でつながる） */
 static int loop_depth;      /* 今いるループ（for・while）の深さ */
+static int async_group_depth;
 static int block_depth;     /* 今いるブロックの深さ（関数の本体が 1） */
 static Model *parsing_model;
 static Interface *parsing_interface;
@@ -75,7 +76,7 @@ static const char *keywords[] = {
     "complex", "complex_64", "complex_128", "int", "int_8", "int_16", "int_32", "int_64", "int_128", "half", "quadruple", "unsigned", "float", "double", "bool", "str", "char", "void", "Void", "file", "const", "auto",
     "true", "false", "return", "print", "if", "else", "for", "while",
     "break", "continue", "and", "or", "xor", "bnot", "not", "struct", "enum", "match", "case", "try", "finally", "throw", "import", "of", "using", "input",
-    "async", "await", "ref", "val", "none", "as", "interface", "implements", "model", "public", "private", "readonly",
+    "async", "await", "with", "ref", "val", "none", "as", "interface", "implements", "model", "public", "private", "readonly",
     NULL
 };
 
@@ -87,6 +88,7 @@ static Node *new_node(NodeKind kind, Token *t)
     if (node == NULL) {
         fatal(QMSG_0437);
     }
+    node->async_scope=async_group_depth;
     node->kind = kind;
     node->tok = t;
     node->usings = local_usings;
@@ -301,6 +303,7 @@ static Var *new_var(Token *t, Type ty)
     if (v == NULL) {
         fatal(QMSG_0437);
     }
+    v->task_scope=async_group_depth;
     v->name = t->loc;
     v->name_len = t->len;
     v->ty = ty;
@@ -1772,6 +1775,18 @@ static Node *stmt(void)
         expect_kind(TK_NEWLINE, QMSG_0668);
         return node;
     }
+    if(equal(tok,"async") && equal(tok->next,"with")) {
+        Var *saved=visible;
+        tok=tok->next->next;node=new_node(ND_GROUP,start);node->lhs=expr();
+        async_group_depth++;
+        node->var=hidden_var(TY_GROUP,start);node->var->task_scope=async_group_depth;
+        if(consume("as")) {
+            Token *name=tok;if(is_keyword(tok))error_tok(tok,QMSG_0396);expect_kind(TK_IDENT,QMSG_0395);
+            node->var->name=name->loc;node->var->name_len=name->len;node->var->is_readonly=1;
+            node->var->vnext=visible;visible=node->var;
+        }
+        expect(";");node->then=block(QMSG_0350);visible=saved;async_group_depth--;return node;
+    }
     if (consume("try")) return try_stmt(start);
     if (consume("throw")) {
         node=new_node(ND_THROW,start);expect(";");
@@ -1943,6 +1958,7 @@ static Function *function_def(int is_readonly)
     tok = tok->next;
 
     cur_fn = fn;
+    async_group_depth=0;
     visible = NULL;
     loop_depth = 0;
     block_depth = parsing_model ? 1 : 0;
