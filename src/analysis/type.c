@@ -175,7 +175,7 @@ static int is_float_literal(Node *node)
     case ND_INT_PARSE:
     case ND_INT_FORMAT:
     case ND_BUILTIN:
-        if(node->kind==ND_BUILTIN&&(node->val==BI_TASK_YIELD||node->val==BI_TIME_SLEEP_ASYNC||node->val==BI_TASK_GROUP||node->val==BI_TASK_ALL||node->val==BI_TASK_TIMEOUT||node->val>=BI_FILE_OPEN||builtin_is_random((int)node->val)||builtin_is_directory((int)node->val)||(builtin_is_time((int)node->val)&&!time_pure_builtin((int)node->val))))return 0;
+        if(node->kind==ND_BUILTIN&&(node->val==BI_TASK_YIELD||node->val==BI_TIME_SLEEP_ASYNC||node->val==BI_TASK_GROUP||node->val==BI_TASK_ALL||node->val==BI_TASK_TIMEOUT||builtin_is_file_async((int)node->val)||node->val>=BI_FILE_OPEN||builtin_is_random((int)node->val)||builtin_is_directory((int)node->val)||(builtin_is_time((int)node->val)&&!time_pure_builtin((int)node->val))))return 0;
         for (arg = node->lhs; arg != NULL; arg = arg->next) {
             if (!is_float_literal(arg)) {
                 return 0;
@@ -593,6 +593,12 @@ static void check_builtin(Node *node)
     Value v;
 
     b = (Builtin)node->val;
+    if(builtin_is_file_async(b)){
+        Node probe=*node;
+        if(!cur_func||!cur_func->is_async)error_tok(node->tok,QMSG_0861);
+        check_file_bulk_builtin(&probe);node->lhs=probe.lhs;node->nargs=probe.nargs;
+        node->ty=task_type(probe.ty);return;
+    }
     if(b==BI_TASK_GROUP){
         if(!allow_group_factory || !cur_func || !cur_func->is_async || node->nargs)
             error_tok(node->tok,QMSG_0882);
@@ -1899,7 +1905,7 @@ static int is_const_expr(Node *node)
     case ND_INT_PARSE:
     case ND_INT_FORMAT:
     case ND_BUILTIN:
-        if(node->kind==ND_BUILTIN&&(node->val==BI_TASK_YIELD||node->val==BI_TIME_SLEEP_ASYNC||node->val==BI_TASK_GROUP||node->val==BI_TASK_ALL||node->val==BI_TASK_TIMEOUT||node->val>=BI_FILE_OPEN||builtin_is_random((int)node->val)||builtin_is_directory((int)node->val)||(builtin_is_time((int)node->val)&&!time_pure_builtin((int)node->val))))return 0;
+        if(node->kind==ND_BUILTIN&&(node->val==BI_TASK_YIELD||node->val==BI_TIME_SLEEP_ASYNC||node->val==BI_TASK_GROUP||node->val==BI_TASK_ALL||node->val==BI_TASK_TIMEOUT||builtin_is_file_async((int)node->val)||node->val>=BI_FILE_OPEN||builtin_is_random((int)node->val)||builtin_is_directory((int)node->val)||(builtin_is_time((int)node->val)&&!time_pure_builtin((int)node->val))))return 0;
         for (cmp = node->lhs; cmp != NULL; cmp = cmp->next) {
             if (!is_const_expr(cmp)) {
                 return 0;

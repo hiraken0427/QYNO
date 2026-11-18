@@ -101,7 +101,7 @@ unsigned optimizer_local_effects(const Node *n)
     case ND_BUILTIN:
         return OPT_EXTERNAL | OPT_READ | OPT_WRITE | OPT_ALLOCATE | OPT_TRAP | OPT_CONTEXT |
             (builtin_node_may_raise((Node *)n) ? OPT_RAISE : 0) |
-            (n->val >= BI_FILE_OPEN ? OPT_RESOURCE : 0);
+            (n->val >= BI_FILE_OPEN || builtin_is_file_async((int)n->val) ? OPT_RESOURCE : 0);
     case ND_THROW: return OPT_RAISE;
     case ND_BUILD_REJECT: return OPT_TRAP;
     default: return OPT_ALL;

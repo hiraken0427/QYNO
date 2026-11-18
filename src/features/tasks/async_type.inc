@@ -48,7 +48,7 @@ static int async_suspends(Node *n)
     InputField *f;
     for(;n;n=n->next){
         if(n->kind==ND_GROUP || n->kind==ND_AWAIT || (n->kind==ND_CALL && n->func->is_async) ||
-           (n->kind==ND_BUILTIN && (n->val==BI_TASK_YIELD || n->val==BI_TIME_SLEEP_ASYNC || n->val==BI_TASK_ALL || n->val==BI_TASK_TIMEOUT)))return 1;
+           (n->kind==ND_BUILTIN && (n->val==BI_TASK_YIELD || n->val==BI_TIME_SLEEP_ASYNC || n->val==BI_TASK_ALL || n->val==BI_TASK_TIMEOUT || builtin_is_file_async((int)n->val))))return 1;
         if(async_suspends(n->lhs)||async_suspends(n->rhs)||async_suspends(n->cond)||
            async_suspends(n->then)||async_suspends(n->els)||async_suspends(n->init)||
            async_suspends(n->step)||async_suspends(n->end))return 1;

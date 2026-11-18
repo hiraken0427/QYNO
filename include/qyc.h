@@ -11,7 +11,7 @@
 #include <stdio.h>
 #include "../src/i18n/messages.h"
 
-#define QYC_VERSION "0.29.3"
+#define QYC_VERSION "0.29.4"
 
 typedef struct SourceFile SourceFile;
 typedef struct Module Module;
@@ -84,6 +84,8 @@ typedef enum {
     IMP_GET_COMMAND_LINE_W,
     IMP_CREATE_DIRECTORY_W, IMP_GET_FILE_INFORMATION_BY_HANDLE_EX, IMP_SET_FILE_INFORMATION_BY_HANDLE,
     IMP_GET_FILE_ATTRIBUTES_W, IMP_SET_LAST_ERROR,
+    IMP_CREATE_THREAD, IMP_CREATE_EVENT_W, IMP_SET_EVENT, IMP_WAIT_FOR_SINGLE_OBJECT,
+    IMP_VIRTUAL_ALLOC, IMP_VIRTUAL_FREE, IMP_GET_FULL_PATH_NAME_W,
     /* Import groups: kernel32 above, then bcrypt, then ntdll. */
     IMP_BCRYPT_GEN_RANDOM, IMP_RTL_NTSTATUS_TO_DOS_ERROR,
     IMP_COUNT
@@ -217,6 +219,7 @@ typedef enum {
     BI_DIR_CURRENT, BI_DIR_CHANGE, BI_PATH_ABSOLUTE,
     BI_DIR_EXISTS, BI_DIR_CREATE, BI_DIR_LIST, BI_DIR_REMOVE,
     BI_TASK_YIELD, BI_TIME_SLEEP_ASYNC, BI_TASK_GROUP, BI_TASK_ALL, BI_TASK_TIMEOUT,
+    BI_FILE_READ_TEXT_ASYNC, BI_FILE_WRITE_TEXT_ASYNC,
     BI_FILE_OPEN,
     BI_FILE_CLOSE,
     BI_FILE_IS_OPEN,
@@ -237,6 +240,7 @@ const TimeSpec *time_spec(int op);
 const char *builtin_replacement(const char *ns,const char *name);
 int builtin_is_time(int b);
 int builtin_is_directory(int b);
+int builtin_is_file_async(int b);
 int builtin_is_random(int b);
 int random_builtin_find(const char *name,int length);
 Type random_return_type(int b);
@@ -826,6 +830,7 @@ void x64_jcc(Cond cc, int label);
 void x64_call(int label);
 void x64_lea_label(Reg dst, int label);
 void x64_call_import(Import imp);
+void x64_load_import(Reg dst, Import imp);
 void x64_syscall(void);
 void x64_int3(void);
 void x64_ret(void);

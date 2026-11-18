@@ -2,6 +2,7 @@
 #define QYNO_ASYNC_RUNTIME_H
 #include <stddef.h>
 #include <stdint.h>
+#include "../file-io/file_async_runtime.h"
 typedef struct AsyncRuntime AsyncRuntime;
 typedef struct AsyncTask AsyncTask;
 typedef struct AsyncGroup AsyncGroup;
@@ -31,6 +32,9 @@ struct AsyncTask {
     AsyncTask **inputs;uint64_t input_count,*shape;
     uint64_t cancel_error,executing,cleanup_mask,timeout_reason,primary,site[4];
     AsyncTask *cancel_next,*visit_next;uint64_t visit_stamp;
+    AsyncTask *io_next;FileAsyncJob *io_job;
+    uint64_t *io_path,*io_text,*io_result,io_limit,io_offset,io_mode,io_utf8,io_utf8_min,io_utf8_value;
+
 };
 struct AsyncRuntime {
     uint64_t *state,initial_top;
@@ -42,10 +46,15 @@ struct AsyncRuntime {
     uint64_t *invalid_message,*empty_string,*cancel_message,*group_message,*timeout_message;
     uint64_t *io_domain,*task_domain,*error_shape;
     uint64_t visit_sequence;
+    FileAsyncPool *io_pool;uint64_t io_windows,io_imports[FA_IMPORT_COUNT];
+    AsyncTask *io_ready,*io_ready_last,*io_backlog,*io_backlog_last;uint64_t io_ready_count,io_copy_cursor;
+    uint64_t (*file_error)(AsyncRuntime *,AsyncTask *,uint64_t,uint64_t,uint64_t);
+    void (*file_fatal)(AsyncRuntime *,AsyncTask *,uint64_t);
+
 };
 enum { ASYNC_CREATE,ASYNC_AWAIT,ASYNC_RUN,ASYNC_DELAY,ASYNC_YIELD,
        ASYNC_GROUP_ENTER,ASYNC_GROUP_CLOSE,ASYNC_CANCEL,ASYNC_GROUP_CANCEL,
-       ASYNC_ALL,ASYNC_TIMEOUT,ASYNC_CHECK,ASYNC_ERROR_LINK };
+       ASYNC_ALL,ASYNC_TIMEOUT,ASYNC_CHECK,ASYNC_ERROR_LINK,ASYNC_FILE,ASYNC_SHUTDOWN };
 typedef struct {
     uint64_t op;AsyncRuntime *runtime;AsyncInvoke invoke;uint64_t *args,nargs;
     AsyncTask *task;AsyncInstant delay;AsyncGroup *group;uint64_t *shape,flags;

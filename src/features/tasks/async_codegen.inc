@@ -2,6 +2,8 @@
  * The C engine always follows SysV, including inside a generated PE image. */
 #define ASQ (-128)
 #define TQ (-336)
+typedef char AsyncRequestFitsBridge[(sizeof(AsyncRequest)<=88)?1:-1];
+typedef char AsyncTimeRequestFitsBridge[(TQ+(int)sizeof(TimeRequest)<=ASQ)?1:-1];
 static void async_store_heap(void)
 { x64_store(R14,ASYNC_STATE_HEAP,R12);x64_store(R14,ASYNC_STATE_COUNT,R13); }
 static void async_load_heap(void)
@@ -22,7 +24,7 @@ static void async_c_enter(int label)
 {
     rt_enter(label,80);
     rt_save(1,RBX);rt_save(2,R12);rt_save(3,R13);rt_save(4,R14);rt_save(5,R15);
-    rt_save(6,RDI);rt_save(7,RSI);
+    rt_save(6,RDI);rt_save(7,RSI);rt_save(8,RDX);rt_save(9,RCX);rt_save(10,R8);
     x64_load(R14,RDI,(int)offsetof(AsyncRuntime,state));async_load_heap();
     x64_load(RCX,RDI,(int)offsetof(AsyncRuntime,current));
     {int native=rt_label("async.native.top"),ready=rt_label("async.stack.top");
@@ -49,6 +51,14 @@ static void gen_async_init(void)
      const char *messages[]={QMSG_0890,QMSG_0891,QMSG_0892,"io","task"};
      for(i=0;i<5;i++){x64_lea_data(RCX,prog_add_str(prog,messages[i],strlen(messages[i])));x64_store(RAX,offsets[i],RCX);}}
     collection_shape(array_type(standard_type(emitting_ast,"lib","Error")),NULL,RCX);x64_store(RAX,(int)offsetof(AsyncRuntime,error_shape),RCX);
+    x64_mov_imm(RCX,target==TARGET_WINDOWS);x64_store(RAX,(int)offsetof(AsyncRuntime,io_windows),RCX);
+    x64_lea_label(RCX,async_file_error_label);x64_store(RAX,(int)offsetof(AsyncRuntime,file_error),RCX);
+    x64_lea_label(RCX,async_file_fatal_label);x64_store(RAX,(int)offsetof(AsyncRuntime,file_fatal),RCX);
+    if(target==TARGET_WINDOWS&&file_async_enabled){
+        Import imports[]={IMP_CREATE_THREAD,IMP_CREATE_EVENT_W,IMP_SET_EVENT,IMP_WAIT_FOR_SINGLE_OBJECT,IMP_CLOSE_HANDLE,
+            IMP_VIRTUAL_ALLOC,IMP_VIRTUAL_FREE,IMP_GET_LAST_ERROR,IMP_CREATE_FILE_W,IMP_READ_FILE,IMP_WRITE_FILE,IMP_GET_FILE_TYPE,IMP_GET_FILE_INFORMATION_BY_HANDLE,IMP_GET_FULL_PATH_NAME_W};
+        for(i=0;i<FA_IMPORT_COUNT;i++){x64_load_import(RCX,imports[i]);x64_store(RAX,(int)offsetof(AsyncRuntime,io_imports)+i*8,RCX);}
+    }
     async_store_heap();
 }
 static void gen_async_call(Function *fn,int nargs)
@@ -67,6 +77,22 @@ static void gen_async_await(Node *node)
 }
 static void gen_async_builtin(Node *node)
 {
+    if(builtin_is_file_async((int)node->val)){
+        Node *a;
+        for(a=node->lhs;a;a=a->next){gen_expr(a);push();}
+        gen_os_context(node->tok,"io.file",builtin_name((Builtin)node->val));
+        x64_load(RAX,RSP,8);x64_call(file_validate_label);
+        {int loop=rt_label("async.file.path.nul"),valid=rt_label("async.file.path.valid"),next=rt_label("async.file.path.next");
+         x64_load(RCX,RAX,0);x64_lea(RSI,RAX,8);x64_bind(loop);x64_test(RCX,RCX);x64_jcc(CC_Z,valid);
+         x64_load8(R8,RSI,0);x64_test(R8,R8);x64_jcc(CC_NZ,next);file_fail(EX_SOFTWARE,QMSG_0406);
+         x64_bind(next);x64_add_imm(RSI,1);x64_sub_imm(RCX,1);x64_jmp(loop);x64_bind(valid);}
+
+        x64_load(RAX,RSP,0);
+        if(node->val==BI_FILE_WRITE_TEXT_ASYNC)x64_call(file_validate_label);
+        else bulk_contract_limit(RAX,INT64_MAX-32);
+        x64_mov(RAX,RSP);x64_mov_imm(RDI,node->val==BI_FILE_WRITE_TEXT_ASYNC);x64_call(async_file_label);
+        x64_add_imm(RSP,16);depth-=2;gen_io_check();return;
+    }
     if(node->val==BI_TASK_ALL){
         Node *a;
         for(a=node->lhs;a;a=a->next){gen_expr(a);push();}
@@ -118,6 +144,8 @@ static void gen_async_group(Node *node)
     io_scope=&body;gen_stmts(node->then);io_scope=outer;gen_async_group_close(node);x64_jmp(done);
     x64_bind(failed);gen_async_group_close(node);x64_bind(done);
 }
+#include "../file-io/file_async_codegen.inc"
+
 static void gen_async_runtime(Ast *ast)
 {
     Function *fn;int i;
@@ -140,6 +168,12 @@ static void gen_async_runtime(Ast *ast)
          if(ops[i]==ASYNC_CHECK)rt_load(RAX,1);
          rt_leave();
      }}
+    rt_enter(async_file_label,80);rt_save(1,RAX);rt_save(2,RDI);async_request(ASYNC_FILE);
+    rt_load(RAX,1);x64_store(RBP,ASQ+(int)offsetof(AsyncRequest,args),RAX);
+    rt_load(RAX,2);x64_store(RBP,ASQ+(int)offsetof(AsyncRequest,flags),RAX);async_engine();rt_leave();
+    {int done=rt_label("async.shutdown.done");rt_enter(async_shutdown_label,80);rt_save(1,RAX);
+     x64_load(RCX,R14,ASYNC_STATE_RUNTIME);x64_test(RCX,RCX);x64_jcc(CC_Z,done);
+     async_request(ASYNC_SHUTDOWN);async_engine();x64_bind(done);rt_load(RAX,1);rt_leave();}
     rt_enter(async_all_label,80);rt_save(1,RAX);rt_save(2,RDI);rt_save(3,RSI);rt_save(4,RDX);
     async_request(ASYNC_ALL);rt_load(RAX,1);x64_store(RBP,ASQ+(int)offsetof(AsyncRequest,args),RAX);
     rt_load(RAX,2);x64_store(RBP,ASQ+(int)offsetof(AsyncRequest,nargs),RAX);
@@ -170,6 +204,8 @@ static void gen_async_runtime(Ast *ast)
      x64_bind(error);async_c_leave();}
     async_c_enter(async_sleep_label);rt_load(RDX,7);x64_load(RAX,RDX,0);x64_load(RDI,RDX,8);
     x64_call(time_timespec_label);x64_xor(RDI,RDI);x64_call(time_sleep_label);async_c_leave();
+
+    gen_file_async_callbacks();
 
     for(fn=ast->funcs;fn;fn=fn->next)if(fn->is_async&&!fn->is_template){
         async_c_enter(fn->async_label);
