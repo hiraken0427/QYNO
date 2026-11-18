@@ -1,4 +1,4 @@
-# QYNO 0.29.4
+# QYNO 0.29.5
 
 著作権およびライセンスに関する情報は、本ファイルの末尾に記載している。
 
@@ -49,6 +49,27 @@ make clean
 modulesはモジュールの登録と名前解決、i18nは英日表示、utilsは共通処理である。共有ヘッダーはinclude、生成済みのコードとデータはgenerated、Visual Studio Code拡張機能はvscodeに置く。binとbuildはビルド時に作成する。
 
 ## 新機能
+
+0.29.5では、非同期の追記と行単位の読み書きを追加した。いずれもasync関数内で呼び出し、awaitで結果を取得する。
+
+```text
+async int main();
+	str lines[] = await io.file.read_lines_async("input.txt")
+	int_64 written = await io.file.write_lines_async("output.txt", lines)
+	int_64 appended = await io.file.append_text_async("output.txt", "追記\n")
+	io.print("{written + appended} bytes")
+	return 0
+```
+
+read_lines_asyncはstr配列を返す。第2引数のmax_bytesは既定で67108864、第3引数のmax_linesは1048576である。LF、CR、CRLFを改行として読み取り、末尾の改行による余分な空行は作らない。
+
+write_lines_asyncはパスとstr配列を受け取る。第3引数のnewlineは既定でLF、第4引数のfinal_newlineはtrueである。改行にはLF、CR、CRLFを指定できる。各要素に改行を含めることはできない。配列は呼び出し時にコピーする。append_text_asyncとともに、書き込んだバイト数をint_64で返す。並行した追記のまとまりや順序は保証しない。
+
+qyc --checkを追加した。mainのないモジュールも構文と型を検査でき、実行ファイルやアセンブリは出力しない。通常のコンパイルと-Sでは引き続きmainが必要である。Visual Studio Code拡張機能もこの検査を使用する。編集中のmain未定義は警告せず、構文や型の誤り、未宣言の名前は従来どおり表示する。
+
+```sh
+qyc modules/geometry.qy --check
+```
 
 0.29.4では、io.file.read_text_asyncとio.file.write_text_asyncを追加した。async関数内で呼び出し、awaitで文字列または書き込みバイト数を取得する。引数とUTF-8の扱いは同期版に合わせる。read_text_asyncのmax_bytesは省略でき、既定は64MiBである。
 

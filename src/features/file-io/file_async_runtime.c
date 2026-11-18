@@ -53,10 +53,10 @@ static long fa_open(FileAsyncJob *j)
 {
  FileAsyncPool *p=j->pool;long h;
  if(p->windows){
-  h=(long)fa_win(p,FA_OPEN,(uint64_t)j->path,j->mode?0x40000000:0x80000000,7,0,j->mode?2:3,0x02000080,0);
+  h=(long)fa_win(p,FA_OPEN,(uint64_t)j->path,j->mode==2?4:j->mode?0x40000000:0x80000000,7,0,j->mode==2?4:j->mode?2:3,0x02000080,0);
   if(h==-1){fa_failure(j,1,fa_error(p),11);return -1;}
  }else{
-  do{h=fa_sys(257,-100,(long)j->path,0x80800|(j->mode?(1|64|512):0),0666,0,0);}while(h==-4&&!fa_load(&j->cancel));
+  do{h=fa_sys(257,-100,(long)j->path,0x80800|(j->mode?(1|64|(j->mode==2?1024:512)):0),0666,0,0);}while(h==-4&&!fa_load(&j->cancel));
   if(h<0){if(h!=-4)fa_failure(j,1,(uint64_t)-h,11);return -1;}
  }
  return h;

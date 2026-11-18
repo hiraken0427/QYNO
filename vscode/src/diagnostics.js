@@ -65,10 +65,9 @@ async function checkProject(command, project, signal) {
         const roots = project.roots || (isFile ? [path.dirname(fileURLToPath(project.model.uri))] : []);
         for (const root of roots) await fs.mkdir(snapshotPath(root), { recursive: true });
         const rootArgs = roots.flatMap(root => ['-I', snapshotPath(root)]);
-        // -S runs parsing/type checking without linking or running a user program.
-        // All generated assembly stays inside the disposable snapshot.
+        // Semantic checking accepts library modules without main and produces no output.
         const execution = await new Promise(resolve => {
-            execFile(command, [entry, '-S', '-o', path.join(directory, 'check.s'), ...rootArgs],
+            execFile(command, [entry, '--check', ...rootArgs],
                 { env: { ...process.env, QYNO_DIAGNOSTICS: 'plain', QYNO_QUIET: '1', NO_COLOR: '1' }, cwd: directory, encoding: 'utf8', windowsHide: true, timeout: 10000, maxBuffer: 1024 * 1024, signal },
                 (error, stdout, stderr) => resolve({ error, stderr }));
         });
@@ -77,7 +76,7 @@ async function checkProject(command, project, signal) {
         let issue;
         if (execution.error && !diagnostics.some(d => d.severity === 'error')) {
             issue = execution.error.code === 'ENOENT'
-                ? 'qyc が見つかりません。QYNO 0.29.4 のコンパイラをインストールし、qyno.compilerPath に実行ファイルを指定してください。'
+                ? 'qyc が見つかりません。QYNO 0.29.5 のコンパイラをインストールし、qyno.compilerPath に実行ファイルを指定してください。'
                 : `qyc の検査を完了できません: ${execution.stderr.trim() || execution.error.message}`;
         }
         return { diagnostics, issue };
@@ -109,7 +108,7 @@ function registerDiagnostics(vscode, context, index) {
             const entrySetting = config.get('entryFile', '');
             const entry = entrySetting ? vscode.Uri.file(path.resolve(folder, entrySetting)) : document.uri;
             const entryModel = await index.model(entry);
-            const project = await index.project({ uri: document.uri, getText: () => entryModel.lines.join('\n') }, false);
+            const project = await index.project({ uri: entry, getText: () => entryModel.lines.join('\n') }, false);
             project.model.uri = entry.toString();
             let command = config.get('compilerPath', 'qyc').trim() || 'qyc';
             if (!path.isAbsolute(command) && /[\\/]/.test(command)) command = path.resolve(folder, command);

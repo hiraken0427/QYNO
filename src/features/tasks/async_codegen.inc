@@ -81,17 +81,25 @@ static void gen_async_builtin(Node *node)
         Node *a;
         for(a=node->lhs;a;a=a->next){gen_expr(a);push();}
         gen_os_context(node->tok,"io.file",builtin_name((Builtin)node->val));
-        x64_load(RAX,RSP,8);x64_call(file_validate_label);
+        x64_load(RAX,RSP,(node->nargs-1)*8);x64_call(file_validate_label);
         {int loop=rt_label("async.file.path.nul"),valid=rt_label("async.file.path.valid"),next=rt_label("async.file.path.next");
          x64_load(RCX,RAX,0);x64_lea(RSI,RAX,8);x64_bind(loop);x64_test(RCX,RCX);x64_jcc(CC_Z,valid);
          x64_load8(R8,RSI,0);x64_test(R8,R8);x64_jcc(CC_NZ,next);file_fail(EX_SOFTWARE,QMSG_0406);
          x64_bind(next);x64_add_imm(RSI,1);x64_sub_imm(RCX,1);x64_jmp(loop);x64_bind(valid);}
 
-        x64_load(RAX,RSP,0);
-        if(node->val==BI_FILE_WRITE_TEXT_ASYNC)x64_call(file_validate_label);
-        else bulk_contract_limit(RAX,INT64_MAX-32);
-        x64_mov(RAX,RSP);x64_mov_imm(RDI,node->val==BI_FILE_WRITE_TEXT_ASYNC);x64_call(async_file_label);
-        x64_add_imm(RSP,16);depth-=2;gen_io_check();return;
+        if(node->val==BI_FILE_WRITE_LINES_ASYNC){x64_mov(RAX,RSP);x64_call(async_file_lines_label);x64_mov(RCX,RAX);}
+        else{
+            x64_load(RAX,RSP,0);
+            if(node->val==BI_FILE_WRITE_TEXT_ASYNC||node->val==BI_FILE_APPEND_TEXT_ASYNC)x64_call(file_validate_label);
+            else{
+                if(node->val==BI_FILE_READ_LINES_ASYNC){bulk_contract_limit(RAX,(INT64_MAX-32)/8);x64_load(RAX,RSP,8);}
+                bulk_contract_limit(RAX,INT64_MAX-32);
+            }
+            x64_xor(RCX,RCX);
+        }
+        if(node->val==BI_FILE_READ_LINES_ASYNC)collection_shape(task_result(node->ty),NULL,RDX);else x64_xor(RDX,RDX);
+        x64_mov(RAX,RSP);x64_mov_imm(RDI,node->val-BI_FILE_READ_TEXT_ASYNC);x64_mov_imm(RSI,node->nargs);x64_call(async_file_label);
+        x64_add_imm(RSP,node->nargs*8);depth-=node->nargs;gen_io_check();return;
     }
     if(node->val==BI_TASK_ALL){
         Node *a;
@@ -168,9 +176,12 @@ static void gen_async_runtime(Ast *ast)
          if(ops[i]==ASYNC_CHECK)rt_load(RAX,1);
          rt_leave();
      }}
-    rt_enter(async_file_label,80);rt_save(1,RAX);rt_save(2,RDI);async_request(ASYNC_FILE);
+    rt_enter(async_file_label,80);rt_save(1,RAX);rt_save(2,RDI);rt_save(3,RSI);rt_save(4,RDX);rt_save(5,RCX);async_request(ASYNC_FILE);
     rt_load(RAX,1);x64_store(RBP,ASQ+(int)offsetof(AsyncRequest,args),RAX);
-    rt_load(RAX,2);x64_store(RBP,ASQ+(int)offsetof(AsyncRequest,flags),RAX);async_engine();rt_leave();
+    rt_load(RAX,2);x64_store(RBP,ASQ+(int)offsetof(AsyncRequest,flags),RAX);
+    rt_load(RAX,3);x64_store(RBP,ASQ+(int)offsetof(AsyncRequest,nargs),RAX);
+    rt_load(RAX,4);x64_store(RBP,ASQ+(int)offsetof(AsyncRequest,shape),RAX);
+    rt_load(RAX,5);x64_store(RBP,ASQ+(int)offsetof(AsyncRequest,delay),RAX);async_engine();rt_leave();
     {int done=rt_label("async.shutdown.done");rt_enter(async_shutdown_label,80);rt_save(1,RAX);
      x64_load(RCX,R14,ASYNC_STATE_RUNTIME);x64_test(RCX,RCX);x64_jcc(CC_Z,done);
      async_request(ASYNC_SHUTDOWN);async_engine();x64_bind(done);rt_load(RAX,1);rt_leave();}

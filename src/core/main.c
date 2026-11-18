@@ -47,6 +47,7 @@ static void usage(int status)
         fprintf(out,"使い方: qyc <入力ファイル.qy> [オプション]\n\n");
         fprintf(out,"  -o <ファイル>           出力ファイル名を指定する\n");
         fprintf(out,"  -S                      アセンブリだけを出力する\n");
+        fprintf(out,"  --check                 mainを必須とせず、構文と型だけを検査する\n");
         fprintf(out,"  -I <ディレクトリ>       import の探索ルートを追加する（複数指定可）\n");
         fprintf(out,"  --target windows|linux  出力先OSを指定する（既定は実行中のOS）\n");
         fprintf(out,"  --jp, --japanese        日本語の表示を使う（大文字も使用可）\n");
@@ -60,6 +61,7 @@ static void usage(int status)
         fprintf(out,"Usage: qyc <input.qy> [options]\n\n");
         fprintf(out,"  -o <file>               Set the output filename\n");
         fprintf(out,"  -S                      Emit assembly instead of an executable\n");
+        fprintf(out,"  --check                 Check syntax and types without requiring main\n");
         fprintf(out,"  -I <directory>          Add an import search root (repeatable)\n");
         fprintf(out,"  --target windows|linux  Set the target OS (default: host OS)\n");
         fprintf(out,"  --jp, --japanese        Use Japanese messages (case-insensitive)\n");
@@ -165,7 +167,7 @@ int main(int argc, char **argv)
     Ast *ast;
     Program prog;
     Target target;
-    int asm_only;
+    int asm_only,check_only=0;
     int i;
     const char **roots;
     int root_count = 0;
@@ -222,6 +224,7 @@ int main(int argc, char **argv)
             output_path = argv[i];
             continue;
         }
+        if(!strcmp(argv[i],"--check")){check_only=1;continue;}
         if (strcmp(argv[i], "-S") == 0) {
             asm_only = 1;
             continue;
@@ -259,6 +262,8 @@ int main(int argc, char **argv)
         fatal("%s",diagnostic_japanese?"ソースファイルの拡張子は\".qy\"にしてください":"Source file extension must be \".qy\"");
     }
 
+    if(check_only&&(asm_only||output_path))fatal("%s",diagnostic_japanese?"--check と -S または -o は同時に指定できません":"Cannot combine --check with -S or -o");
+
     /* 1–3. 全モジュールを読み込み、各ソース位置を保持して解析する。 */
     diagnostic_phase(1);
     ast = load_program(input_path, roots, root_count);
@@ -266,8 +271,10 @@ int main(int argc, char **argv)
 
     /* 4. 型検査 */
     diagnostic_phase(2);
+    ast->check_only=check_only;
     typecheck(ast, target);
     diagnostic_phase(0);
+    if(check_only){if(!diagnostic_quiet)puts(diagnostic_japanese?"検査が完了しました":"Check completed successfully");return 0;}
     optimize_program(ast);
 
     /* -S：アセンブリだけを出力して終わる */

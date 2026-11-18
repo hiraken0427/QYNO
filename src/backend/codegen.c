@@ -63,6 +63,7 @@ static FILE *text;
 static Target target;
 static Ast *emitting_ast;
 static int async_enabled,file_async_enabled;
+static int async_file_lines_label;
 static int async_file_label,async_shutdown_label,async_file_error_label,async_file_fatal_label;
 static int async_engine_label,async_create_label,async_await_label,async_run_label;
 static int async_yield_label,async_delay_label,async_alloc_label,async_clock_label,async_sleep_label;
@@ -6318,6 +6319,7 @@ static void codegen_pass(Ast *ast, Program *out_prog, FILE *out_text, Target out
     async_cancel_label=new_label("async.cancel");async_group_cancel_label=new_label("async.group.cancel");
     async_all_label=new_label("async.all");async_timeout_label=new_label("async.timeout");
     async_check_label=new_label("async.check");async_link_label=new_label("async.error.link");
+    async_file_lines_label=new_label("async.file.lines.validate");
     async_file_label=new_label("async.file");async_shutdown_label=new_label("async.shutdown");
     async_file_error_label=new_label("async.file.error");async_file_fatal_label=new_label("async.file.fatal");
     path_call_label=new_label("path.call");
