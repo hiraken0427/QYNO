@@ -1,10 +1,12 @@
-# QYNO 0.29.2
+# QYNO 0.29.3
 
 著作権およびライセンスに関する情報は、本ファイルの末尾に記載している。
 
 [概要](#概要)
 
 [ビルド手順](#ビルド手順)
+
+[ソース構成](#ソース構成)
 
 [新機能](#新機能)
 
@@ -34,13 +36,21 @@ Linux x64では、ソースコードを取得したディレクトリで次の�
 make
 ```
 
-生成されるコンパイラはqycである。非同期実行基盤のソースを変更した場合は、Linux x64でmake async-blobを実行して同梱ヘッダーを更新する。再生成にはGCC、binutils、Python 3を使用する。ビルド時の生成物は次のコマンドで削除できる。
+生成されるコンパイラはbin/qycである。Windowsではbin/qyc.exeとなる。中間生成物はbuildに置く。非同期実行基盤のソースを変更した場合は、Linux x64でmake async-blobを実行してgenerated内の同梱ヘッダーを更新する。再生成にはGCC、binutils、Python 3を使用する。ビルド時の生成物は次のコマンドで削除できる。
 
 ```sh
 make clean
 ```
 
+## ソース構成
+
+コンパイラの実装はsrcに置いている。coreは起動処理、syntaxは字句解析と構文解析、analysisは型検査、optimizerは最適化、backendはコード生成を担当する。個別機能の型検査と実行時処理はfeatures内にまとめている。
+
+modulesはモジュールの登録と名前解決、i18nは英日表示、utilsは共通処理である。共有ヘッダーはinclude、生成済みのコードとデータはgenerated、Visual Studio Code拡張機能はvscodeに置く。binとbuildはビルド時に作成する。
+
 ## 新機能
+
+0.29.3では、ソースコードを機能ごとのフォルダへ整理した。コンパイラの出力先はbin、拡張機能の配置先はvscodeへ変更した。言語の構文と動作は0.29.2を維持する。
 
 0.29.2では、タスクグループ、キャンセル、複数タスクの待機、タイムアウトを追加した。withを予約語に追加する。既存のasync 型名とautoによる宣言、呼び出した時点で開始する方式は維持する。
 
@@ -100,14 +110,14 @@ int main();
 コンパイルして実行する。
 
 ```sh
-./qyc main.qy -o main
+./bin/qyc main.qy -o main
 ./main
 ```
 
 Windows向けの実行ファイルは、出力先を指定して生成する。
 
 ```sh
-./qyc main.qy --target windows -o main.exe
+./bin/qyc main.qy --target windows -o main.exe
 ```
 
 出力先は--targetで指定する。指定しない場合は、コンパイラを実行しているOSに合わせる。-Sはアセンブリの出力、-Iはモジュールの探索先の追加に使用する。--helpで使い方を確認できる。
@@ -115,13 +125,13 @@ Windows向けの実行ファイルは、出力先を指定して生成する。
 表示は英語を既定とする。--jpまたは--japaneseを付けると、ヘルプ、診断、完了メッセージを日本語で表示する。--JPなどの大文字も使用できる。実行時エラーの言語はコンパイル時の指定に従う。--versionの英語表示は従来と同じである。
 
 ```sh
-./qyc main.qy --japanese
-./qyc --help --jp
+./bin/qyc main.qy --japanese
+./bin/qyc --help --jp
 ```
 
 エラーにはファイルの絶対パス、行と列、該当するソースと下線を表示する。コンパイラの診断は端末で自動的に着色する。--color=neverまたは環境変数NO_COLORで色を無効にできる。--color=alwaysは出力先によらず着色する。--quietはコンパイル完了の表示を省く。ツールからの利用には、位置情報を1行で出力する--diagnostics=plainを用いる。
 
-Visual Studio Code用の拡張機能は[VSCode Extensions](VSCode%20Extensions/README.md)に置いている。ソースコードと現行バージョンのVSIXを含む。
+Visual Studio Code用の拡張機能は[vscode](vscode/README.md)に置いている。ソースコードと現行バージョンのVSIXを含む。
 
 mainで実行時引数を受け取る場合は、str配列を宣言する。実行ファイル名は引数に含まれない。
 
@@ -271,6 +281,6 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-UnicodeのデータにはUnicode License V3が適用される。著作権表記とライセンス全文は[grapheme_data.h](grapheme_data.h)に収録している。
+UnicodeのデータにはUnicode License V3が適用される。著作権表記とライセンス全文は[grapheme_data.h](generated/grapheme_data.h)に収録している。
 
-GCC実行時コードにはGPLv3以降とGCC Runtime Library Exception 3.1が適用される。著作権表記、ライセンス全文および配布元は[wide_blob.h](wide_blob.h)に収録している。
+GCC実行時コードにはGPLv3以降とGCC Runtime Library Exception 3.1が適用される。著作権表記、ライセンス全文および配布元は[wide_blob.h](generated/wide_blob.h)に収録している。

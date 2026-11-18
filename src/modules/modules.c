@@ -8,7 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
-#include "standard_time_source.h"
+#include "../features/time/standard_time_source.h"
 
 typedef enum { SYM_NONE, SYM_ENUM, SYM_MODEL, SYM_INTERFACE, SYM_MODULE, SYM_FUNCTION, SYM_CONSTANT, SYM_BUILTIN } SymbolKind;
 typedef struct {

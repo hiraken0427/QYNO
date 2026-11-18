@@ -1,5 +1,5 @@
 #include "grapheme_runtime.h"
-#include "grapheme_data.h"
+#include "../../../generated/grapheme_data.h"
 static int decode(const unsigned char *s,uint64_t len,uint32_t *cp,unsigned *width)
 {
     uint32_t v,min;unsigned n,i;

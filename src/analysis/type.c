@@ -229,9 +229,9 @@ static Node *new_cast(Node *expr, Type ty)
     return node;
 }
 
-#include "wide_type.inc"
+#include "../features/numeric/wide_type.inc"
 static Value convert_value(Node *node,Value v,Type to);
-#include "enums_type.inc"
+#include "../features/enums/enums_type.inc"
 
 static int integer_literal(Node *n)
 {
@@ -464,22 +464,22 @@ static void require_bool(Node *node, const char *what)
     }
 }
 
-#include "interfaces_type.inc"
+#include "../features/interfaces/interfaces_type.inc"
 #include "readonly_type.inc"
-#include "arrays_type.inc"
+#include "../features/arrays/arrays_type.inc"
 static int check_random_method(Node *node);
-#include "text_type.inc"
-#include "models_type.inc"
+#include "../features/text/text_type.inc"
+#include "../features/models/models_type.inc"
 #include "initialization_type.inc"
-#include "integer_bases_type.inc"
-#include "complex_type.inc"
+#include "../features/numeric/integer_bases_type.inc"
+#include "../features/numeric/complex_type.inc"
 
 static long long round_integer(Node *node, long long x, long long digits, Builtin mode);
 static void check_pow_domain(Node *node);
 
-#include "file_bulk_type.inc"
-#include "file_mutation_type.inc"
-#include "path_info_type.inc"
+#include "../features/file-io/file_bulk_type.inc"
+#include "../features/file-io/file_mutation_type.inc"
+#include "../features/filesystem/path_info_type.inc"
 
 static void check_file_builtin(Node *node)
 {
@@ -578,10 +578,10 @@ static void check_file_builtin(Node *node)
  *   math.round・ceil・floor(x, 桁数?)  x は数値、桁数は int。戻り値は x の型
  *   int(x)・float(x)・double(x)  x は数値
  */
-#include "random_type.inc"
-#include "directory_type.inc"
-#include "library_type.inc"
-#include "time_type.inc"
+#include "../features/random/random_type.inc"
+#include "../features/filesystem/directory_type.inc"
+#include "../modules/library_type.inc"
+#include "../features/time/time_type.inc"
 
 static void check_builtin(Node *node)
 {
@@ -1186,7 +1186,7 @@ static long long string_info(Node *node, Value v, long long index, int *offset, 
     *offset=off==UINT64_MAX?-1:(int)off;*length=(int)width;return (long long)count;
 }
 
-#include "enums_const.inc"
+#include "../features/enums/enums_const.inc"
 
 /* 値 v を to 型に変換する（型検査で許した変換のみ） */
 static Value convert_value(Node *node, Value v, Type to)
@@ -1606,9 +1606,9 @@ static long long round_integer(Node *node, long long x, long long digits, Builti
     return result == (unsigned long long)LLONG_MAX + 1 ? LLONG_MIN : -(long long)result;
 }
 
-#include "library_const.inc"
-#include "text_const.inc"
-#include "time_const.inc"
+#include "../modules/library_const.inc"
+#include "../features/text/text_const.inc"
+#include "../features/time/time_const.inc"
 
 /* 組み込み関数の値をコンパイル時に計算する */
 static Value eval_builtin(Node *node)
@@ -1674,7 +1674,7 @@ static Value eval_builtin(Node *node)
     }
 }
 
-#include "const_models.inc"
+#include "../features/models/const_models.inc"
 
 /* 式の値をコンパイル時に計算する（リテラル・他の const・演算のみ） */
 static Value eval_const_inner(Node *node)
@@ -2141,7 +2141,7 @@ static int stmts_return(Node *list)
 }
 
 #include "match_type.inc"
-#include "recoverable_type.inc"
+#include "../features/error-handling/recoverable_type.inc"
 
 static void check_stmt(Node *node)
 {
@@ -2318,10 +2318,10 @@ static void check_stmts(Node *list)
     }
 }
 
-#include "generic_functions.inc"
-#include "module_visibility_type.inc"
+#include "../features/functions/generic_functions.inc"
+#include "../modules/module_visibility_type.inc"
 #include "return_inference.inc"
-#include "async_type.inc"
+#include "../features/tasks/async_type.inc"
 
 static void ensure_const(Var *v)
 {
@@ -2394,9 +2394,9 @@ static void check_names(Ast *ast)
 }
 
 #include "initialization_flow.inc"
-#include "recoverable_effects.inc"
-#include "file_close_analysis.inc"
-#include "interfaces_specialize.inc"
+#include "../features/error-handling/recoverable_effects.inc"
+#include "../features/file-io/file_close_analysis.inc"
+#include "../features/interfaces/interfaces_specialize.inc"
 #include "inference_warnings.inc"
 
 void typecheck(Ast *ast, Target out_target)

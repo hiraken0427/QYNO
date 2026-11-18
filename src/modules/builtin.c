@@ -32,10 +32,10 @@ static const BuiltinInfo builtins[BI_COUNT] = {
     { "io", "print" },
     { "io", "input" },
 #define TIME_API(id,name,min,max,args,result) {"time",name},
-#include "time_api.def"
+#include "../features/time/time_api.def"
 #undef TIME_API
 #define RANDOM_API(id,name,ty,op) {"lib.random",name},
-#include "random_api.def"
+#include "../features/random/random_api.def"
 #undef RANDOM_API
     { "lib", "size" }, { "lib", "length" },
     { "io.path", "join" }, { "io.path", "basename" },
@@ -115,12 +115,12 @@ int builtin_is_random(int b){return b>=BI_RANDOM_INT8&&b<=BI_RANDOM_INIT;}
 int random_builtin_find(const char *name,int length){int b;for(b=BI_RANDOM_INT8;b<=BI_RANDOM_INIT;b++)if((int)strlen(builtin_name((Builtin)b))==length&&!memcmp(name,builtin_name((Builtin)b),(size_t)length))return b;return -1;}
 Type random_return_type(int b){static const Type types[]={
 #define RANDOM_API(id,name,ty,op) ty,
-#include "random_api.def"
+#include "../features/random/random_api.def"
 #undef RANDOM_API
 };return types[b-BI_RANDOM_INT8];}
 int random_operation(int b){static const int ops[]={
 #define RANDOM_API(id,name,ty,op) op,
-#include "random_api.def"
+#include "../features/random/random_api.def"
 #undef RANDOM_API
 };return ops[b-BI_RANDOM_INT8];}
 int builtin_is_directory(int b){return b>=BI_DIR_CURRENT&&b<=BI_DIR_REMOVE;}
@@ -129,7 +129,7 @@ const TimeSpec *time_spec(int op)
 {
     static const TimeSpec specs[]={
 #define TIME_API(id,name,min,max,args,result) {min,max,args,TR_##result},
-#include "time_api.def"
+#include "../features/time/time_api.def"
 #undef TIME_API
     };
     return &specs[op];

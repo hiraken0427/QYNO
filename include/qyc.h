@@ -3,15 +3,15 @@
 
 #include <stddef.h>
 #include <stdint.h>
-#include "wide_runtime.h"
-#include "time_runtime.h"
-#include "random_runtime.h"
-#include "text_runtime.h"
-#include "grapheme_runtime.h"
+#include "../src/features/numeric/wide_runtime.h"
+#include "../src/features/time/time_runtime.h"
+#include "../src/features/random/random_runtime.h"
+#include "../src/features/text/text_runtime.h"
+#include "../src/features/text/grapheme_runtime.h"
 #include <stdio.h>
-#include "messages.h"
+#include "../src/i18n/messages.h"
 
-#define QYC_VERSION "0.29.2"
+#define QYC_VERSION "0.29.3"
 
 typedef struct SourceFile SourceFile;
 typedef struct Module Module;
@@ -205,10 +205,10 @@ typedef enum {
     BI_IO_PRINT,    /* io.print(...)：出力文として解析する */
     BI_IO_INPUT,    /* io.input(...)：入力先と形式を保持する */
 #define TIME_API(id,name,min,max,args,result) BI_TIME_##id,
-#include "time_api.def"
+#include "../src/features/time/time_api.def"
 #undef TIME_API
 #define RANDOM_API(id,name,ty,op) BI_RANDOM_##id,
-#include "random_api.def"
+#include "../src/features/random/random_api.def"
 #undef RANDOM_API
     BI_LIB_SIZE, BI_LIB_LENGTH,
     BI_PATH_JOIN, BI_PATH_BASENAME, BI_PATH_DIRNAME, BI_PATH_EXTENSION,

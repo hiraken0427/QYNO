@@ -1,6 +1,6 @@
 #ifndef QYNO_RANDOM_RUNTIME_H
 #define QYNO_RANDOM_RUNTIME_H
-#include "wide_runtime.h"
+#include "../numeric/wide_runtime.h"
 typedef struct {
     int64_t op,ty,status,phase,flags,first_tag,second_tag;
     WideBits first,second,out;
