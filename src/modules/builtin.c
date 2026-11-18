@@ -48,6 +48,7 @@ static const BuiltinInfo builtins[BI_COUNT] = {
     { "io.dir", "list" }, { "io.dir", "remove" },
     { "task", "yield" }, { "time", "sleep_async" },
     { "task", "group" }, { "task", "all" }, { "task", "with_timeout" },
+    { "io.file", "read_text_async" }, { "io.file", "write_text_async" },
     { "io.file", "open" },
     { "io.file", "close" },
     { "io.file", "is_open" },
@@ -111,6 +112,7 @@ const char *builtin_namespace_of(const char *name, int len)
     return NULL;
 }
 
+int builtin_is_file_async(int b){return b==BI_FILE_READ_TEXT_ASYNC||b==BI_FILE_WRITE_TEXT_ASYNC;}
 int builtin_is_random(int b){return b>=BI_RANDOM_INT8&&b<=BI_RANDOM_INIT;}
 int random_builtin_find(const char *name,int length){int b;for(b=BI_RANDOM_INT8;b<=BI_RANDOM_INIT;b++)if((int)strlen(builtin_name((Builtin)b))==length&&!memcmp(name,builtin_name((Builtin)b),(size_t)length))return b;return -1;}
 Type random_return_type(int b){static const Type types[]={
@@ -136,7 +138,7 @@ const TimeSpec *time_spec(int op)
 }
 int builtin_may_raise(int b)
 {
-    return b==BI_TASK_YIELD || b==BI_TIME_SLEEP_ASYNC || b==BI_TASK_ALL || b==BI_TASK_TIMEOUT || (builtin_is_random(b)&&random_operation(b)!=0)||builtin_is_directory(b)||(b>=BI_FILE_OPEN&&b!=BI_FILE_IS_OPEN&&b!=BI_FILE_TRY_OPEN)||
+    return builtin_is_file_async(b) || b==BI_TASK_YIELD || b==BI_TIME_SLEEP_ASYNC || b==BI_TASK_ALL || b==BI_TASK_TIMEOUT || (builtin_is_random(b)&&random_operation(b)!=0)||builtin_is_directory(b)||(b>=BI_FILE_OPEN&&b!=BI_FILE_IS_OPEN&&b!=BI_FILE_TRY_OPEN)||
         (builtin_is_time(b)&&(b<=BI_TIME_SLEEP_UNTIL||b>=BI_TIME_TICKS));
 }
 int builtin_node_may_raise(Node *n)

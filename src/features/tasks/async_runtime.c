@@ -141,10 +141,12 @@ static int request_cancel(AsyncTask *t,uint64_t error)
         if(current->root_group)current->root_group->cancel_error=error;
         for(i=0;i<current->input_count;i++)cancel_add(&head,&tail,current->inputs[i],error);
         if(!current->invoke&&(current->kind==ASYNC_DELAY||current->kind==ASYNC_YIELD)){current->error=error;finish(current);}
-        else enqueue(current->runtime,current);
+        else {if(current->kind==ASYNC_FILE&&current->io_job)file_async_cancel(current->io_job);enqueue(current->runtime,current);}
     }
     return 1;
 }
+#include "../file-io/file_async_tasks.inc"
+
 static void cancel_group(AsyncGroup *g,uint64_t error)
 {
     AsyncTask *t;AsyncGroup *inner;
@@ -360,7 +362,8 @@ static AsyncTask *create(AsyncRequest *q)
         if(p->cancel_error)t->cancel_error=p->cancel_error;
         else if(t->group->cancel_error)t->cancel_error=t->group->cancel_error;
     }else r->root=t;
-    if(q->op==ASYNC_CREATE){
+    if(q->op==ASYNC_FILE){io_submit(r,t,q);}
+    else if(q->op==ASYNC_CREATE){
         t->root_group=group_new(r,t,0);t->current_group=t->root_group;
         if(t->cancel_error){t->error=t->cancel_error;finish(t);return t;}
         if(q->nargs){t->args=r->allocate(r,q->nargs*8);for(i=0;i<q->nargs;i++)t->args[i]=q->args[q->nargs-1-i];}
@@ -399,6 +402,8 @@ static AsyncTask *create(AsyncRequest *q)
 static void pump(AsyncRuntime *r)
 {
     AsyncTask *t,*next;AsyncInstant now={0,0},delay;AsyncDeadline earliest={0,0};int timers=0,earliest_set=0;
+    uint32_t io_sequence=r->io_pool?file_async_sequence(r->io_pool):0;
+    int io_active=io_progress(r);
     r->epoch++;
     for(t=r->pending;t;t=t->pending_next)if(t->kind==ASYNC_DELAY || (t->kind==ASYNC_TIMEOUT&&!t->timeout_reason)){timers=1;break;}
     if(timers)r->clock(r,&now);
@@ -420,14 +425,21 @@ static void pump(AsyncRuntime *r)
         }
     }
     if(r->first){t=r->first;r->first=t->queue_next;if(!r->first)r->last=0;t->queue_next=0;t->queued=0;if(!done(t))run(r,t);return;}
+    if(io_needs_turn(r)==1)return;
+    if(r->io_ready && io_active){
+        /* Only retry dispatch if an active worker finished this pass. */
+        AsyncTask *a;int running=0;for(a=r->pending;a;a=a->pending_next)if(a->kind==ASYNC_FILE&&a->io_job&&a->io_job->worker)running++;
+        if(running<4)return;
+    }
     if(earliest_set){
         uint64_t seconds=earliest.seconds-(uint64_t)now.seconds;
         delay.seconds=seconds>86400?86400:(int64_t)seconds;delay.nanoseconds=(int64_t)earliest.nanoseconds-now.nanoseconds;
         if(delay.nanoseconds<0){delay.seconds--;delay.nanoseconds+=1000000000;}
         if(delay.seconds<0){delay.seconds=0;delay.nanoseconds=0;}
-        r->sleep(r,&delay);
+        if(io_active)file_async_wait(r->io_pool,io_sequence,delay.seconds,delay.nanoseconds);else r->sleep(r,&delay);
         if(*pending(r)){uint64_t error=*pending(r);*pending(r)=0;for(t=r->pending;t;t=next){next=t->pending_next;if(t->kind==ASYNC_DELAY){t->error=error;finish(t);}else if(t->kind==ASYNC_TIMEOUT)t->primary=error;}}
-    }else if(r->pending){
+    }else if(io_active){file_async_wait(r->io_pool,io_sequence,-1,0);}
+    else if(r->pending){
         uint64_t error=error_record(r,4,r->invalid_message,0);
         for(t=r->pending;t;t=t->pending_next)if(t->invoke&&!t->executing){t->primary=error;enqueue(r,t);}
     }
@@ -436,7 +448,8 @@ __attribute__((visibility("hidden"))) uint64_t qyno_async(AsyncRequest *q)
 {
     AsyncRuntime *r=q->runtime;AsyncTask *self=r->current;
     switch(q->op){
-    case ASYNC_CREATE:case ASYNC_DELAY:case ASYNC_YIELD:case ASYNC_ALL:case ASYNC_TIMEOUT:return (uint64_t)create(q);
+    case ASYNC_CREATE:case ASYNC_DELAY:case ASYNC_YIELD:case ASYNC_ALL:case ASYNC_TIMEOUT:case ASYNC_FILE:return (uint64_t)create(q);
+    case ASYNC_SHUTDOWN:file_async_stop(r->io_pool);r->io_pool=0;return 0;
     case ASYNC_CHECK:checkpoint(r);return 0;
     case ASYNC_CANCEL:
         if(done(q->task)||q->task->cancel_error)return 0;

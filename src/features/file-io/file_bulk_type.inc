@@ -21,10 +21,12 @@ static Node *file_bulk_default(Node *node,Type ty,long long value,const char *te
 }
 static void check_file_bulk_builtin(Node *node)
 {
-    int b=(int)node->val,min=b==BI_FILE_READ_TEXT||b==BI_FILE_READ_LINES?1:2;
+    int b=(int)node->val;
+    if(builtin_is_file_async(b))b=b==BI_FILE_READ_TEXT_ASYNC?BI_FILE_READ_TEXT:BI_FILE_WRITE_TEXT;
+    int min=b==BI_FILE_READ_TEXT||b==BI_FILE_READ_LINES?1:2;
     int max=b==BI_FILE_READ_TEXT?2:b==BI_FILE_READ_LINES?3:b==BI_FILE_WRITE_LINES?4:2,i=0;
     Node *arg,**slot=&node->lhs;
-    if(node->nargs<min||node->nargs>max)error_tok(node->tok,QMSG_0841,builtin_name((Builtin)b),min,max);
+    if(node->nargs<min||node->nargs>max)error_tok(node->tok,QMSG_0841,builtin_name((Builtin)node->val),min,max);
     for(arg=node->lhs;arg;arg=arg->next)if(arg->kind==ND_REFARG)error_tok(arg->tok,QMSG_0842);
     while(node->nargs<max){
         Node **tail=&node->lhs;while(*tail)tail=&(*tail)->next;
@@ -35,7 +37,7 @@ static void check_file_bulk_builtin(Node *node)
     for(;*slot;slot=&(*slot)->next,i++){
         arg=*slot;
         if(i==0||((b==BI_FILE_WRITE_TEXT||b==BI_FILE_APPEND_TEXT)&&i==1)||(b==BI_FILE_WRITE_LINES&&i==2)){
-            check_expr(arg);if(!type_is_text(arg->ty))error_tok(arg->tok,QMSG_0843,builtin_name((Builtin)b));
+            check_expr(arg);if(!type_is_text(arg->ty))error_tok(arg->tok,QMSG_0843,builtin_name((Builtin)node->val));
             file_bulk_const_text(arg,i==0,0);
             if(b==BI_FILE_WRITE_LINES&&i==2&&is_const_expr(arg)){
                 Value v=eval_const(arg);

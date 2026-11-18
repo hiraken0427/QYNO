@@ -1,4 +1,4 @@
-# QYNO 0.29.3
+# QYNO 0.29.4
 
 著作権およびライセンスに関する情報は、本ファイルの末尾に記載している。
 
@@ -36,7 +36,7 @@ Linux x64では、ソースコードを取得したディレクトリで次の�
 make
 ```
 
-生成されるコンパイラはbin/qycである。Windowsではbin/qyc.exeとなる。中間生成物はbuildに置く。非同期実行基盤のソースを変更した場合は、Linux x64でmake async-blobを実行してgenerated内の同梱ヘッダーを更新する。再生成にはGCC、binutils、Python 3を使用する。ビルド時の生成物は次のコマンドで削除できる。
+生成されるコンパイラはbin/qycである。Windowsではbin/qyc.exeとなる。中間生成物はbuildに置く。タスク実行基盤や非同期ファイルのワーカーを変更した場合は、Linux x64でmake async-blobを実行してgenerated内の同梱ヘッダーを更新する。make async-file-blobでも同じヘッダーを更新できる。再生成にはGCC、binutils、Python 3を使用する。ビルド時の生成物は次のコマンドで削除できる。
 
 ```sh
 make clean
@@ -49,6 +49,28 @@ make clean
 modulesはモジュールの登録と名前解決、i18nは英日表示、utilsは共通処理である。共有ヘッダーはinclude、生成済みのコードとデータはgenerated、Visual Studio Code拡張機能はvscodeに置く。binとbuildはビルド時に作成する。
 
 ## 新機能
+
+0.29.4では、io.file.read_text_asyncとio.file.write_text_asyncを追加した。async関数内で呼び出し、awaitで文字列または書き込みバイト数を取得する。引数とUTF-8の扱いは同期版に合わせる。read_text_asyncのmax_bytesは省略でき、既定は64MiBである。
+
+```text
+using io
+
+async int main();
+	auto first = io.file.read_text_async("first.txt")
+	auto second = io.file.read_text_async("second.txt")
+	auto texts = await task.with_timeout(task.all(first, second), 2.0)
+	int_64 written = await io.file.write_text_async("merged.txt", texts[0] + texts[1])
+	print("{written} bytes")
+	return 0
+```
+
+ファイル操作は4本の専用ワーカーで行う。実行待ち列は64件とし、超過分は受付待ちのタスクとなる。ワーカーは最初の非同期ファイル要求で作成する。通常の同期処理やタイマーだけのプログラムでは作成しない。
+
+相対パスの基準と書き込む文字列は呼び出し時に確定する。その後のio.dir.changeや変数への代入は開始済みの要求へ影響しない。ファイル内容やメタデータのスナップショットは保証しない。
+
+キャンセルと期限切れでは、実行中のOS処理の復帰とcloseの結果を待つ。OS処理が戻らない場合は期限を超えて待つことがある。書き込み済みの内容は巻き戻さない。原子的な置換やディスクへの永続化は保証しない。同じパスの処理順が必要な場合は、前の処理をawaitしてから次を開始する。
+
+通常のI/O失敗はio.Errorで通知する。task.allと所有スコープでの集約は既存の規則に従う。不正なUTF-8、パス内のNUL、不正な上限値は同期版と同じ契約違反である。fileハンドルは返さず、API内部で開閉する。
 
 0.29.3では、ソースコードを機能ごとのフォルダへ整理した。コンパイラの出力先はbin、拡張機能の配置先はvscodeへ変更した。言語の構文と動作は0.29.2を維持する。
 
@@ -93,7 +115,7 @@ async mainは引数なし、void指定、str配列の引数に対応する。asy
 
 asyncメソッド、finally内の非同期処理、永続的な参照ローカル変数は未対応である。ref、addr、file、interfaceを別タスクへ渡すことは許可しない。fileはasync関数内のローカルとして使用でき、明示的なcloseが必要である。finallyはキャンセル時も実行し、同期のcloseとcancelを使用できる。
 
-各ユーザータスクは1MiBのスタック領域を使用し、中断中の変数、結果、エラー、グループと待機情報をGCが保持する。allと期限付きタスクにはユーザー関数用のスタックを追加確保しない。ファイル操作の非同期APIとCPU並列処理は今後追加する。
+各ユーザータスクは1MiBのスタック領域を使用し、中断中の変数、結果、エラー、グループと待機情報をGCが保持する。all、期限付きタスク、非同期ファイル要求にはユーザー関数用のスタックを追加確保しない。CPU並列処理は今後追加する。
 
 ## 使用方法
 

@@ -748,6 +748,15 @@ void x64_call_import(Import imp)
     emit(b, sizeof(b), "call [rip+__imp_%s]", import_name(imp));
 }
 
+void x64_load_import(Reg dst,Import imp)
+{
+    unsigned char b[7]={0x48,0x8b,0x05,0,0,0,0};
+    if(dst>=8)b[0]|=4;
+    b[2]|=(unsigned char)((dst&7)<<3);
+    prog_add_reloc(prog,RELOC_IMPORT,prog->text.len+3,(size_t)imp);
+    emit(b,7,"mov %s, [rip+__imp_%s]",reg64_names[dst],import_name(imp));
+}
+
 /* syscall：0F 05 */
 void x64_syscall(void)
 {

@@ -62,7 +62,8 @@ static Program *prog;
 static FILE *text;
 static Target target;
 static Ast *emitting_ast;
-static int async_enabled;
+static int async_enabled,file_async_enabled;
+static int async_file_label,async_shutdown_label,async_file_error_label,async_file_fatal_label;
 static int async_engine_label,async_create_label,async_await_label,async_run_label;
 static int async_yield_label,async_delay_label,async_alloc_label,async_clock_label,async_sleep_label;
 static int async_group_enter_label,async_group_close_label,async_cancel_label,async_group_cancel_label;
@@ -277,6 +278,7 @@ static void gen_entry_windows(void)
     x64_mov(R15, RSP);
     gen_input_state_init();     /* 入力の状態の領域を r14 に */
     gen_entry_main();
+    if(async_enabled)x64_call(async_shutdown_label);
     x64_load(R11,R14,IO_PENDING);x64_test(R11,R11);x64_jcc(CC_NZ,io_unhandled_label);
 
     /* ここから終了処理（rax が終了コード。実行時エラーもここへ来る） */
@@ -302,6 +304,7 @@ static void gen_entry_linux(void)
     x64_mov(R15, RSP);
     gen_input_state_init();
     gen_entry_main();
+    if(async_enabled)x64_call(async_shutdown_label);
     x64_load(R11,R14,IO_PENDING);x64_test(R11,R11);x64_jcc(CC_NZ,io_unhandled_label);
     x64_bind(exit_label);
     if(async_enabled)x64_load(R15,R14,ASYNC_STATE_TOP);
@@ -309,7 +312,7 @@ static void gen_entry_linux(void)
     x64_mov(RBX, RAX);
     x64_call(file_cleanup_label);
     x64_mov(RDI, RBX);
-    x64_mov_imm(RAX, 60);       /* exit */
+    x64_mov_imm(RAX, 231);      /* exit_group: terminate native workers too */
     x64_syscall();
 }
 
@@ -5619,7 +5622,7 @@ static void gen_expr_inner(Node *node)
         gen_call(node);
         return;
     case ND_BUILTIN:
-        if(node->val==BI_TASK_YIELD||node->val==BI_TIME_SLEEP_ASYNC||node->val==BI_TASK_ALL||node->val==BI_TASK_TIMEOUT){gen_async_builtin(node);return;}
+        if(node->val==BI_TASK_YIELD||node->val==BI_TIME_SLEEP_ASYNC||node->val==BI_TASK_ALL||node->val==BI_TASK_TIMEOUT||builtin_is_file_async((int)node->val)){gen_async_builtin(node);return;}
         if (node->val == BI_COMPLEX) { gen_complex_constructor(node); return; }
         if(builtin_is_random((int)node->val))gen_random_builtin(node);
         else if(builtin_is_directory((int)node->val))gen_directory_builtin(node);
@@ -6275,6 +6278,16 @@ static void dump_data(void)
     }
 }
 
+static int uses_file_async(Node *n)
+{
+    InputField *f;
+    for(;n;n=n->next){
+        if(n->kind==ND_BUILTIN&&builtin_is_file_async((int)n->val))return 1;
+        if(uses_file_async(n->lhs)||uses_file_async(n->rhs)||uses_file_async(n->cond)||uses_file_async(n->then)||uses_file_async(n->els)||uses_file_async(n->init)||uses_file_async(n->step)||uses_file_async(n->end))return 1;
+        for(f=n->fields;f;f=f->next)if(uses_file_async(f->var))return 1;
+    }return 0;
+}
+
 static void codegen_pass(Ast *ast, Program *out_prog, FILE *out_text, Target out_target)
 {
     char label_name[128];
@@ -6286,6 +6299,7 @@ static void codegen_pass(Ast *ast, Program *out_prog, FILE *out_text, Target out
     target = out_target;
     emitting_ast=ast;
     async_enabled=0;for(fn=ast->funcs;fn;fn=fn->next)if(fn->is_async&&!fn->is_template)async_enabled=1;
+    file_async_enabled=0;for(fn=ast->funcs;fn;fn=fn->next)if(!fn->is_template&&uses_file_async(fn->body))file_async_enabled=1;
     size_codes=size_codes_tail=NULL;
     typed_arrays_reset();diagnostic_context_reset();
     depth = 0;
@@ -6304,6 +6318,8 @@ static void codegen_pass(Ast *ast, Program *out_prog, FILE *out_text, Target out
     async_cancel_label=new_label("async.cancel");async_group_cancel_label=new_label("async.group.cancel");
     async_all_label=new_label("async.all");async_timeout_label=new_label("async.timeout");
     async_check_label=new_label("async.check");async_link_label=new_label("async.error.link");
+    async_file_label=new_label("async.file");async_shutdown_label=new_label("async.shutdown");
+    async_file_error_label=new_label("async.file.error");async_file_fatal_label=new_label("async.file.fatal");
     path_call_label=new_label("path.call");
     random_call_label=new_label("random.call");
     text_method_label=new_label("text.method");
