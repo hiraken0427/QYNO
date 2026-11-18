@@ -3,7 +3,7 @@
  * uses integer ratios and one ties-to-even rounding at the destination format.
  * No libc or libquadmath is needed by generated programs. */
 #include "wide_runtime.h"
-#include "grapheme_runtime.h"
+#include "../text/grapheme_runtime.h"
 __extension__ typedef unsigned __int128 U;
 __extension__ typedef __int128 I;
 __extension__ typedef __float128 Q;
@@ -284,10 +284,10 @@ encode:
     }
     return parsed.out;
 }
-#include "path_runtime.inc"
-#include "time_pure.inc"
-#include "arguments_pure.inc"
-#include "random_pure.inc"
+#include "../filesystem/path_runtime.inc"
+#include "../time/time_pure.inc"
+#include "../../core/arguments_pure.inc"
+#include "../random/random_pure.inc"
 /* Compare exact binary values to exact integer powers of ten. */
 static void decimal_digits(WideRequest *r)
 {
@@ -313,7 +313,7 @@ static void decimal_digits(WideRequest *r)
     }
     r->out=parts((unsigned)n);
 }
-#include "text_pure.inc"
+#include "../text/text_pure.inc"
 void wide_execute(WideRequest *r) {
     U a=0,b=0,v=0,n;Q x=0,y=0,z=0;int op=r->op,ty=r->ty,st=0,neg=0;int64_t e;
     r->status=0;r->out=parts(0);r->used=0;

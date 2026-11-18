@@ -1,6 +1,6 @@
 #ifndef QYNO_TIME_RUNTIME_H
 #define QYNO_TIME_RUNTIME_H
-#include "wide_runtime.h"
+#include "../numeric/wide_runtime.h"
 enum {
 #define TIME_API(id,name,min,max,args,result) T_##id,
 #include "time_api.def"

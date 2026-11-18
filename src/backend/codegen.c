@@ -43,9 +43,9 @@
 #include "qyc.h"
 #include "optimizer.h"
 #include "machine_ir.h"
-#include "wide_blob.h"
-#include "async_runtime.h"
-#include "async_blob.h"
+#include "../../generated/wide_blob.h"
+#include "../features/tasks/async_runtime.h"
+#include "../../generated/async_blob.h"
 #include <math.h>
 
 #include <stdlib.h>
@@ -1325,7 +1325,7 @@ static void pop(Reg r)
 static void gen_expr(Node *node);
 static void gen_input_state_init(void);
 
-#include "wide_codegen.inc"
+#include "../features/numeric/wide_codegen.inc"
 
 /* All integer values are canonical sign/zero extended in the scalar ABI. */
 static void gen_integer_normalize(Type ty)
@@ -1456,12 +1456,12 @@ static void gen_char_check(Token *tok, int code)
     x64_bind(one);
 }
 
-#include "collections_codegen.inc"
-#include "typed_arrays_codegen.inc"
-#include "recoverable_runtime.inc"
-#include "file_runtime.inc"
-#include "related_errors_codegen.inc"
-#include "complex_codegen.inc"
+#include "../features/arrays/collections_codegen.inc"
+#include "../features/arrays/typed_arrays_codegen.inc"
+#include "../features/error-handling/recoverable_runtime.inc"
+#include "../features/file-io/file_runtime.inc"
+#include "../features/error-handling/related_errors_codegen.inc"
+#include "../features/numeric/complex_codegen.inc"
 
 static void gen_cast(Node *node)
 {
@@ -2519,7 +2519,7 @@ static void gen_word_follows(void)
  * 状態は 0 成功、1 整数として読めない、2 int の範囲外。失敗したら rsi は読み始めの位置に戻す。
  * 形は [+-] 数字。rdx は変えない。
  */
-#include "integer_bases_codegen.inc"
+#include "../features/numeric/integer_bases_codegen.inc"
 
 /*
  * 10進数の M × 10^E を、最も近い double にする（1回だけ丸める）
@@ -4782,7 +4782,7 @@ static void gen_lineedit_routines(void)
     gen_edit_line();
 }
 
-#include "complex_input.inc"
+#include "../features/numeric/complex_input.inc"
 
 static void gen_input_routines(void)
 {
@@ -4925,16 +4925,16 @@ static void gen_real_to_float(int range)
     x64_jcc(CC_AE, range);
 }
 
-#include "models_codegen.inc"
+#include "../features/models/models_codegen.inc"
 #include "places_codegen.inc"
-#include "library_codegen.inc"
-#include "directory_codegen.inc"
-#include "file_mutation_runtime.inc"
-#include "path_info_runtime.inc"
-#include "arguments_codegen.inc"
-#include "random_codegen.inc"
-#include "text_codegen.inc"
-#include "enums_codegen.inc"
+#include "../modules/library_codegen.inc"
+#include "../features/filesystem/directory_codegen.inc"
+#include "../features/file-io/file_mutation_runtime.inc"
+#include "../features/filesystem/path_info_runtime.inc"
+#include "../core/arguments_codegen.inc"
+#include "../features/random/random_codegen.inc"
+#include "../features/text/text_codegen.inc"
+#include "../features/enums/enums_codegen.inc"
 
 /*
  * 値の形：input() ・ input(プロンプト)
@@ -6198,10 +6198,10 @@ static void gen_stmt(Node *node)
     }
 }
 
-#include "recoverable_codegen.inc"
-#include "time_codegen.inc"
-#include "async_codegen.inc"
-#include "regalloc_codegen.inc"
+#include "../features/error-handling/recoverable_codegen.inc"
+#include "../features/time/time_codegen.inc"
+#include "../features/tasks/async_codegen.inc"
+#include "register-allocation/regalloc_codegen.inc"
 
 static void gen_function(Function *fn)
 {
