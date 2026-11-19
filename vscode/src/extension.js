@@ -25,7 +25,9 @@ class Index {
         const directory = uri => uri.with({ path: uri.path.slice(0, uri.path.lastIndexOf('/')) });
         const relative = value => path.isAbsolute(value) ? vscode.Uri.file(value) : vscode.Uri.joinPath(this.base(document), value);
         const entry = config.get('entryFile', '');
-        return [entry ? directory(relative(entry)) : this.directory(document), ...config.get('moduleRoots', []).map(relative)];
+        const roots = [entry ? directory(relative(entry)) : this.directory(document), ...config.get('moduleRoots', []).map(relative)];
+        if (!entry) roots.push(this.base(document));
+        return roots.filter((root, i) => roots.findIndex(other => other.toString() === root.toString()) === i);
     }
     async project(document, discover, token) {
         const model = analyze(document.getText(), document.uri.toString());

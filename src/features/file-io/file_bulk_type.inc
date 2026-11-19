@@ -22,7 +22,7 @@ static Node *file_bulk_default(Node *node,Type ty,long long value,const char *te
 static void check_file_bulk_builtin(Node *node)
 {
     int b=(int)node->val;
-    if(builtin_is_file_async(b))b=b==BI_FILE_READ_TEXT_ASYNC?BI_FILE_READ_TEXT:BI_FILE_WRITE_TEXT;
+    if(builtin_is_file_async(b)){static const int sync[]={BI_FILE_READ_TEXT,BI_FILE_WRITE_TEXT,BI_FILE_APPEND_TEXT,BI_FILE_READ_LINES,BI_FILE_WRITE_LINES};b=sync[b-BI_FILE_READ_TEXT_ASYNC];}
     int min=b==BI_FILE_READ_TEXT||b==BI_FILE_READ_LINES?1:2;
     int max=b==BI_FILE_READ_TEXT?2:b==BI_FILE_READ_LINES?3:b==BI_FILE_WRITE_LINES?4:2,i=0;
     Node *arg,**slot=&node->lhs;

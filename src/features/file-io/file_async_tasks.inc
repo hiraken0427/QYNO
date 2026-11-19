@@ -2,7 +2,7 @@
 static uint64_t io_error(AsyncRuntime *r,AsyncTask *t,uint64_t os,uint64_t code,uint64_t step)
 {return r->file_error(r,t,os,code,step);}
 static void io_dispose(AsyncTask *t)
-{if(t->io_job){file_async_release(t->io_job);t->io_job=0;}t->io_text=0;t->io_result=0;}
+{if(t->io_job){file_async_release(t->io_job);t->io_job=0;}t->io_text=0;t->io_result=0;t->io_lines=0;t->io_separator=0;t->io_line=0;}
 static void io_complete(AsyncRuntime *r,AsyncTask *t)
 {
  FileAsyncJob *j=t->io_job;uint64_t error=0,previous=0;
@@ -11,7 +11,7 @@ static void io_complete(AsyncRuntime *r,AsyncTask *t)
  if(j->close_error){previous=error;error=io_error(r,t,j->close_error,11,5);if(previous)error=with_related(r,error,&previous,1);}
  if(error){if(t->cancel_error)error=with_related(r,error,&t->cancel_error,1);t->error=error;io_dispose(t);finish(t);}
  else if(t->cancel_error){t->error=t->cancel_error;io_dispose(t);finish(t);}
- else if(t->io_mode){t->result=j->length;io_dispose(t);finish(t);}
+ else if(j->mode){t->result=j->length;io_dispose(t);finish(t);}
 }
 static void io_refill(AsyncRuntime *r)
 {
@@ -24,13 +24,16 @@ static int io_progress(AsyncRuntime *r);
 static void io_submit(AsyncRuntime *r,AsyncTask *t,AsyncRequest *q)
 {
  uint64_t error=0;
- t->state=t->cancel_error?3:2;t->io_path=(uint64_t *)q->args[1];t->io_mode=q->flags;
- if(t->io_mode)t->io_text=(uint64_t *)q->args[0];else t->io_limit=q->args[0];
+ t->state=t->cancel_error?3:2;t->io_path=(uint64_t *)q->args[q->nargs-1];t->io_mode=q->flags;t->io_shape=q->shape;
+ if(t->io_mode==FA_READ_LINES){t->io_limit=q->args[1];t->io_max_lines=q->args[0];}
+ else if(t->io_mode==FA_READ_TEXT)t->io_limit=q->args[0];
+ else if(t->io_mode==FA_WRITE_LINES){t->io_lines=(uint64_t *)q->args[2];t->io_separator=(uint64_t *)q->args[1];t->io_final=q->args[0];t->io_size=(uint64_t)q->delay.seconds;}
+ else{t->io_text=(uint64_t *)q->args[0];t->io_size=t->io_text[0];}
  if(t->cancel_error){t->error=t->cancel_error;finish(t);return;}
  if(!r->io_pool){r->io_pool=file_async_pool(r->io_windows,r->io_imports,&error);if(!r->io_pool){r->file_fatal(r,t,71);return;}}
  error=file_async_pool_error(r->io_pool);
  if(error){t->error=io_error(r,t,error,14,6);finish(t);return;}
- t->io_job=file_async_job(r->io_pool,(const unsigned char *)(t->io_path+1),t->io_path[0],t->io_mode,t->io_limit);
+ t->io_job=file_async_job(r->io_pool,(const unsigned char *)(t->io_path+1),t->io_path[0],t->io_mode==FA_APPEND_TEXT?2:t->io_mode==FA_READ_TEXT||t->io_mode==FA_READ_LINES?0:1,t->io_limit);
  if(!t->io_job){r->file_fatal(r,t,71);return;}
  if(t->io_job->phase==2){io_complete(r,t);return;}
  if(r->io_backlog_last)r->io_backlog_last->io_next=t;else r->io_backlog=t;r->io_backlog_last=t;
@@ -50,6 +53,8 @@ static int io_utf8_byte(AsyncTask *t,unsigned char c)
  if(--t->io_utf8)return 1;
  return t->io_utf8_value>=t->io_utf8_min&&t->io_utf8_value<=0x10ffff&&!(t->io_utf8_value>=0xd800&&t->io_utf8_value<=0xdfff);
 }
+#include "file_async_lines.inc"
+
 static int io_progress(AsyncRuntime *r)
 {
  AsyncTask *t,*next,**link;int active=0;uint64_t budget=65536,selected=0,distance=4,next_slot=0;
@@ -63,9 +68,9 @@ static int io_progress(AsyncRuntime *r)
  }}
  io_refill(r);
  while(r->io_ready){
-  t=r->io_ready;if(!file_async_reserve(t->io_job,t->io_mode?t->io_text[0]:0))break;
+  t=r->io_ready;if(!file_async_reserve(t->io_job,io_write_mode(t)?t->io_size:0))break;
   r->io_ready=t->io_next;if(!r->io_ready)r->io_ready_last=0;t->io_next=0;r->io_ready_count--;
-  if(!t->io_mode)file_async_launch(t->io_job);
+  if(!io_write_mode(t))file_async_launch(t->io_job);
   io_refill(r);
  }
  /* Rotate byte-copy work across native requests instead of starving later
@@ -88,15 +93,19 @@ static int io_progress(AsyncRuntime *r)
    if(j->fatal){r->file_fatal(r,t,j->fatal);continue;}
    if(t->cancel_error){t->error=t->cancel_error;io_dispose(t);finish(t);continue;}
    if(j->id!=selected)continue;
-   count=j->length-t->io_offset;if(count>budget)count=budget;
-   for(i=0;i<count;i++)j->data[t->io_offset+i]=((unsigned char *)(t->io_text+1))[t->io_offset+i];
-   t->io_offset+=count;budget-=count;
+   if(t->io_mode==FA_WRITE_LINES)io_prepare_lines(t,&budget);
+   else{
+    count=j->length-t->io_offset;if(count>budget)count=budget;
+    for(i=0;i<count;i++)j->data[t->io_offset+i]=((unsigned char *)(t->io_text+1))[t->io_offset+i];
+    t->io_offset+=count;budget-=count;
+   }
    if(t->io_offset==j->length){t->io_offset=0;file_async_launch(j);}
    continue;
   }
   if(state!=2)continue;
   io_complete(r,t);if(done(t))continue;
   if(j->id!=selected)continue;
+  if(t->io_mode==FA_READ_LINES&&t->io_phase){io_read_lines(r,t,&budget);continue;}
   if(!t->io_result){t->io_result=r->allocate(r,j->length+8);t->io_result[0]=j->length;}
   count=j->length-t->io_offset;if(count>budget)count=budget;
   for(i=0;i<count;i++){
@@ -107,7 +116,8 @@ static int io_progress(AsyncRuntime *r)
   t->io_offset+=count;budget-=count;
   if(t->io_offset==j->length){
    if(t->io_utf8){r->file_fatal(r,t,65);return 1;}
-   t->result=(uint64_t)t->io_result;io_dispose(t);finish(t);
+   if(t->io_mode==FA_READ_LINES){t->io_phase=1;t->io_offset=t->io_line_start=0;io_read_lines(r,t,&budget);}
+   else{t->result=(uint64_t)t->io_result;io_dispose(t);finish(t);}
   }
  }
  return active;

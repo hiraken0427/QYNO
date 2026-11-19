@@ -34,6 +34,8 @@ struct AsyncTask {
     AsyncTask *cancel_next,*visit_next;uint64_t visit_stamp;
     AsyncTask *io_next;FileAsyncJob *io_job;
     uint64_t *io_path,*io_text,*io_result,io_limit,io_offset,io_mode,io_utf8,io_utf8_min,io_utf8_value;
+    uint64_t *io_lines,*io_separator,*io_shape,*io_line;
+    uint64_t io_size,io_final,io_max_lines,io_phase,io_count,io_line_start,io_line_end,io_line_index,io_part,io_part_offset,io_last_cr;
 
 };
 struct AsyncRuntime {

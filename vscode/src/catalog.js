@@ -1,5 +1,5 @@
 'use strict';
-// Reference: QYNO 0.29.4. No runtime dependency on a compiler installation.
+// Reference: QYNO 0.29.5. No runtime dependency on a compiler installation.
 const callable = (path, type, params, documentation) => ({
     kind: 'function', name: path.split('.').at(-1), path, type, rank: 0,
     params: params.map(p => typeof p === 'string' ? { name: p, type: 'value', rank: 0 } : { rank: 0, ...p }),
@@ -104,6 +104,9 @@ const STANDARD = [
     callable('io.dir.remove','void',[{name:'path',type:'str / char'}],'空のディレクトリを削除する。リンクは削除しない。'),
     callable('io.file.read_text_async','async str',[{name:'path',type:'str / char'},{name:'max_bytes',type:'int_64',optional:true,default:'67108864',defaultText:'67108864'}],'UTF-8のファイルを非同期で読み込む。awaitで文字列を取得する。'),
     callable('io.file.write_text_async','async int_64',[{name:'path',type:'str / char'},{name:'text',type:'str / char'}],'文字列を非同期で上書きする。awaitで書き込みバイト数を取得する。'),
+    callable('io.file.append_text_async','async int_64',[{name:'path',type:'str / char'},{name:'text',type:'str / char'}],'文字列を非同期で追記し、書き込みバイト数を返す。'),
+    {...callable('io.file.read_lines_async','async str',[{name:'path',type:'str / char'},{name:'max_bytes',type:'int_64',optional:true,defaultText:'67108864'},{name:'max_lines',type:'int_64',optional:true,defaultText:'1048576'}],'UTF-8のファイルを非同期で行の配列として読み込む。'),rank:1},
+    callable('io.file.write_lines_async','async int_64',[{name:'path',type:'str / char'},{name:'lines',type:'str',rank:1},{name:'newline',type:'str / char',optional:true,defaultText:'"\\n"'},{name:'final_newline',type:'bool',optional:true,defaultText:'true'}],'行の配列を非同期で書き込み、バイト数を返す。'),
     callable('io.file.read_text','str',[{name:'path',type:'str / char'},{name:'max_bytes',type:'int_64',optional:true,default:'67108864',defaultText:'67108864'}],'UTF-8のファイルを文字列として読み込む。開閉は内部で行う。'),
     {...callable('io.file.read_lines','str',[{name:'path',type:'str / char'},{name:'max_bytes',type:'int_64',optional:true,default:'67108864',defaultText:'67108864'},{name:'max_lines',type:'int_64',optional:true,default:'1048576',defaultText:'1048576'}],'UTF-8のファイルを行の配列として読み込む。'),rank:1},
     ...['write_text','append_text'].map(name=>callable('io.file.'+name,'int_64',[{name:'path',type:'str / char'},{name:'text',type:'str / char'}],name==='write_text'?'文字列を上書きし、バイト数を返す。':'文字列を追記し、バイト数を返す。')),

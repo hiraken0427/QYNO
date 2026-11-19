@@ -1,3 +1,4 @@
+#include "file_async_lines_codegen.inc"
 /* C callbacks enter only on the event-loop thread. Preserve its previous I/O
  * context while constructing an independent task-owned error record. */
 static void file_async_context(void)
@@ -6,20 +7,24 @@ static void file_async_context(void)
     x64_load(RCX,RDX,(int)offsetof(AsyncTask,io_path));x64_store(R14,FILE_PATH,RCX);
     {int i;int offsets[]={FILE_CONTEXT,IO_SOURCE,IO_LINE,IO_COLUMN};
      for(i=0;i<4;i++){x64_load(RCX,RDX,(int)offsetof(AsyncTask,site)+i*8);x64_store(R14,offsets[i],RCX);}}
-    {int read=rt_label("async.file.operation.read"),ready=rt_label("async.file.operation.ready");
-     x64_load(RCX,RDX,(int)offsetof(AsyncTask,io_mode));x64_test(RCX,RCX);x64_jcc(CC_Z,read);
-     x64_lea_data(RCX,prog_add_str(prog,"write_text_async",16));x64_jmp(ready);x64_bind(read);
-     x64_lea_data(RCX,prog_add_str(prog,"read_text_async",15));x64_bind(ready);x64_store(R14,IO_OPERATION,RCX);}
+    {const char *names[]={"read_text_async","write_text_async","append_text_async","read_lines_async","write_lines_async"};
+     int i,ready=rt_label("async.file.operation.ready");
+     for(i=0;i<5;i++){int next=rt_label("async.file.operation.next");
+         x64_load(RCX,RDX,(int)offsetof(AsyncTask,io_mode));rt_cmp(RCX,i);x64_jcc(CC_NZ,next);
+         x64_lea_data(RCX,prog_add_str(prog,names[i],strlen(names[i])));x64_jmp(ready);x64_bind(next);}
+     x64_lea_data(RCX,empty_str_offset);x64_bind(ready);x64_store(R14,IO_OPERATION,RCX);}
+
 }
 static void gen_file_async_callbacks(void)
 {
     int i;
+    gen_file_async_lines_validation();
     async_c_enter(async_file_error_label);
     for(i=0;i<11;i++){x64_load(RCX,R14,256+i*8);rt_save(20+i,RCX);}
     file_async_context();rt_load(RCX,8);x64_store(R14,FILE_OS_ERROR,RCX);rt_load(RDI,9);
-    {const char *messages[]={QMSG_0416,QMSG_0747,QMSG_0312,QMSG_0371,QMSG_0113,QMSG_0895,QMSG_0793};
+    {const char *messages[]={QMSG_0416,QMSG_0747,QMSG_0312,QMSG_0371,QMSG_0113,QMSG_0895,QMSG_0793,QMSG_0794};
      int ready=rt_label("async.file.message.ready");
-     for(i=1;i<=7;i++){
+     for(i=1;i<=8;i++){
          int next=rt_label("async.file.message.next");rt_load(RCX,10);rt_cmp(RCX,i);x64_jcc(CC_NZ,next);
          x64_lea_data(RAX,prog_add_str(prog,messages[i-1],strlen(messages[i-1])));x64_jmp(ready);x64_bind(next);
      }

@@ -2388,6 +2388,7 @@ static void check_names(Ast *ast)
         }
     }
     if (main_fn == NULL) {
+        if(ast->check_only)return;
         fatal(QMSG_0291);
     }
     if(main_fn->is_private)error_tok(main_fn->tok,QMSG_0293);
