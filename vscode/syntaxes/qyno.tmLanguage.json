@@ -237,7 +237,7 @@
     "calls": {
       "patterns": [
         {
-          "match": "\\b(?:print|input|sqrt|abs|round|ceil|floor|open|close|is_open|read|read_line|write|exists|current|change|absolute|append|remove_at|clear|cancel|all|with_timeout|group|yield|append_text_async|read_lines_async|write_lines_async|read_text_async|write_text_async|read_text|read_lines|write_text|append_text|write_lines|create|list|remove|copy|move|info|iso_format)(?=\\s*\\()",
+          "match": "\\b(?:print|input|sqrt|abs|round|ceil|floor|open|close|is_open|read|read_line|write|exists|current|change|absolute|append|remove_at|clear|cancel|all|with_timeout|group|yield|append_text_async|read_lines_async|write_lines_async|read_bytes_async|write_bytes_async|append_bytes_async|read_text_async|write_text_async|read_text|read_lines|write_text|append_text|write_lines|create|list|remove|copy|move|info|iso_format)(?=\\s*\\()",
           "name": "support.function.qyno"
         },
         {

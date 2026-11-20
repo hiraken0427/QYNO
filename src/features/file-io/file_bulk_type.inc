@@ -19,9 +19,32 @@ static Node *file_bulk_default(Node *node,Type ty,long long value,const char *te
     arg->tok=node->tok;arg->ty=ty;arg->kind=text?ND_STRLIT:ty==TY_BOOL?ND_BOOL:ND_NUM;
     arg->val=value;if(text){arg->str=(char *)text;arg->str_len=(int)strlen(text);}return arg;
 }
+static void check_file_bytes_async(Node *node)
+{
+    int read=node->val==BI_FILE_READ_BYTES_ASYNC,min=read?1:2;
+    Node *arg,*data,*next;
+    if(node->nargs<min||node->nargs>2)error_tok(node->tok,QMSG_0841,builtin_name((Builtin)node->val),min,2);
+    for(arg=node->lhs;arg;arg=arg->next)if(arg->kind==ND_REFARG)error_tok(arg->tok,QMSG_0842);
+    if(node->nargs==1){node->lhs->next=file_bulk_default(node,TY_I64,67108864,NULL);node->nargs=2;}
+    arg=node->lhs;check_expr(arg);
+    if(!type_is_text(arg->ty))error_tok(arg->tok,QMSG_0843,builtin_name((Builtin)node->val));
+    file_bulk_const_text(arg,1,0);data=arg->next;next=data->next;
+    if(read){
+        check_expected(data,TY_I64);
+        if(!type_is_integer(data->ty))error_tok(data->tok,QMSG_0829);
+        data=coerce(data,TY_I64,data->tok,QMSG_0830);
+        if(is_const_expr(data)&&(eval_const(data).i<0||eval_const(data).i>(INT64_MAX-32)/8))error_tok(data->tok,QMSG_0792);
+    }else{
+        check_expected(data,array_type(TY_U8));
+        if(data->ty!=array_type(TY_U8))error_tok(data->tok,QMSG_0896,builtin_name((Builtin)node->val));
+        if(data->kind!=ND_ARRAY_COPY)data=copy_array(data,NULL,0);
+    }
+    data->next=next;arg->next=data;node->ty=read?array_type(TY_U8):TY_I64;
+}
 static void check_file_bulk_builtin(Node *node)
 {
     int b=(int)node->val;
+    if(b>=BI_FILE_READ_BYTES_ASYNC&&b<=BI_FILE_APPEND_BYTES_ASYNC){check_file_bytes_async(node);return;}
     if(builtin_is_file_async(b)){static const int sync[]={BI_FILE_READ_TEXT,BI_FILE_WRITE_TEXT,BI_FILE_APPEND_TEXT,BI_FILE_READ_LINES,BI_FILE_WRITE_LINES};b=sync[b-BI_FILE_READ_TEXT_ASYNC];}
     int min=b==BI_FILE_READ_TEXT||b==BI_FILE_READ_LINES?1:2;
     int max=b==BI_FILE_READ_TEXT?2:b==BI_FILE_READ_LINES?3:b==BI_FILE_WRITE_LINES?4:2,i=0;

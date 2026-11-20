@@ -1,7 +1,5 @@
 /* Managed-side streaming of captured lines. Every scan/copy shares the byte
  * budget and the fixed worker-slot rotation with text result conversion. */
-static int io_write_mode(AsyncTask *t)
-{return t->io_mode==FA_WRITE_TEXT||t->io_mode==FA_APPEND_TEXT||t->io_mode==FA_WRITE_LINES;}
 static void io_prepare_lines(AsyncTask *t,uint64_t *budget)
 {
  FileAsyncJob *j=t->io_job;

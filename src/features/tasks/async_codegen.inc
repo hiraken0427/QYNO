@@ -87,7 +87,12 @@ static void gen_async_builtin(Node *node)
          x64_load8(R8,RSI,0);x64_test(R8,R8);x64_jcc(CC_NZ,next);file_fail(EX_SOFTWARE,QMSG_0406);
          x64_bind(next);x64_add_imm(RSI,1);x64_sub_imm(RCX,1);x64_jmp(loop);x64_bind(valid);}
 
-        if(node->val==BI_FILE_WRITE_LINES_ASYNC){x64_mov(RAX,RSP);x64_call(async_file_lines_label);x64_mov(RCX,RAX);}
+        if(node->val>=BI_FILE_READ_BYTES_ASYNC&&node->val<=BI_FILE_APPEND_BYTES_ASYNC){
+            x64_load(RAX,RSP,0);
+            if(node->val!=BI_FILE_READ_BYTES_ASYNC)x64_load(RAX,RAX,0);
+            bulk_contract_limit(RAX,(INT64_MAX-32)/8);x64_xor(RCX,RCX);
+        }
+        else if(node->val==BI_FILE_WRITE_LINES_ASYNC){x64_mov(RAX,RSP);x64_call(async_file_lines_label);x64_mov(RCX,RAX);}
         else{
             x64_load(RAX,RSP,0);
             if(node->val==BI_FILE_WRITE_TEXT_ASYNC||node->val==BI_FILE_APPEND_TEXT_ASYNC)x64_call(file_validate_label);
@@ -97,7 +102,7 @@ static void gen_async_builtin(Node *node)
             }
             x64_xor(RCX,RCX);
         }
-        if(node->val==BI_FILE_READ_LINES_ASYNC)collection_shape(task_result(node->ty),NULL,RDX);else x64_xor(RDX,RDX);
+        if(node->val==BI_FILE_READ_LINES_ASYNC||node->val==BI_FILE_READ_BYTES_ASYNC)collection_shape(task_result(node->ty),NULL,RDX);else x64_xor(RDX,RDX);
         x64_mov(RAX,RSP);x64_mov_imm(RDI,node->val-BI_FILE_READ_TEXT_ASYNC);x64_mov_imm(RSI,node->nargs);x64_call(async_file_label);
         x64_add_imm(RSP,node->nargs*8);depth-=node->nargs;gen_io_check();return;
     }

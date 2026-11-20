@@ -1,4 +1,4 @@
-# QYNO 0.29.5
+# QYNO 0.29.6
 
 著作権およびライセンスに関する情報は、本ファイルの末尾に記載している。
 
@@ -49,6 +49,25 @@ make clean
 modulesはモジュールの登録と名前解決、i18nは英日表示、utilsは共通処理である。共有ヘッダーはinclude、生成済みのコードとデータはgenerated、Visual Studio Code拡張機能はvscodeに置く。binとbuildはビルド時に作成する。
 
 ## 新機能
+
+0.29.6では、バイナリファイルの非同期読み書きを追加した。read_bytes_asyncはファイル全体をunsigned int_8の配列として読み込む。write_bytes_asyncは上書き、append_bytes_asyncは追記を行い、書き込んだバイト数をint_64で返す。パス指定で開閉まで行うため、利用者によるcloseは不要である。
+
+```text
+using io
+
+async int main();
+	unsigned int_8 data[] = await io.file.read_bytes_async("input.bin")
+	int_64 written = await io.file.write_bytes_async("copy.bin", data)
+	int_64 appended = await io.file.append_bytes_async("copy.bin", [0x00, 0xff])
+	print("{written + appended} bytes")
+	return 0
+```
+
+read_bytes_asyncの第2引数は読み取り上限であり、既定値は67108864である。上限を超えた場合はout_of_rangeとなり、途中までの配列は返さない。空ファイルは空配列となる。UTF-8の検査やBOMの除去、改行の変換は行わない。
+
+write_bytes_asyncとappend_bytes_asyncはunsigned int_8の1次元配列を受け取り、呼び出し時に内容をコピーする。空配列でもファイルを開閉する。相対パスの基準、キャンセル、タイムアウト、エラーの扱いは既存の非同期ファイルAPIに従う。書き込み済みの内容は巻き戻さない。既存のfileハンドルを用いるread_bytesとwrite_bytesの動作は維持する。
+
+現行の配列は内部で1要素に8バイトを使用する。読み取り上限はファイル内容のバイト数であり、メモリ使用量の上限ではない。
 
 0.29.5では、非同期の追記と行単位の読み書きを追加した。いずれもasync関数内で呼び出し、awaitで結果を取得する。
 

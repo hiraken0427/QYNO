@@ -2,4 +2,5 @@
 /bin/
 /vscode/node_modules/
 /vscode/*.vsix
-!/vscode/QYNO-0.29.5.vsix
+!/vscode/QYNO-0.29.6.vsix
+/sample/
