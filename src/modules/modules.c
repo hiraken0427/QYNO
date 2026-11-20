@@ -833,6 +833,10 @@ void resolve_module_name(Node *node)
             return;
         }
     }
+    if(node->kind==ND_CALL&&symbol.kind==SYM_CONSTANT){
+        Node *callee=allocate(sizeof(*callee));callee->kind=ND_VAR;callee->var=symbol.constant;callee->tok=node->tok;
+        node->kind=ND_INVOKE;node->rhs=callee;return;
+    }
     if (node->kind == ND_CALL) {
         if(symbol.kind==SYM_ENUM){node->kind=ND_ENUM_CONVERT;node->cmp_ty=symbol.enumeration->ty;return;}
         if (symbol.kind == SYM_INTERFACE) error_tok(node->tok, QMSG_0258);
@@ -856,6 +860,8 @@ void resolve_module_name(Node *node)
         }
         error_tok(node->tok, QMSG_0783, name);
     }
+    if(symbol.kind==SYM_FUNCTION){node->kind=ND_FUNCTION_REF;node->func=symbol.function;return;}
+    if(symbol.kind==SYM_BUILTIN){if(symbol.builtin==BI_IO_PRINT||symbol.builtin==BI_IO_INPUT)error_tok(node->tok,QMSG_0609,name);error_tok(node->tok,QMSG_0898);}
     if (symbol.kind == SYM_CONSTANT) {
         node->var = symbol.constant;
         return;

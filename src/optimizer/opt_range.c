@@ -162,7 +162,7 @@ static void expression(Context *c,Facts *s,Node *list,int depth)
         if(--c->budget<0)return;
         expression(c,s,n->lhs,depth+1);expression(c,s,n->rhs,depth+1);
         if(n->kind==ND_INDEX)access(c,s,n);
-        if(n->kind==ND_CALL||n->kind==ND_BUILTIN||n->kind==ND_INPUT||n->kind==ND_METHOD||n->kind==ND_ADDR_ASSIGN)
+        if(n->kind==ND_INVOKE||n->kind==ND_CALL||n->kind==ND_BUILTIN||n->kind==ND_INPUT||n->kind==ND_METHOD||n->kind==ND_ADDR_ASSIGN)
             invalidate(c,s,n,0);
     }
 }

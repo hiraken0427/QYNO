@@ -1,5 +1,5 @@
 'use strict';
-// Reference: QYNO 0.29.6. No runtime dependency on a compiler installation.
+// Reference: QYNO 0.29.7. No runtime dependency on a compiler installation.
 const callable = (path, type, params, documentation) => ({
     kind: 'function', name: path.split('.').at(-1), path, type, rank: 0,
     params: params.map(p => typeof p === 'string' ? { name: p, type: 'value', rank: 0 } : { rank: 0, ...p }),
@@ -132,7 +132,7 @@ const STANDARD = [
     callable('io.file.write_bytes', 'int_64', [{name:'destination',type:'file'},{name:'data',type:'unsigned int_8',rank:1}], 'wb/abへ全要素を1バイトずつ書き、バイト数を返します。dataは読み取り専用で観測しref不要。UTF-8・改行変換は行いません。'),
     callable('io.file.exists', 'bool', [{ name: 'path', type: 'str', placeholder: '"path.txt"' }], '通常ファイルの存在を確認します。相対パスは実行時の作業ディレクトリが基準です。')
 ];
-const KEYWORD_COMPLETIONS = ['complex', 'complex_64', 'complex_128', 'int', 'int_8', 'int_16', 'int_32', 'int_64', 'int_128', 'half', 'quadruple', 'unsigned', 'float', 'double', 'bool', 'str', 'char', 'file', 'void', 'Void', 'auto', 'const', 'ref', 'val', 'return', 'if', 'else', 'for', 'while', 'break', 'continue', 'and', 'or', 'xor', 'bnot', 'not', 'true', 'false', 'none', 'import', 'using', 'as', 'enum', 'match', 'case', 'async', 'await', 'with', 'try', 'finally', 'throw', 'model', 'interface', 'implements', 'public', 'private', 'readonly'];
+const KEYWORD_COMPLETIONS = ['complex', 'complex_64', 'complex_128', 'int', 'int_8', 'int_16', 'int_32', 'int_64', 'int_128', 'half', 'quadruple', 'unsigned', 'float', 'double', 'bool', 'str', 'char', 'file', 'void', 'Void', 'auto', 'func', 'const', 'ref', 'val', 'return', 'if', 'else', 'for', 'while', 'break', 'continue', 'and', 'or', 'xor', 'bnot', 'not', 'true', 'false', 'none', 'import', 'using', 'as', 'enum', 'match', 'case', 'async', 'await', 'with', 'try', 'finally', 'throw', 'model', 'interface', 'implements', 'public', 'private', 'readonly'];
 const TEXT_METHODS = [
     callable('contains','bool',[{name:'value',type:'str / char'}],'書記素境界で完全一致する部分を含むか。空検索はtrue。'),
     callable('starts_with','bool',[{name:'value',type:'str / char'}],'書記素境界で先頭から完全一致するか。'),

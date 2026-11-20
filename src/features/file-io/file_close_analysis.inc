@@ -158,6 +158,7 @@ static int fc_direct(Node *n, int calls)
     for (; n; n = n->next) {
         InputField *field;
         for (field = n->fields; field; field = field->next) if (fc_direct(field->var, calls)) return 1;
+        if(n->kind==ND_INVOKE)return 1;
         if (fc_file_type(n->ty) || (n->var && fc_file_type(n->var->ty)) ||
             (n->kind == ND_BUILTIN && (n->val >= BI_FILE_OPEN||builtin_node_may_raise(n)))) return 1;
         if (calls && (n->kind == ND_CALL || n->kind == ND_CONSTRUCT) && fc_info(n->func)->relevant) return 1;
@@ -397,6 +398,7 @@ static FcMap *fc_eval(FcContext *ctx, FcState *s, Node *n)
         }
         return fc_call(ctx, s, n->init);
     }
+    if(n->kind==ND_INVOKE){fc_eval(ctx,s,n->rhs);for(p=n->lhs;p;p=p->next)fc_eval(ctx,s,p);fc_error(ctx,s,n,~0u);return fc_empty();}
     if (n->kind == ND_CALL && n->func->is_async) {
         for(p=n->lhs;p;p=p->next)fc_eval(ctx,s,p);
         return fc_empty();

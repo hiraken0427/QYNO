@@ -1,7 +1,7 @@
 'use strict';
 
 const TYPES = new Set(['complex', 'complex_64', 'complex_128', 'int', 'int_8', 'int_16', 'int_32', 'int_64', 'int_128', 'half', 'quadruple', 'unsigned', 'float', 'double', 'bool', 'str', 'char', 'file', 'void', 'Void', 'auto']);
-const KEYWORDS = new Set([...TYPES, 'async', 'await', 'with', 'const', 'ref', 'val', 'return', 'if', 'else', 'for', 'while', 'break', 'continue', 'and', 'or', 'xor', 'bnot', 'not', 'true', 'false', 'none', 'import', 'using', 'as', 'print', 'input', 'struct', 'enum', 'match', 'case', 'try', 'finally', 'throw', 'of', 'model', 'interface', 'implements', 'public', 'private', 'readonly']);
+const KEYWORDS = new Set([...TYPES, 'async', 'await', 'with', 'func', 'const', 'ref', 'val', 'return', 'if', 'else', 'for', 'while', 'break', 'continue', 'and', 'or', 'xor', 'bnot', 'not', 'true', 'false', 'none', 'import', 'using', 'as', 'print', 'input', 'struct', 'enum', 'match', 'case', 'try', 'finally', 'throw', 'of', 'model', 'interface', 'implements', 'public', 'private', 'readonly']);
 const identifierStart = c => /[A-Za-z_]/.test(c || '');
 const identifierPart = c => /[A-Za-z0-9_]/.test(c || '');
 
@@ -132,7 +132,35 @@ function functionLabel(symbol, name = symbol.name) {
     return `${visibilityLabel(symbol)}${symbol.readonly ? 'readonly ' : ''}${symbol.async ? 'async ' : ''}${symbol.type} ${name}(${symbol.params.map(typeLabel).join(', ')})${'[]'.repeat(symbol.rank || 0)}`;
 }
 
+function readCallableType(tokens, start = 0, level = 0) {
+    if(level>32)return null;
+    const read=(at,depth=0)=>{
+        if(depth>32)return null;
+        if(tokens[at]?.value==='func'){
+            const result=read(at+1,depth+1);if(!result||tokens[result.end]?.value!=='(')return null;
+            const close=closing(tokens,result.end);if(close<0)return null;
+            let parts=split(tokens.slice(result.end+1,close));if(parts.length===1&&(!parts[0].length||parts[0].length===1&&['void','Void'].includes(parts[0][0].value)))parts=[];
+            const params=[];
+            for(const part of parts){let i=0;const ref=part[i]?.value==='ref';if(['ref','val'].includes(part[i]?.value))i++;const readonly=ref&&part[i]?.value==='readonly';if(readonly)i++;
+                const value=readCallableTypePart(part,i,depth+1);if(!value)return null;
+                const name=part[value.end]?.kind==='id'?part[value.end].value:'arg'+(params.length+1),end=part[value.end]?.kind==='id'?value.end+1:value.end;
+                params.push({name,type:value.name,rank:rankOf(part.slice(end)),ref,readonly,callable:value.callable});}
+            let end=close+1,rank=0;while(tokens[end]?.value==='['){while(tokens[end]&&tokens[end].value!==']')end++;if(!tokens[end])return null;end++;rank++;}
+            const callable={type:result.name,params,rank,kind:'function',name:'',callable:result.callable};
+            return{name:'func '+result.name+'('+params.map(typeLabel).join(', ')+')'+'[]'.repeat(rank),end,callable};
+        }
+        let end=at;if(tokens[end]?.value==='unsigned')end++;
+        if(tokens[end]?.kind!=='id'||['auto','async','func','ref','readonly'].includes(tokens[end].value))return null;
+        while(tokens[end+1]?.value==='.'&&tokens[end+2]?.kind==='id')end+=2;
+        return{name:tokens.slice(at,end+1).map(t=>t.value).join(tokens[at]?.value==='unsigned'?' ':''),end:end+1};
+    };
+    function readCallableTypePart(part,at,depth){if(part[at]?.value==='func')return readCallableType(part,at,level+1);let end=at;if(part[end]?.value==='unsigned')end++;if(part[end]?.kind!=='id')return null;while(part[end+1]?.value==='.'&&part[end+2]?.kind==='id')end+=2;return{name:part.slice(at,end+1).map(t=>t.value).join(part[at]?.value==='unsigned'?' ':''),end:end+1};}
+    return read(start);
+}
+function callableOf(symbol){if(!symbol)return undefined;if(symbol.kind==='function')return symbol;if(symbol.rank)return undefined;return symbol.callable||(/^(?:func)\b/.test(symbol.type||'')?readCallableType(lexLine(symbol.type))?.callable:undefined);}
+
 function readType(tokens, start) {
+    if(tokens[start]?.value==='func'){const value=readCallableType(tokens,start);return value&&tokens[value.end]?.kind==='id'?value:null;}
     const task = tokens[start]?.value === 'async';
     if (task) start++;
     let end = start;
@@ -323,4 +351,4 @@ function visibleUsings(model, line, character) {
     return model.usings.filter(u => scopeContains(model, u.scopeId, line, character) &&
         (u.scopeId === 0 || u.line < line || u.line === line && u.visibleAfter <= character));
 }
-module.exports = { TYPES, KEYWORDS, lexLine, codeContext, analyze, split, closing, visibleSymbols, visibleUsings, scopeContains, typeLabel, functionLabel };
+module.exports = { TYPES, KEYWORDS, lexLine, codeContext, analyze, split, closing, visibleSymbols, visibleUsings, scopeContains, typeLabel, functionLabel, readCallableType, callableOf };

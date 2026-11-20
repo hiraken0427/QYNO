@@ -4,6 +4,7 @@
 
 typedef struct {
     int is_task;
+    Function *signature;
     EnumDef *enumeration;
     Model *model;
     Interface *contract;
@@ -21,7 +22,7 @@ static int count;
 
 int type_is_array(Type ty)
 {
-    return (int)ty >= TY_ARRAY && !types[(int)ty - TY_ARRAY].is_task && types[(int)ty - TY_ARRAY].enumeration == NULL && types[(int)ty - TY_ARRAY].model == NULL && types[(int)ty - TY_ARRAY].contract == NULL && types[(int)ty - TY_ARRAY].path == NULL;
+    return (int)ty >= TY_ARRAY && !types[(int)ty - TY_ARRAY].is_task && !types[(int)ty - TY_ARRAY].signature && types[(int)ty - TY_ARRAY].enumeration == NULL && types[(int)ty - TY_ARRAY].model == NULL && types[(int)ty - TY_ARRAY].contract == NULL && types[(int)ty - TY_ARRAY].path == NULL;
 }
 
 Type array_type(Type element)
@@ -31,7 +32,7 @@ Type array_type(Type element)
     DynamicType *grown;
     const char *name;
     for (i = 0; i < count; i++) {
-        if (!types[i].is_task && !types[i].enumeration && !types[i].model && !types[i].contract && !types[i].path && types[i].element == element) {
+        if (!types[i].is_task && !types[i].signature && !types[i].enumeration && !types[i].model && !types[i].contract && !types[i].path && types[i].element == element) {
             return (Type)(TY_ARRAY + i);
         }
     }
@@ -88,6 +89,8 @@ static Type add_type(DynamicType entry)
     if (!grown) fatal(QMSG_0589);
     types = grown; types[count] = entry; return (Type)(TY_ARRAY + count++);
 }
+#include "../features/functions/function_types.inc"
+
 int type_is_task(Type ty) { return (int)ty >= TY_ARRAY && types[(int)ty-TY_ARRAY].is_task; }
 Type task_result(Type ty) { return types[(int)ty-TY_ARRAY].element; }
 const char *task_type_name(Type ty) { return types[(int)ty-TY_ARRAY].name; }
@@ -126,6 +129,12 @@ Type resolve_type(Type ty)
     if ((int)ty < TY_ARRAY) return ty;
     index = (int)ty - TY_ARRAY;
     if (types[index].resolved) return types[index].resolved;
+    if(types[index].signature){
+        Function f=*types[index].signature;Var *p,**tail=&f.params,*old=types[index].signature->params;
+        f.ret=resolve_type(f.ret);f.params=NULL;
+        for(;old;old=old->next){p=malloc(sizeof(*p));if(!p)fatal(QMSG_0589);*p=*old;p->ty=resolve_type(p->ty);p->next=NULL;*tail=p;tail=&p->next;}
+        check_function_shape(&f);result=function_type(&f);types[index].resolved=result;return result;
+    }
     if (types[index].path) result = resolve_module_type(types[index].tok, types[index].path, types[index].scope);
     else if (types[index].enumeration || types[index].model || types[index].contract) return ty;
     else { element = resolve_type(types[index].element); result = types[index].is_task ? task_type(element) : array_type(element); }
@@ -229,6 +238,7 @@ Type real_common(Type a, Type b) {
 /* Logical payload widths, independently of runtime slots and allocation. */
 int value_bit_width(Type ty)
 {
+    if(type_is_function(ty))return 64;
     if(type_is_enum(ty))return 32;
     if(type_is_integer(ty))return integer_width(ty);
     if(ty==TY_HALF)return 16;

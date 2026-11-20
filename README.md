@@ -1,4 +1,4 @@
-# QYNO 0.29.6
+# QYNO 0.29.7
 
 著作権およびライセンスに関する情報は、本ファイルの末尾に記載している。
 
@@ -49,6 +49,32 @@ make clean
 modulesはモジュールの登録と名前解決、i18nは英日表示、utilsは共通処理である。共有ヘッダーはinclude、生成済みのコードとデータはgenerated、Visual Studio Code拡張機能はvscodeに置く。binとbuildはビルド時に作成する。
 
 ## 新機能
+
+0.29.7では、名前付きの同期関数を値として扱えるようにした。関数名を代入し、変数から呼び出すことができる。引数、戻り値、配列、modelのフィールドにも使用できる。型を明示する場合はfuncを用いる。
+
+```text
+using io
+int square(int value) = value ^ 2
+int cube(int value) = value ^ 3
+int apply(int value, func int(int) operation);
+	return operation(value)
+func int(int) select(bool use_cube);
+	if(use_cube);
+		return cube
+	return square
+int main();
+	auto operation = select(true)
+	print(apply(3, operation))
+	operation = square
+	print(operation(3))
+	return 0
+```
+
+func int(int)はintを1つ受け取り、intを返す関数型である。引数名は省略できる。refとref readonly、配列の条件も型に含まれる。関数値の型は宣言後に固定される。型未確定の引数を持つ関数は、期待するfuncの型から特殊化する。
+
+関数型の初期値はnoneである。未設定のまま呼び出すとエラーとなる。型が同じ関数値とnoneには等価比較を使用できる。lib.sizeは関数値1つにつき64を返す。関数値の表示や数値への変換は行えない。
+
+関数値を経由したI/Oエラーにもtryとcaseを使用できる。同期の関数値はasync関数へ渡せるが、呼び出し自体は同期処理となる。async関数やmodelメソッドの取り出し、匿名関数とクロージャは未対応である。組み込み関数を値として使う場合は通常の関数でラップする。関数型にfile、addr、interface、タスク、グループを含めることはできない。funcを予約語に追加した。
 
 0.29.6では、バイナリファイルの非同期読み書きを追加した。read_bytes_asyncはファイル全体をunsigned int_8の配列として読み込む。write_bytes_asyncは上書き、append_bytes_asyncは追記を行い、書き込んだバイト数をint_64で返す。パス指定で開閉まで行うため、利用者によるcloseは不要である。
 

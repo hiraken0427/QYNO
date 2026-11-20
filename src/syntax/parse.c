@@ -76,7 +76,7 @@ static const char *keywords[] = {
     "complex", "complex_64", "complex_128", "int", "int_8", "int_16", "int_32", "int_64", "int_128", "half", "quadruple", "unsigned", "float", "double", "bool", "str", "char", "void", "Void", "file", "const", "auto",
     "true", "false", "return", "print", "if", "else", "for", "while",
     "break", "continue", "and", "or", "xor", "bnot", "not", "struct", "enum", "match", "case", "try", "finally", "throw", "import", "of", "using", "input",
-    "async", "await", "with", "ref", "val", "none", "as", "interface", "implements", "model", "public", "private", "readonly",
+    "func", "async", "await", "with", "ref", "val", "none", "as", "interface", "implements", "model", "public", "private", "readonly",
     NULL
 };
 
@@ -186,9 +186,12 @@ static int is_keyword(Token *t)
     return 0;
 }
 
+static Type parse_function_type(Token *at,Token **end);
+static int parsing_signature;
 /* 型名なら型を、そうでなければ TY_NONE を返す */
 static Type type_keyword(Token *t)
 {
+    if(equal(t,"func"))return parse_function_type(t,NULL);
     if (equal(t, "complex") || equal(t, "complex_64")) return TY_C64;
     if (equal(t, "complex_128")) return TY_C128;
     if (equal(t, "unsigned")) {
@@ -230,7 +233,7 @@ static Type type_keyword(Token *t)
         char *path;
         size_t length;
         while (equal(end->next, ".") && end->next->next->kind == TK_IDENT) end = end->next->next;
-        if (end->next->kind != TK_IDENT) return TY_NONE;
+        if (!parsing_signature && end->next->kind != TK_IDENT) return TY_NONE;
         length = (size_t)(end->loc + end->len - t->loc);
         path = calloc(length + 1, 1);
         if (!path) fatal(QMSG_0592);
@@ -248,6 +251,7 @@ static Type type_keyword(Token *t)
 
 static void skip_type(void)
 {
+    if(equal(tok,"func")){Token *end;parse_function_type(tok,&end);tok=end;return;}
     if (equal(tok, "unsigned")) tok = tok->next;
     tok = tok->next;
     while (equal(tok, ".") && tok->next->kind == TK_IDENT) tok = tok->next->next;
@@ -279,6 +283,8 @@ static ArrayDim *dimensions(Type *ty)
     }
     return head.next;
 }
+
+#include "../features/functions/function_values_parse.inc"
 
 static Var *find_var(Token *t)
 {
@@ -777,7 +783,7 @@ static Node *primary(void)
         node = new_node(ND_VAR, start);
         node->name = name;
         if (consume("(")) {
-            node->kind = ND_CALL;
+            node->kind = ND_CALL;node->var=v;
             call_args(node);
         }
         return node;
@@ -798,7 +804,9 @@ static Node *postfix(void)
 
     for (;;) {
         op = tok;
-        if (consume("[")) {
+        if (consume("(")) {
+            Node *call=new_node(ND_INVOKE,op);call->rhs=node;call_args(call);node=call;
+        } else if (consume("[")) {
             node = new_binary(ND_INDEX, node, expr(), op);
             expect("]");
             variable_member = 0;
@@ -1884,7 +1892,7 @@ static Node *stmt(void)
             else { expect("--"); node->val = UPDATE_DEC; }
             node->rhs = node->val == UPDATE_INC || node->val == UPDATE_DEC ? new_num(1, node->tok) : expr();
         } else {
-            if (target->kind != ND_CALL && target->kind != ND_METHOD && target->kind != ND_MODEL_METHOD && target->kind != ND_INPUT) {
+            if (target->kind != ND_INVOKE && target->kind != ND_CALL && target->kind != ND_METHOD && target->kind != ND_MODEL_METHOD && target->kind != ND_INPUT) {
                 error_tok(target->tok, QMSG_0388);
             }
             if (target->kind == ND_INPUT) target->input_stmt = 1;

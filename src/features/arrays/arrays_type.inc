@@ -32,6 +32,11 @@ static void check_array_literal(Node *node, Type expected)
             check_expr(item);
             if (element == TY_NONE) element = item->ty;
             else if (element != item->ty) {
+                if(type_is_function(element)&&item->kind==ND_NONE){check_expected(item,element);continue;}
+                if(type_is_function(item->ty)&&element==TY_ADDR){
+                    Node *previous;for(previous=node->lhs;previous!=item;previous=previous->next)if(previous->kind!=ND_NONE)error_tok(item->tok,QMSG_0764);
+                    element=item->ty;continue;
+                }
                 if ((type_is_complex(element) || type_is_complex(item->ty)) && is_number(element) && is_number(item->ty)) element = complex_common(element, item->ty);
                 else if (is_numeric(element) && is_numeric(item->ty)) {
                     if(type_is_real(element)||type_is_real(item->ty))element=real_common(element,item->ty);
@@ -64,6 +69,11 @@ static void check_array_literal(Node *node, Type expected)
 
 static void check_expected(Node *node, Type expected)
 {
+    if(type_is_function(expected)){
+        if(node->kind==ND_NONE){node->ty=expected;return;}
+        if(node->kind==ND_VAR&&!node->var)resolve_module_name(node);
+        if(node->kind==ND_FUNCTION_REF){check_function_value(node,expected);return;}
+    }
     enum_context_name(node,expected);
     wide_literal_context(node,expected);
     if(node->kind==ND_WIDE && node->raw_numeric && node->ty==TY_I128 && integer_unsigned(expected) && node->tok->kind==TK_NUM && node->tok->len>2 && node->tok->loc[0]=='0' && integer_prefix(node->tok->loc[1]) && integer_prefix(node->tok->loc[1])!=10) node->ty=TY_U128;
@@ -79,7 +89,7 @@ static ArrayDim *expression_dims(Node *node)
 {
     if (node->field) return node->field->dims;
     if (node->kind == ND_VAR) return node->var->dims;
-    if (node->kind == ND_CALL) return node->func->return_dims;
+    if (node->kind == ND_CALL || node->kind==ND_INVOKE) return node->func->return_dims;
     if (node->kind == ND_ARRAY_NEW || node->kind == ND_ARRAY_COPY) return node->dims;
     if (node->kind == ND_INDEX && type_is_array(node->lhs->ty)) {
         ArrayDim *parent = expression_dims(node->lhs);

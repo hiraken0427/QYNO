@@ -28,7 +28,7 @@ static int io_effect_nodes(Node *n,int caught,int mark)
             effect|=io_effect_nodes(n->els,caught,mark);effect|=io_effect_nodes(n->rhs,caught,mark);continue;
         }
         if(n->kind==ND_BUILTIN&&builtin_node_may_raise(n))effect=1;
-        if(n->kind==ND_THROW || n->kind==ND_AWAIT || n->kind==ND_GROUP)effect=1;
+        if(n->kind==ND_INVOKE || n->kind==ND_THROW || n->kind==ND_AWAIT || n->kind==ND_GROUP)effect=1;
         if(type_is_array(n->ty)&&type_is_model(array_base(n->ty))){Function *fn=type_model(array_base(n->ty))->default_builder;if(fn){effect|=fn->io_effect;if(mark&&caught)fn->io_caught=1;}}
         if(n->kind==ND_CALL||n->kind==ND_CONSTRUCT||n->kind==ND_MODEL_NEW){
             Function *fn=n->kind==ND_MODEL_NEW?type_model(n->ty)->default_builder:n->func;
@@ -45,6 +45,7 @@ static void check_io_effects(Ast *ast)
 {
     Function *fn;int changed;
     io_has_recovery=0;
+    for(fn=ast->funcs;fn;fn=fn->next)if(fn->value_taken){io_has_recovery=1;fn->io_caught=1;}
     for(fn=ast->funcs;fn;fn=fn->next)if(fn->is_async){io_has_recovery=1;fn->io_caught=1;}
     for(fn=ast->funcs;fn;fn=fn->next)if(!fn->is_template)io_controls(fn->body,0,0,0);
     do{changed=0;for(fn=ast->funcs;fn;fn=fn->next)if(!fn->is_template){int e=io_effect_nodes(fn->body,0,0);if(e&&!fn->io_effect){fn->io_effect=1;changed=1;}}}while(changed);
