@@ -167,7 +167,11 @@ function receiverSymbol(env, text, includePrivate = false) {
             }else if(token.value==='('){
                 const end=closing(tokens,i);if(end<0 || !['function','model','enum'].includes(symbol.kind)&&!callableOf(symbol))break;
                 if(symbol.kind!=='function'&&callableOf(symbol))symbol={...callableOf(symbol),name:symbol.name};
-                if(symbol.builtin && ['task.all','task.with_timeout'].includes(symbol.path)) {
+                if(symbol.collectionQuery){
+                    const argumentsText=text.slice(tokens[i].end,tokens[end].start),part=split(lexLine(argumentsText))[0];
+                    const first=part?.length&&receiverSymbol(env,argumentsText.slice(part[0].start,part.at(-1).end),includePrivate);
+                    symbol=first?{...first,kind:'variable',readonly:false}:valueOf(symbol);
+                } else if(symbol.builtin && ['task.all','task.with_timeout'].includes(symbol.path)) {
                     const argumentsText=text.slice(tokens[i].end,tokens[end].start),argTokens=split(lexLine(argumentsText))[0];
                     const first=argTokens?.length && receiverSymbol(env,argumentsText.slice(argTokens[0].start,argTokens.at(-1).end),includePrivate);
                     symbol=first?.type?.startsWith('async ')?{...first,kind:'variable',readonly:false,taskArray:0,rank:symbol.path==='task.all'?(first.taskArray?first.resultRank||0:first.rank||0)+1:first.rank||0}:valueOf(symbol);
@@ -259,7 +263,7 @@ function complete(project, line, character) {
         const enumeration=enumContext(project,env,line,character,text);
         if(enumeration)for(const member of enumeration.members)if(!env.names.has(member.name))items.push(completion(member));
         for(const symbol of STANDARD) if(symbol.path.includes('.') && env.names.get(symbol.name)?.path!==symbol.path) items.push(completion(symbol,symbol.path));
-        for (const keyword of KEYWORD_COMPLETIONS) if (!env.names.has(keyword)) items.push({ label: keyword, kind: TYPES.has(keyword) ? 'type' : 'keyword', insertText: keyword, detail: 'QYNO 0.29.7' });
+        for (const keyword of KEYWORD_COMPLETIONS) if (!env.names.has(keyword)) items.push({ label: keyword, kind: TYPES.has(keyword) ? 'type' : 'keyword', insertText: keyword, detail: 'QYNO 0.29.8' });
     }
     // A completion immediately before '(' must not insert a second argument list.
     const next = project.model.lines[line].slice(character).match(/^\s*\(/);

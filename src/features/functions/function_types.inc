@@ -4,11 +4,13 @@ Function *function_signature(Type ty){return types[(int)ty-TY_ARRAY].signature;}
 const char *function_type_name(Type ty){return types[(int)ty-TY_ARRAY].name;}
 static int function_dims_equal(ArrayDim *a,ArrayDim *b)
 {
-    for(;a&&b;a=a->next,b=b->next){
+    for(;a||b;a=a?a->next:NULL,b=b?b->next:NULL){
+        if(!a){if(b->checked?b->limit!=-1:b->bound!=NULL)return 0;continue;}
+        if(!b){if(a->checked?a->limit!=-1:a->bound!=NULL)return 0;continue;}
         if(a->checked&&b->checked){if(a->limit!=b->limit)return 0;}
         else if(a->bound!=b->bound)return 0;
     }
-    return !a&&!b;
+    return 1;
 }
 Type function_type(Function *signature)
 {

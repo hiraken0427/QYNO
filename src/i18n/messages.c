@@ -908,6 +908,7 @@ char qyno_message_0903[100] = "Function types cannot contain file, addr, interfa
 char qyno_message_0904[95] = "Function call expects %d arguments, got %d";
 char qyno_message_0905[67] = "Invalid or recursive function signature";
 char qyno_message_0906[49] = "Function values cannot be printed";
+char qyno_message_0907[53] = "lib.%.*s requires an array";
 static const Message messages[] = {
     {qyno_message_0000, "\tInput | ", "\t入力 | "},
     {qyno_message_0001, "(Default is input name.exe for Windows, no extension for Linux) \n", "                       （既定は Windows 向けなら 入力名.exe、Linux 向けなら拡張子なし）\n"},
@@ -1816,6 +1817,7 @@ static const Message messages[] = {
     {qyno_message_0904, "Function call expects %d arguments, got %d", "関数値の呼び出しには%d個の引数が必要です。%d個が指定されています"},
     {qyno_message_0905, "Invalid or recursive function signature", "関数型が不正か、再帰的に未確定となっています"},
     {qyno_message_0906, "Function values cannot be printed", "関数値を表示することはできません"},
+    {qyno_message_0907, "lib.%.*s requires an array", "lib.%.*s の第1引数は配列にしてください"},
 };
 void messages_select(int japanese)
 {

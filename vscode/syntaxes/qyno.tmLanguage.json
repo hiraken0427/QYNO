@@ -6,6 +6,17 @@
   ],
   "patterns": [
     {
+      "match": "\\b(lib)\\.(filter|count|any|all)(?=\\s*\\()",
+      "captures": {
+        "1": {
+          "name": "entity.name.namespace.qyno"
+        },
+        "2": {
+          "name": "support.function.qyno"
+        }
+      }
+    },
+    {
       "match": "\\b(func)\\s+((?:unsigned\\s+)?[A-Za-z_]\\w*(?:\\.[A-Za-z_]\\w*)*)(?=\\s*\\()",
       "captures": {
         "1": {
