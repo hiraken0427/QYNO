@@ -6,6 +6,32 @@
   ],
   "patterns": [
     {
+      "match": "\\b(lib)\\.(filter|count|any|all)(?=\\s*\\()",
+      "captures": {
+        "1": {
+          "name": "entity.name.namespace.qyno"
+        },
+        "2": {
+          "name": "support.function.qyno"
+        }
+      }
+    },
+    {
+      "match": "\\b(func)\\s+((?:unsigned\\s+)?[A-Za-z_]\\w*(?:\\.[A-Za-z_]\\w*)*)(?=\\s*\\()",
+      "captures": {
+        "1": {
+          "name": "storage.type.qyno"
+        },
+        "2": {
+          "name": "storage.type.qyno"
+        }
+      }
+    },
+    {
+      "match": "\\bfunc\\b",
+      "name": "storage.type.qyno"
+    },
+    {
       "name": "meta.enum.qyno",
       "begin": "^\\s*(?:(public|private)\\s+)?(enum)\\s+([A-Za-z_]\\w*)\\s*(;)",
       "beginCaptures": {
@@ -221,7 +247,7 @@
     "types": {
       "patterns": [
         {
-          "match": "\\b(?:(?:unsigned\\s+)?int(?:_(?:8|16|32|64|128))?|half|float|double|quadruple|bool|str|char|file|void|Void|auto|complex(?:_(?:64|128))?)\\b",
+          "match": "\\b(?:(?:unsigned\\s+)?int(?:_(?:8|16|32|64|128))?|half|float|double|quadruple|bool|str|char|file|void|Void|auto|func|complex(?:_(?:64|128))?)\\b",
           "name": "storage.type.qyno"
         }
       ]

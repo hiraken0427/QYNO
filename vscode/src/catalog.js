@@ -1,5 +1,5 @@
 'use strict';
-// Reference: QYNO 0.29.6. No runtime dependency on a compiler installation.
+// Reference: QYNO 0.29.8. No runtime dependency on a compiler installation.
 const callable = (path, type, params, documentation) => ({
     kind: 'function', name: path.split('.').at(-1), path, type, rank: 0,
     params: params.map(p => typeof p === 'string' ? { name: p, type: 'value', rank: 0 } : { rank: 0, ...p }),
@@ -102,6 +102,10 @@ const STANDARD = [
     callable('io.dir.create','void',[{name:'path',type:'str / char'}],'ディレクトリを1階層作成する。既存の項目はエラーとなる。'),
     {...callable('io.dir.list','str',[{name:'path',type:'str / char'},{name:'max_entries',type:'int_64',optional:true,default:'1048576',defaultText:'1048576'},{name:'max_name_bytes',type:'int_64',optional:true,default:'67108864',defaultText:'67108864'}],'直下の名前をUTF-8のバイト順で返す。'),rank:1},
     callable('io.dir.remove','void',[{name:'path',type:'str / char'}],'空のディレクトリを削除する。リンクは削除しない。'),
+    {...callable('lib.filter','auto',[{name:'values',type:'array'},{name:'predicate',type:'func bool(value)'}],'条件に合う要素を入力順の新しい配列として返す。'),collectionQuery:true},
+    callable('lib.count','int_64',[{name:'values',type:'array'},{name:'predicate',type:'func bool(value)'}],'条件に合う要素の数を返す。'),
+    callable('lib.any','bool',[{name:'values',type:'array'},{name:'predicate',type:'func bool(value)'}],'条件に合う要素が見つかればtrueを返す。空配列はfalse。'),
+    callable('lib.all','bool',[{name:'values',type:'array'},{name:'predicate',type:'func bool(value)'}],'すべての要素が条件に合えばtrueを返す。空配列もtrue。'),
     callable('io.file.read_text_async','async str',[{name:'path',type:'str / char'},{name:'max_bytes',type:'int_64',optional:true,default:'67108864',defaultText:'67108864'}],'UTF-8のファイルを非同期で読み込む。awaitで文字列を取得する。'),
     callable('io.file.write_text_async','async int_64',[{name:'path',type:'str / char'},{name:'text',type:'str / char'}],'文字列を非同期で上書きする。awaitで書き込みバイト数を取得する。'),
     callable('io.file.append_text_async','async int_64',[{name:'path',type:'str / char'},{name:'text',type:'str / char'}],'文字列を非同期で追記し、書き込みバイト数を返す。'),
@@ -132,7 +136,7 @@ const STANDARD = [
     callable('io.file.write_bytes', 'int_64', [{name:'destination',type:'file'},{name:'data',type:'unsigned int_8',rank:1}], 'wb/abへ全要素を1バイトずつ書き、バイト数を返します。dataは読み取り専用で観測しref不要。UTF-8・改行変換は行いません。'),
     callable('io.file.exists', 'bool', [{ name: 'path', type: 'str', placeholder: '"path.txt"' }], '通常ファイルの存在を確認します。相対パスは実行時の作業ディレクトリが基準です。')
 ];
-const KEYWORD_COMPLETIONS = ['complex', 'complex_64', 'complex_128', 'int', 'int_8', 'int_16', 'int_32', 'int_64', 'int_128', 'half', 'quadruple', 'unsigned', 'float', 'double', 'bool', 'str', 'char', 'file', 'void', 'Void', 'auto', 'const', 'ref', 'val', 'return', 'if', 'else', 'for', 'while', 'break', 'continue', 'and', 'or', 'xor', 'bnot', 'not', 'true', 'false', 'none', 'import', 'using', 'as', 'enum', 'match', 'case', 'async', 'await', 'with', 'try', 'finally', 'throw', 'model', 'interface', 'implements', 'public', 'private', 'readonly'];
+const KEYWORD_COMPLETIONS = ['complex', 'complex_64', 'complex_128', 'int', 'int_8', 'int_16', 'int_32', 'int_64', 'int_128', 'half', 'quadruple', 'unsigned', 'float', 'double', 'bool', 'str', 'char', 'file', 'void', 'Void', 'auto', 'func', 'const', 'ref', 'val', 'return', 'if', 'else', 'for', 'while', 'break', 'continue', 'and', 'or', 'xor', 'bnot', 'not', 'true', 'false', 'none', 'import', 'using', 'as', 'enum', 'match', 'case', 'async', 'await', 'with', 'try', 'finally', 'throw', 'model', 'interface', 'implements', 'public', 'private', 'readonly'];
 const TEXT_METHODS = [
     callable('contains','bool',[{name:'value',type:'str / char'}],'書記素境界で完全一致する部分を含むか。空検索はtrue。'),
     callable('starts_with','bool',[{name:'value',type:'str / char'}],'書記素境界で先頭から完全一致するか。'),

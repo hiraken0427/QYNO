@@ -84,6 +84,8 @@ static Function *specialize_generic_call(Node *call)
         error_tok(call->tok, QMSG_0786, origin->name_len, origin->name);
     fn = generic_alloc(sizeof(*fn)); *fn = *origin; fn->next = NULL;
     fn->is_generic = 0; fn->is_template = 0; fn->generic_origin = origin;
+    /* Standard templates specialize caller-owned types without exporting them. */
+    if(origin->tok->source->module->builtin)fn->is_private=1;
     fn->generic_instances = 0; fn->check_state = 0; fn->label = 0;
     spec = generic_alloc(sizeof(*spec)); spec->origin = origin; spec->fn = fn; spec->types = types;
     spec->next = generic_specs; generic_specs = spec; origin->generic_instances++;

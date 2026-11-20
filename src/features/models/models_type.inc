@@ -96,6 +96,14 @@ static void check_model_field(Node *node)
 static void check_model_method(Node *node)
 {
     Function *fn; Node *self; int allow = allow_void;
+    if(node->lhs){
+        ModelField *field;check_interface_receiver(node->lhs);
+        if(type_is_model(node->lhs->ty)&&(field=find_model_field(type_model(node->lhs->ty),node->name))&&type_is_function(field->ty)){
+            Node *callee=calloc(1,sizeof(*callee));if(!callee)fatal(QMSG_0437);
+            *callee=*node;callee->next=NULL;callee->kind=ND_FIELD;callee->rhs=NULL;callee->nargs=0;callee->ty=TY_NONE;
+            node->kind=ND_INVOKE;node->lhs=node->rhs;node->rhs=callee;check_invoke(node);return;
+        }
+    }
     allow_void = 0; check_interface_receiver(node->lhs); allow_void = allow;
     if(type_is_array(node->lhs->ty)){
         int count=0;Node *arg;

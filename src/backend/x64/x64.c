@@ -739,6 +739,17 @@ void x64_call(int label)
     emit(b, sizeof(b), "call %s", labels[label].name);
 }
 
+void x64_relative_word(int label)
+{
+    const unsigned char bytes[4]={0};add_fixup(label,prog->text.len);
+    emit(bytes,4,".long %s - . - 4",labels[label].name);
+}
+void x64_call_register(Reg reg)
+{
+    unsigned char bytes[3]={0x41,0xff,0xd0};bytes[2]|=(unsigned char)(reg&7);
+    if(reg>=8)emit(bytes,3,"call %s",reg64_names[reg]);else emit(bytes+1,2,"call %s",reg64_names[reg]);
+}
+
 /* call [rip+disp32]：FF 15 cd（インポートアドレステーブル経由の呼び出し） */
 void x64_call_import(Import imp)
 {

@@ -1,4 +1,4 @@
-# QYNO 0.29.6
+# QYNO 0.29.8
 
 著作権およびライセンスに関する情報は、本ファイルの末尾に記載している。
 
@@ -49,6 +49,54 @@ make clean
 modulesはモジュールの登録と名前解決、i18nは英日表示、utilsは共通処理である。共有ヘッダーはinclude、生成済みのコードとデータはgenerated、Visual Studio Code拡張機能はvscodeに置く。binとbuildはビルド時に作成する。
 
 ## 新機能
+
+0.29.8では、配列の条件処理をlibに追加した。filterは条件に合う要素の配列、countは条件に合う要素数をint_64で返す。anyは1つでも条件に合えばtrue、allはすべての要素が条件に合えばtrueとなる。入力配列は変更しない。
+
+```text
+using io
+bool positive(x)=x>0
+int main();
+	int values[]=[-2,0,3,1]
+	auto selected=lib.filter(values,positive)
+	print(selected)
+	print(lib.count(values,positive))
+	print(lib.any(values,positive))
+	print(lib.all(values,positive))
+	print(values)
+	return 0
+```
+
+述語は要素を1つ値渡しで受け取り、boolを返す同期関数値である。要素型から関数型を決めるため、上のpositiveのように引数型を省略した関数も渡せる。多次元配列では最上位の要素を対象とする。
+
+filterは入力順を維持した独立の配列を返す。filterとcountは全要素を評価する。anyは最初のtrue、allは最初のfalseで処理を止める。空配列ではfilterが空配列、countが0、anyがfalse、allがtrueとなり、述語を呼び出さない。
+
+述語のI/Oエラーはtryとcaseへ伝播する。filterの途中結果は返さない。これらは同期処理であり、自動的にはイベントループへ制御を譲らない。型を推論した配列引数の関数型も整備し、非公開のmodelを用いる条件処理にも対応した。
+
+0.29.7では、名前付きの同期関数を値として扱えるようにした。関数名を代入し、変数から呼び出すことができる。引数、戻り値、配列、modelのフィールドにも使用できる。型を明示する場合はfuncを用いる。
+
+```text
+using io
+int square(int value) = value ^ 2
+int cube(int value) = value ^ 3
+int apply(int value, func int(int) operation);
+	return operation(value)
+func int(int) select(bool use_cube);
+	if(use_cube);
+		return cube
+	return square
+int main();
+	auto operation = select(true)
+	print(apply(3, operation))
+	operation = square
+	print(operation(3))
+	return 0
+```
+
+func int(int)はintを1つ受け取り、intを返す関数型である。引数名は省略できる。refとref readonly、配列の条件も型に含まれる。関数値の型は宣言後に固定される。型未確定の引数を持つ関数は、期待するfuncの型から特殊化する。
+
+関数型の初期値はnoneである。未設定のまま呼び出すとエラーとなる。型が同じ関数値とnoneには等価比較を使用できる。lib.sizeは関数値1つにつき64を返す。関数値の表示や数値への変換は行えない。
+
+関数値を経由したI/Oエラーにもtryとcaseを使用できる。同期の関数値はasync関数へ渡せるが、呼び出し自体は同期処理となる。async関数やmodelメソッドの取り出し、匿名関数とクロージャは未対応である。組み込み関数を値として使う場合は通常の関数でラップする。関数型にfile、addr、interface、タスク、グループを含めることはできない。funcを予約語に追加した。
 
 0.29.6では、バイナリファイルの非同期読み書きを追加した。read_bytes_asyncはファイル全体をunsigned int_8の配列として読み込む。write_bytes_asyncは上書き、append_bytes_asyncは追記を行い、書き込んだバイト数をint_64で返す。パス指定で開閉まで行うため、利用者によるcloseは不要である。
 

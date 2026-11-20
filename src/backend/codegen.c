@@ -5431,6 +5431,13 @@ static void gen_invoke(Node *node)
     IoScope *saved_scope;
     Node *saved_catch;
     int saved_return, i;
+    if(node->kind==ND_INVOKE){
+        int valid=rt_label("function.set");
+        x64_load(R10,RSP,node->nargs*8+(int)node->val);x64_test(R10,R10);x64_jcc(CC_NZ,valid);
+        gen_fail(node->tok,QMSG_0900,EX_SOFTWARE);x64_bind(valid);
+        x64_load(RAX,R10,0);x64_shl_imm(RAX,32);x64_mov_imm(RCX,32);x64_sar_cl(RAX);
+        x64_load(R11,R10,8);x64_lea(R10,R10,4);x64_add(R10,RAX);x64_call_register(R10);return;
+    }
     if(node->func->is_async){gen_async_call(node->func,node->nargs);return;}
     if (!plan || plan->owner != emitting_function) { x64_call(node->func->label); return; }
     for (i = 0; i < plan->param_count; i++) {
@@ -5459,6 +5466,7 @@ static void gen_call(Node *node)
     int i;
     IoScope *outer=io_scope,argument_scope;
     int failed=0,finished=0,baseline=depth;
+    if(node->kind==ND_INVOKE){gen_expr(node->rhs);push();node->val=0;}
     for (arg = node->lhs; arg != NULL; arg = arg->next)
         if (arg->kind == ND_REFARG)
             for (part = arg->lhs; part->kind == ND_INDEX; part = part->lhs) owners++;
@@ -5477,10 +5485,12 @@ static void gen_call(Node *node)
             x64_add_imm(RSP, 8 * node->nargs);
             depth -= node->nargs;
         }
+        if(node->kind==ND_INVOKE){x64_add_imm(RSP,8);depth--;}
         if (optimizer_local_effects(node) & OPT_RAISE) gen_io_check();
         return;
     }
     bytes = ((node->nargs + owners) * 8 + 15) / 16 * 16;
+    if(node->kind==ND_INVOKE)node->val=bytes;
     base = emitting_function->stack_size + depth * 8 + bytes;
     if (bytes) { x64_sub_imm(RSP, bytes); depth += bytes / 8; }
     failed=rt_label("io.arguments.failed");finished=rt_label("io.arguments.done");
@@ -5517,6 +5527,7 @@ static void gen_call(Node *node)
         x64_store(RDX, 32, RCX);
     }
     if (bytes) { x64_add_imm(RSP, bytes); depth -= bytes / 8; }
+    if(node->kind==ND_INVOKE){x64_add_imm(RSP,8);depth--;}
     if (optimizer_local_effects(node) & OPT_RAISE) gen_io_check();
     x64_jmp(finished);
     x64_bind(failed);
@@ -5619,6 +5630,8 @@ static void gen_expr_inner(Node *node)
         } else gen_text_operation(node);
         return;
     case ND_TEXT_METHOD:gen_text_method(node);return;
+    case ND_FUNCTION_REF:x64_lea_label(RAX,node->func->value_label);return;
+    case ND_INVOKE:
     case ND_CALL:
         gen_call(node);
         return;
@@ -6348,6 +6361,7 @@ static void codegen_pass(Ast *ast, Program *out_prog, FILE *out_text, Target out
         if (fn->is_template) continue;
         snprintf(label_name, sizeof(label_name), ".L.module.%d.function.%d.%.*s", fn->tok->source->module->id, function_index++, fn->name_len, fn->name);
         fn->label = x64_new_label(label_name);
+        if(fn->value_taken)fn->value_label=new_label("function.value");
         if(fn->is_async)fn->async_label=new_label("async.invoke");
         if (!fn->model && fn->tok->source->module==ast->entry && fn->name_len == 4 && strncmp(fn->name, "main", 4) == 0) {
             main_label = fn->label;main_function=fn;
@@ -6521,6 +6535,10 @@ static void codegen_pass(Ast *ast, Program *out_prog, FILE *out_text, Target out
         if (!fn->is_template) gen_function(fn);
     }
 
+    for(fn=ast->funcs;fn;fn=fn->next)if(!fn->is_template&&fn->value_taken){
+        static const unsigned char padding[12]={0};
+        x64_provide(fn->value_label);x64_bind(fn->value_label);x64_relative_word(fn->label);x64_blob(padding,sizeof(padding));
+    }
     gen_enum_runtime();
     gen_typed_arrays();
     gen_library_size_runtime();

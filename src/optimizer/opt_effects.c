@@ -72,6 +72,8 @@ unsigned optimizer_local_effects(const Node *n)
     case ND_INDEX: case ND_LENGTH:
         return OPT_READ | OPT_TRAP | (n->kind == ND_INDEX && n->lhs ?
             (type_is_text(n->lhs->ty) ? OPT_ALLOCATE : OPT_CONTEXT) : 0);
+    case ND_FUNCTION_REF:return 0;
+    case ND_INVOKE:return OPT_ALL;
     case ND_CALL: case ND_CONSTRUCT:
         return n->func && n->func->is_async ? OPT_ALL : function_effects(n->func);
     case ND_MODEL_NEW:

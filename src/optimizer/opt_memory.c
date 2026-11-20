@@ -51,6 +51,7 @@ static int changes(Node *list, Var *wanted, unsigned mask, int level)
     unsigned effects;
     if (level > 128) return 1;
     for (n = list; n; n = n->next) {
+        if(n->kind==ND_INVOKE)return 1;
         effects = mutation(n, &v);
         if (((n->kind == ND_DECL && v == wanted) ||
             (n->kind != ND_DECL && aliases(v, wanted))) && (effects & mask)) return 1;
@@ -82,6 +83,7 @@ static int unknown_memory(Node *list,int level)
     Node *n;
     if(level>128)return 1;
     for(n=list;n;n=n->next){
+        if(n->kind==ND_INVOKE)return 1;
         if(n->kind==ND_CALL&&(!n->func||n->func->opt_unknown_memory))return 1;
         if(unknown_memory(n->lhs,level+1)||unknown_memory(n->rhs,level+1)||
             unknown_memory(n->cond,level+1)||unknown_memory(n->then,level+1)||
@@ -113,10 +115,10 @@ static int escaping_arguments(Node *list,int all,int level)
     int changed=0;
     if(level>128)return 0;
     for(n=list;n;n=n->next){
-        if(n->kind==ND_CALL){
+        if(n->kind==ND_CALL||n->kind==ND_INVOKE){
             p=n->func?n->func->params:NULL;
             for(arg=n->lhs;arg;arg=arg->next){
-                if(arg->kind==ND_REFARG&&(all||!p||(p->opt_access&OA_ESCAPE))&&(v=root(arg))&&!v->opt_addressed){v->opt_addressed=1;changed=1;}
+                if(arg->kind==ND_REFARG&&(all||n->kind==ND_INVOKE||!p||(p->opt_access&OA_ESCAPE))&&(v=root(arg))&&!v->opt_addressed){v->opt_addressed=1;changed=1;}
                 if(p)p=p->next;
             }
         }

@@ -33,6 +33,7 @@
 
 const char *type_name(Type ty)
 {
+    if(type_is_function(ty))return function_type_name(ty);
     if(ty==TY_GROUP)return "task.Group";
     if (type_is_task(ty)) return task_type_name(ty);
     if (type_is_array(ty)) return array_type_name(ty);
@@ -114,6 +115,7 @@ static void check_try_open(Node *node);
 /* const の計算に使う値 */
 typedef struct {
     Type ty;
+    Function *function;
     WideBits wide;
     long long i;        /* all integer types and bool; unsigned uses the same bits */
     double imag;
@@ -129,6 +131,8 @@ static void check_expr(Node *node);
 static void const_error(Node *node, const char *msg);
 static Node *value_node(Value v, Token *tok);
 static void check_expected(Node *node, Type expected);
+static void check_function_value(Node *node,Type expected);
+static void check_invoke(Node *node);
 static void check_dims(ArrayDim *dims);
 static Node *copy_array(Node *source, ArrayDim *dims, int pad);
 static void check_model_init(Node *node, Type expected);
@@ -394,7 +398,8 @@ static void check_cmp(Node *cmp)
     Type r;
     CmpKind kind;
 
-    if (enum_unbound_name(cmp->lhs) && !enum_unbound_name(cmp->rhs)) {
+    if(cmp->lhs->kind==ND_NONE){check_expr(cmp->rhs);check_expected(cmp->lhs,cmp->rhs->ty);}
+    else if (enum_unbound_name(cmp->lhs) && !enum_unbound_name(cmp->rhs)) {
         check_expr(cmp->rhs);check_expected(cmp->lhs,cmp->rhs->ty);
     } else if ((cmp->lhs->kind == ND_ARRAY_LITERAL || cmp->lhs->kind == ND_MODEL_INIT) && cmp->rhs->kind != ND_ARRAY_LITERAL && cmp->rhs->kind != ND_MODEL_INIT) {
         check_expr(cmp->rhs);
@@ -413,6 +418,7 @@ static void check_cmp(Node *cmp)
     r = cmp->rhs->ty;
     kind = (CmpKind)cmp->val;
     cmp->ty = TY_BOOL;
+    if(type_is_function(l)||type_is_function(r)){if(l!=r||(kind!=CMP_EQ&&kind!=CMP_NE))error_tok(cmp->tok,QMSG_0902,type_name(l));cmp->cmp_ty=l;return;}
     if(type_is_enum(l)||type_is_enum(r)){if(l!=r||(kind!=CMP_EQ&&kind!=CMP_NE))error_tok(cmp->tok,QMSG_0163);cmp->cmp_ty=l;return;}
     if (type_is_model(l) || type_is_model(r)) {
         if (l != r || (kind != CMP_EQ && kind != CMP_NE)) error_tok(cmp->tok, QMSG_0457);
@@ -835,6 +841,9 @@ static void check_ref_arg(Node *arg, Var *param, int index)
     allowed_interface_use = saved_interface_use;
 }
 
+#include "../features/functions/function_values_type.inc"
+#include "../features/arrays/collection_queries_type.inc"
+
 /* 関数呼び出し：呼び出し先を探し、引数の数と型を確かめて、引数を引数の型に変換する */
 static void check_call(Node *node)
 {
@@ -850,8 +859,17 @@ static void check_call(Node *node)
 
     allow = allow_void;
     allow_void = 0;
-
+    if(node->kind==ND_CALL&&node->var){
+        if(node->var->is_const&&node->var->ty==TY_NONE)ensure_const(node->var);
+        if(type_is_function(node->var->ty)){
+            node->var->is_used=1;
+            Node *callee=calloc(1,sizeof(*callee));if(!callee)fatal(QMSG_0437);
+            callee->kind=ND_VAR;callee->var=node->var;callee->tok=node->tok;
+            node->kind=ND_INVOKE;node->rhs=callee;allow_void=allow;check_invoke(node);return;
+        }
+    }
     if (!node->func) resolve_module_name(node);
+    if(node->kind==ND_INVOKE&&!node->func){allow_void=allow;check_invoke(node);return;}
     if(node->kind==ND_ENUM_CONVERT){check_enum_conversion(node);return;}
     if (node->kind == ND_MODEL_METHOD) {
         allow_void = allow; check_model_method(node); allow_void = 0; return;
@@ -871,6 +889,7 @@ static void check_call(Node *node)
         error_tok(node->tok, QMSG_0779,
                  fn->name_len, fn->name, fn->param_count, node->nargs);
     }
+    if(node->kind==ND_CALL)check_collection_query(node,fn);
     if (fn->is_generic) fn = node->func = specialize_generic_call(node);
     if (fn->infer_return || (fn->generic_origin && fn->check_state != 1)) ensure_function(fn, node->tok);
 
@@ -1030,6 +1049,8 @@ static void check_expr(Node *node)
             ensure_const(node->var);
         node->ty = node->var->ty;
         return;
+    case ND_FUNCTION_REF:check_function_value(node,TY_NONE);return;
+    case ND_INVOKE:check_invoke(node);return;
     case ND_CALL:
         check_call(node);
         return;
@@ -1241,6 +1262,7 @@ static int compare_values(Value l, Value r, CmpKind kind)
     Node *b;
 
     if(type_is_wide(l.ty)) { WideRequest request={0};request.op=W_CMP;request.ty=wide_tag(l.ty);request.a=value_bits(l);request.b=value_bits(r);request.aux=kind;wide_execute(&request);return (int)request.out.lo; }
+    if(type_is_function(l.ty))return kind==CMP_EQ?l.function==r.function:l.function!=r.function;
     if(l.ty==TY_VOID)return kind==CMP_EQ;
     if (type_is_complex(l.ty)) {
         eq = l.d == r.d && l.imag == r.imag;
@@ -1695,6 +1717,8 @@ static Value eval_const_inner(Node *node)
     memset(&v, 0, sizeof(v));
     v.ty = node->ty;
     switch (node->kind) {
+    case ND_FUNCTION_REF:v.function=node->func;v.i=(long long)(uintptr_t)node->func;return v;
+    case ND_NONE:return v;
     case ND_UNIT: return v;
     case ND_WIDE: v.wide=node->wide;return v;
     case ND_COMPLEX: v.d = node->fval; v.imag = node->imag; return v;
@@ -1883,6 +1907,8 @@ static int is_const_expr(Node *node)
         return 1;
     case ND_ARRAY_COPY:
         return is_const_expr(node->lhs);
+    case ND_NONE:return type_is_function(node->ty);
+    case ND_FUNCTION_REF:
     case ND_UNIT:
     case ND_WIDE:
     case ND_COMPLEX:
@@ -1951,6 +1977,7 @@ static Node *value_node(Value v, Token *tok)
     }
     node->ty = v.ty;
     node->tok = tok;
+    if(type_is_function(v.ty)){node->kind=v.function?ND_FUNCTION_REF:ND_NONE;node->func=v.function;return node;}
     if(v.ty==TY_VOID){node->kind=ND_UNIT;return node;}
     if (type_is_model(v.ty)) {
         node->kind = ND_MODEL_INIT; node->lhs = v.items; node->nargs = v.len; node->constant_value = 1;
@@ -2066,6 +2093,17 @@ static void check_for_header(Node *node)
     }
 }
 
+static int function_display(Type ty,Type *seen,int count)
+{
+    int i;ModelField *f;
+    if(type_is_function(ty))return 1;
+    for(i=0;i<count;i++)if(seen[i]==ty)return 0;
+    if(count>=MAX_PLACE_DEPTH)return 1;
+    seen[count++]=ty;
+    if(type_is_array(ty))return function_display(array_element(ty),seen,count);
+    if(type_is_model(ty))for(f=type_model(ty)->fields;f;f=f->next)if(!f->is_private&&function_display(f->ty,seen,count))return 1;
+    return 0;
+}
 /* print の部分の並び（固定部分以外は任意の型の式。void は不可） */
 static void check_print_parts(Node *list)
 {
@@ -2076,6 +2114,7 @@ static void check_print_parts(Node *list)
             continue;
         }
         check_expr(part);
+        {Type seen[MAX_PLACE_DEPTH];if(function_display(part->ty,seen,0))error_tok(part->tok,QMSG_0906);}
         if(part->ty==TY_GROUP || type_is_task(array_base(part->ty)))error_tok(part->tok,QMSG_0877);
         if (part->format_base && !type_is_integer(part->ty)) error_tok(part->tok, QMSG_0598);
         if (part->ty == TY_FILE || (type_is_array(part->ty) && array_base(part->ty) == TY_FILE))
@@ -2419,6 +2458,14 @@ void typecheck(Ast *ast, Target out_target)
     generic_specs = NULL; generic_spec_count = 0;
     check_names(ast);
     resolve_model_types(ast);
+    {Function *f;Var *v;Model *m;ModelField *field;
+     for(f=ast->funcs;f;f=f->next){
+        Type base=array_base(f->ret);if(type_is_function(base))check_function_shape(function_signature(base));
+        for(v=f->params;v;v=v->next){base=array_base(v->ty);if(type_is_function(base))check_function_shape(function_signature(base));}
+        for(v=f->locals;v;v=v->next){base=array_base(v->ty);if(type_is_function(base))check_function_shape(function_signature(base));}
+     }
+     for(m=ast->models;m;m=m->next)for(field=m->fields;field;field=field->next){Type base=array_base(field->ty);if(type_is_function(base))check_function_shape(function_signature(base));}
+     for(v=ast->global_vars;v;v=v->next){Type base=array_base(v->ty);if(type_is_function(base))check_function_shape(function_signature(base));}}
     prepare_builders(ast);
     {EnumDef *e;for(e=ast->enums;e;e=e->next)ensure_enum(e);}
     check_interface_positions(ast);

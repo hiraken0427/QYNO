@@ -3,6 +3,7 @@
 static void check_export_type(Type ty,Token *site)
 {
     int hidden=0;Type base=array_base(ty);
+    if(type_is_function(base)){Function *f=function_signature(base);Var *p;check_export_type(f->ret,site);for(p=f->params;p;p=p->next)check_export_type(p->ty,site);return;}
     if(type_is_task(base)){check_export_type(task_result(base),site);return;}
     if(type_is_enum(base))hidden=type_enum(base)->is_private;
     else if(type_is_model(base))hidden=type_model(base)->is_private;

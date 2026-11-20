@@ -11,7 +11,7 @@
 #include <stdio.h>
 #include "../src/i18n/messages.h"
 
-#define QYC_VERSION "0.29.6"
+#define QYC_VERSION "0.29.8"
 
 typedef struct SourceFile SourceFile;
 typedef struct Module Module;
@@ -354,6 +354,7 @@ typedef enum {
     ND_SAVED,         /* 複合添字更新の評価済みの値。val は rbp からの距離 */
     ND_VAR,     /* 変数の参照（var が NULL ならファイル先頭の const を型検査で探す） */
     ND_FORMAT,  /* write の補間文字列（lhs は print と同じ部分列） */
+    ND_FUNCTION_REF, ND_INVOKE,
     ND_CALL,    /* 関数呼び出し（func、引数は lhs から next でつながる） */
     ND_BUILTIN, /* 組み込み関数（val に Builtin、引数は lhs から next でつながる） */
     ND_ABS,     /* |x|（lhs） */
@@ -459,6 +460,7 @@ struct Node {
 
 struct Function {
     int is_async;
+    int value_taken, value_label;
     int async_label;
     Function *next;
     Interface *contract; /* signature-only interface method */
@@ -661,6 +663,11 @@ Ast *parse(Token *tok);
 /* type.c：工程4 型検査（式の型を決め、必要な型変換を挿入する） */
 const char *type_name(Type ty);
 int type_is_text(Type ty);
+int type_is_function(Type ty);
+Function *function_signature(Type ty);
+Type function_type(Function *signature);
+const char *function_type_name(Type ty);
+void check_function_shape(Function *signature);
 int type_is_task(Type ty);
 Type task_type(Type result);
 Type task_result(Type ty);
@@ -831,6 +838,8 @@ void x64_lea_data(Reg dst, size_t data_offset);
 void x64_jmp(int label);
 void x64_jcc(Cond cc, int label);
 void x64_call(int label);
+void x64_call_register(Reg reg);
+void x64_relative_word(int label);
 void x64_lea_label(Reg dst, int label);
 void x64_call_import(Import imp);
 void x64_load_import(Reg dst, Import imp);

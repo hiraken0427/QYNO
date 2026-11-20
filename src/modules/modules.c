@@ -9,6 +9,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include "../features/time/standard_time_source.h"
+#include "../features/arrays/standard_collections_source.h"
 
 typedef enum { SYM_NONE, SYM_ENUM, SYM_MODEL, SYM_INTERFACE, SYM_MODULE, SYM_FUNCTION, SYM_CONSTANT, SYM_BUILTIN } SymbolKind;
 typedef struct {
@@ -275,7 +276,7 @@ Ast *load_program(const char *path, const char **roots, int root_count)
         "\tio_read_only\n\tio_broken_pipe\n\tio_resource_busy\n\tio_io_error\n\tio_unsupported_operation\n"
         "\tio_out_of_range\n\tio_system_error\n\tio_not_directory\n\tio_directory_not_empty\n"
         "\ttask_cancelled=65537\n\ttask_timed_out\n\ttask_group_failed\n\ttask_invalid_state\n"
-        "model Error;\n\tErrorCode code\n\tstr message\n\tstr source\n\tint line\n\tint column\n\tstr domain\n\tError errors[]\n");
+        "model Error;\n\tErrorCode code\n\tstr message\n\tstr source\n\tint line\n\tint column\n\tstr domain\n\tError errors[]\n" QYNO_COLLECTIONS_SOURCE);
     standard_source("task",
         "enum State;\n\tpending\n\trunning\n\twaiting\n\tcancelling\n\tcompleted\n\tfailed\n\tcancelled\n"
         "enum ErrorCode;\n\tno_error\n\tcancelled\n\ttimed_out\n\tgroup_failed\n\tinvalid_state\n"
@@ -833,6 +834,10 @@ void resolve_module_name(Node *node)
             return;
         }
     }
+    if(node->kind==ND_CALL&&symbol.kind==SYM_CONSTANT){
+        Node *callee=allocate(sizeof(*callee));callee->kind=ND_VAR;callee->var=symbol.constant;callee->tok=node->tok;
+        node->kind=ND_INVOKE;node->rhs=callee;return;
+    }
     if (node->kind == ND_CALL) {
         if(symbol.kind==SYM_ENUM){node->kind=ND_ENUM_CONVERT;node->cmp_ty=symbol.enumeration->ty;return;}
         if (symbol.kind == SYM_INTERFACE) error_tok(node->tok, QMSG_0258);
@@ -856,6 +861,8 @@ void resolve_module_name(Node *node)
         }
         error_tok(node->tok, QMSG_0783, name);
     }
+    if(symbol.kind==SYM_FUNCTION){node->kind=ND_FUNCTION_REF;node->func=symbol.function;return;}
+    if(symbol.kind==SYM_BUILTIN){if(symbol.builtin==BI_IO_PRINT||symbol.builtin==BI_IO_INPUT)error_tok(node->tok,QMSG_0609,name);error_tok(node->tok,QMSG_0898);}
     if (symbol.kind == SYM_CONSTANT) {
         node->var = symbol.constant;
         return;

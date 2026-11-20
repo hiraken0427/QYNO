@@ -1,6 +1,6 @@
 'use strict';
 const { STANDARD, KEYWORD_COMPLETIONS, properties, TEXT_METHODS } = require('./catalog');
-const { TYPES, codeContext, visibleSymbols, visibleUsings, functionLabel, typeLabel, scopeContains, lexLine, closing, split } = require('./analysis');
+const { TYPES, codeContext, visibleSymbols, visibleUsings, functionLabel, typeLabel, scopeContains, lexLine, closing, split, callableOf } = require('./analysis');
 const { initializationContext } = require('./initialization');
 
 function environment(project, line, character) {
@@ -95,12 +95,14 @@ function environment(project, line, character) {
         if(initializer.startsWith('[') && initializer.endsWith(']')) {
             const body=initializer.slice(1,-1),part=split(lexLine(body))[0];
             const item=part?.length && receiverSymbol(env,body.slice(part[0].start,part.at(-1).end));
+            if(item?.kind==='function'){names.set(name,{...symbol,type:'func '+functionLabel({...item,name:'',moduleVisibility:undefined,declaringModelId:undefined}),rank:1});continue;}
             if(item?.type?.startsWith('async '))names.set(name,{...symbol,type:item.type,rank:item.taskArray?(item.rank||0)+1:1,taskArray:(item.taskArray||0)+1,resultRank:item.taskArray?item.resultRank:item.rank||0});
             continue;
         }
         if(!/\.(?:contains|starts_with|ends_with|find|trim|split|replace)\s*\(|^\s*(?:await\s+)?[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*\s*\(|^\s*await\b|^\s*[A-Za-z_]\w*(?:\[[^\]]+\])*\s*$/.test(initializer))continue;
         const inferred=receiverSymbol(env,symbol.initializerText);
-        if(inferred?.type && inferred.type!=='auto')names.set(name,{...symbol,type:inferred.type,rank:inferred.rank||0,taskArray:inferred.taskArray,resultRank:inferred.resultRank});
+        if(inferred?.kind==='function' && /^[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*$/.test(initializer)){names.set(name,{...symbol,type:'func '+functionLabel({...inferred,name:'',moduleVisibility:undefined,declaringModelId:undefined}),rank:0,callable:inferred});continue;}
+        if(inferred?.type && inferred.type!=='auto')names.set(name,{...symbol,type:inferred.type,rank:inferred.rank||0,callable:inferred.callable,taskArray:inferred.taskArray,resultRank:inferred.resultRank});
     }
     return env;
 }
@@ -163,8 +165,13 @@ function receiverSymbol(env, text, includePrivate = false) {
                 if(end<0 || !symbol.rank && !['str','char'].includes(symbol.type))break;
                 symbol=symbol.taskArray?{...valueOf(symbol),taskArray:symbol.taskArray-1,rank:symbol.taskArray===1?symbol.resultRank:Math.max(0,symbol.rank-1)}:{...valueOf(symbol),readonly:symbol.readonly,rank:Math.max(0,(symbol.rank||0)-1),type:symbol.rank?symbol.type:'char'};i=end+1;
             }else if(token.value==='('){
-                const end=closing(tokens,i);if(end<0 || !['function','model','enum'].includes(symbol.kind))break;
-                if(symbol.builtin && ['task.all','task.with_timeout'].includes(symbol.path)) {
+                const end=closing(tokens,i);if(end<0 || !['function','model','enum'].includes(symbol.kind)&&!callableOf(symbol))break;
+                if(symbol.kind!=='function'&&callableOf(symbol))symbol={...callableOf(symbol),name:symbol.name};
+                if(symbol.collectionQuery){
+                    const argumentsText=text.slice(tokens[i].end,tokens[end].start),part=split(lexLine(argumentsText))[0];
+                    const first=part?.length&&receiverSymbol(env,argumentsText.slice(part[0].start,part.at(-1).end),includePrivate);
+                    symbol=first?{...first,kind:'variable',readonly:false}:valueOf(symbol);
+                } else if(symbol.builtin && ['task.all','task.with_timeout'].includes(symbol.path)) {
                     const argumentsText=text.slice(tokens[i].end,tokens[end].start),argTokens=split(lexLine(argumentsText))[0];
                     const first=argTokens?.length && receiverSymbol(env,argumentsText.slice(argTokens[0].start,argTokens.at(-1).end),includePrivate);
                     symbol=first?.type?.startsWith('async ')?{...first,kind:'variable',readonly:false,taskArray:0,rank:symbol.path==='task.all'?(first.taskArray?first.resultRank||0:first.rank||0)+1:first.rank||0}:valueOf(symbol);
@@ -256,10 +263,14 @@ function complete(project, line, character) {
         const enumeration=enumContext(project,env,line,character,text);
         if(enumeration)for(const member of enumeration.members)if(!env.names.has(member.name))items.push(completion(member));
         for(const symbol of STANDARD) if(symbol.path.includes('.') && env.names.get(symbol.name)?.path!==symbol.path) items.push(completion(symbol,symbol.path));
-        for (const keyword of KEYWORD_COMPLETIONS) if (!env.names.has(keyword)) items.push({ label: keyword, kind: TYPES.has(keyword) ? 'type' : 'keyword', insertText: keyword, detail: 'QYNO 0.29.6' });
+        for (const keyword of KEYWORD_COMPLETIONS) if (!env.names.has(keyword)) items.push({ label: keyword, kind: TYPES.has(keyword) ? 'type' : 'keyword', insertText: keyword, detail: 'QYNO 0.29.8' });
     }
     // A completion immediately before '(' must not insert a second argument list.
     const next = project.model.lines[line].slice(character).match(/^\s*\(/);
+    const assignment=/^\s*(?:const\s+)?func\b.*=\s*(?:[A-Za-z_]\w*\.)*$/.test(before);
+    const callSignature=signature(project,line,character);
+    const expectsFunction=assignment||callSignature?.symbol.params?.[callSignature.activeParameter]?.type?.startsWith('func ');
+    if(expectsFunction)items=items.map(item=>item.kind==='function'?{...item,insertText:item.label,snippet:false}:item);
     return items.filter(item => item.label.startsWith(word)).map(item => ({ ...item, range, insertText: next && item.kind === 'function' ? item.label : item.insertText, snippet: next ? false : item.snippet }));
 }
 
@@ -319,6 +330,7 @@ function signature(project, line, character) {
         const candidate = properties[last];
         if (candidate?.kind === 'function' && receiverMembers(project, env, call.path.slice(0, -last.length)).some(s => s.name === last)) symbol = candidate;
     }
+    if(symbol?.kind!=='function'&&callableOf(symbol))symbol={...callableOf(symbol),expression:symbol.expression,name:symbol.name};
     if(symbol?.kind==='enum')return {symbol,label:call.path+(symbol.path==='lib.ErrorCode'?'(value: io.ErrorCode / task.ErrorCode / lib.ErrorCode)':'(value: integer / str / '+symbol.name+')'),activeParameter:0};
     const index=symbol?.builtin && /^(?:(?:unsigned )?int(?:_(?:8|16|32|64|128))?|str|complex(?:_(?:64|128))?)$/.test(symbol.path) && call.argName ? symbol.params.findIndex(p=>p.name===call.argName) : call.argument;
     return symbol?.kind === 'function' ? { symbol, label: functionLabel(symbol, symbol.expression || call.path), activeParameter: Math.min(Math.max(0,index), Math.max(0, symbol.params.length - 1)) } : undefined;

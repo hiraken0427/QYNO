@@ -898,6 +898,17 @@ char qyno_message_0893[18] = "Related error: ";
 char qyno_message_0894[47] = "Additional related errors omitted\n";
 char qyno_message_0895[64] = "Unable to initialize asynchronous file workers";
 char qyno_message_0896[77] = "io.file.%s requires a one-dimensional unsigned int_8 array";
+char qyno_message_0897[64] = "Function type requires explicit argument and return types";
+char qyno_message_0898[64] = "This function cannot be used as a value";
+char qyno_message_0899[82] = "Specify a func type to specialize this generic function";
+char qyno_message_0900[37] = "Function is not set";
+char qyno_message_0901[64] = "Expression is not callable";
+char qyno_message_0902[41] = "Function signature does not match %s";
+char qyno_message_0903[100] = "Function types cannot contain file, addr, interface, task, or group values";
+char qyno_message_0904[95] = "Function call expects %d arguments, got %d";
+char qyno_message_0905[67] = "Invalid or recursive function signature";
+char qyno_message_0906[49] = "Function values cannot be printed";
+char qyno_message_0907[53] = "lib.%.*s requires an array";
 static const Message messages[] = {
     {qyno_message_0000, "\tInput | ", "\t入力 | "},
     {qyno_message_0001, "(Default is input name.exe for Windows, no extension for Linux) \n", "                       （既定は Windows 向けなら 入力名.exe、Linux 向けなら拡張子なし）\n"},
@@ -1796,6 +1807,17 @@ static const Message messages[] = {
     {qyno_message_0894, "Additional related errors omitted\n", "以降の関連エラーを省略しました\n"},
     {qyno_message_0895, "Unable to initialize asynchronous file workers", "非同期ファイルのワーカーを初期化できません"},
     {qyno_message_0896, "io.file.%s requires a one-dimensional unsigned int_8 array", "io.file.%s の data は unsigned int_8 の1次元配列にしてください"},
+    {qyno_message_0897, "Function type requires explicit argument and return types", "関数型の引数と戻り値の型を明示してください"},
+    {qyno_message_0898, "This function cannot be used as a value", "この関数を値として使用することはできません"},
+    {qyno_message_0899, "Specify a func type to specialize this generic function", "この関数を値として扱う場合は func で型を指定してください"},
+    {qyno_message_0900, "Function is not set", "関数が設定されていません"},
+    {qyno_message_0901, "Expression is not callable", "この値を関数として呼び出すことはできません"},
+    {qyno_message_0902, "Function signature does not match %s", "関数の型が %s と一致しません"},
+    {qyno_message_0903, "Function types cannot contain file, addr, interface, task, or group values", "関数型に file、addr、interface、タスク、グループを含めることはできません"},
+    {qyno_message_0904, "Function call expects %d arguments, got %d", "関数値の呼び出しには%d個の引数が必要です。%d個が指定されています"},
+    {qyno_message_0905, "Invalid or recursive function signature", "関数型が不正か、再帰的に未確定となっています"},
+    {qyno_message_0906, "Function values cannot be printed", "関数値を表示することはできません"},
+    {qyno_message_0907, "lib.%.*s requires an array", "lib.%.*s の第1引数は配列にしてください"},
 };
 void messages_select(int japanese)
 {
