@@ -842,6 +842,7 @@ static void check_ref_arg(Node *arg, Var *param, int index)
 }
 
 #include "../features/functions/function_values_type.inc"
+#include "../features/arrays/collection_queries_type.inc"
 
 /* 関数呼び出し：呼び出し先を探し、引数の数と型を確かめて、引数を引数の型に変換する */
 static void check_call(Node *node)
@@ -888,6 +889,7 @@ static void check_call(Node *node)
         error_tok(node->tok, QMSG_0779,
                  fn->name_len, fn->name, fn->param_count, node->nargs);
     }
+    if(node->kind==ND_CALL)check_collection_query(node,fn);
     if (fn->is_generic) fn = node->func = specialize_generic_call(node);
     if (fn->infer_return || (fn->generic_origin && fn->check_state != 1)) ensure_function(fn, node->tok);
 

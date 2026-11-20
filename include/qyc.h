@@ -11,7 +11,7 @@
 #include <stdio.h>
 #include "../src/i18n/messages.h"
 
-#define QYC_VERSION "0.29.7"
+#define QYC_VERSION "0.29.8"
 
 typedef struct SourceFile SourceFile;
 typedef struct Module Module;

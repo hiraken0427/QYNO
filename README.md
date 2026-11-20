@@ -1,4 +1,4 @@
-# QYNO 0.29.7
+# QYNO 0.29.8
 
 著作権およびライセンスに関する情報は、本ファイルの末尾に記載している。
 
@@ -49,6 +49,28 @@ make clean
 modulesはモジュールの登録と名前解決、i18nは英日表示、utilsは共通処理である。共有ヘッダーはinclude、生成済みのコードとデータはgenerated、Visual Studio Code拡張機能はvscodeに置く。binとbuildはビルド時に作成する。
 
 ## 新機能
+
+0.29.8では、配列の条件処理をlibに追加した。filterは条件に合う要素の配列、countは条件に合う要素数をint_64で返す。anyは1つでも条件に合えばtrue、allはすべての要素が条件に合えばtrueとなる。入力配列は変更しない。
+
+```text
+using io
+bool positive(x)=x>0
+int main();
+	int values[]=[-2,0,3,1]
+	auto selected=lib.filter(values,positive)
+	print(selected)
+	print(lib.count(values,positive))
+	print(lib.any(values,positive))
+	print(lib.all(values,positive))
+	print(values)
+	return 0
+```
+
+述語は要素を1つ値渡しで受け取り、boolを返す同期関数値である。要素型から関数型を決めるため、上のpositiveのように引数型を省略した関数も渡せる。多次元配列では最上位の要素を対象とする。
+
+filterは入力順を維持した独立の配列を返す。filterとcountは全要素を評価する。anyは最初のtrue、allは最初のfalseで処理を止める。空配列ではfilterが空配列、countが0、anyがfalse、allがtrueとなり、述語を呼び出さない。
+
+述語のI/Oエラーはtryとcaseへ伝播する。filterの途中結果は返さない。これらは同期処理であり、自動的にはイベントループへ制御を譲らない。型を推論した配列引数の関数型も整備し、非公開のmodelを用いる条件処理にも対応した。
 
 0.29.7では、名前付きの同期関数を値として扱えるようにした。関数名を代入し、変数から呼び出すことができる。引数、戻り値、配列、modelのフィールドにも使用できる。型を明示する場合はfuncを用いる。
 

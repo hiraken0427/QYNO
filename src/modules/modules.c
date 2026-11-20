@@ -9,6 +9,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include "../features/time/standard_time_source.h"
+#include "../features/arrays/standard_collections_source.h"
 
 typedef enum { SYM_NONE, SYM_ENUM, SYM_MODEL, SYM_INTERFACE, SYM_MODULE, SYM_FUNCTION, SYM_CONSTANT, SYM_BUILTIN } SymbolKind;
 typedef struct {
@@ -275,7 +276,7 @@ Ast *load_program(const char *path, const char **roots, int root_count)
         "\tio_read_only\n\tio_broken_pipe\n\tio_resource_busy\n\tio_io_error\n\tio_unsupported_operation\n"
         "\tio_out_of_range\n\tio_system_error\n\tio_not_directory\n\tio_directory_not_empty\n"
         "\ttask_cancelled=65537\n\ttask_timed_out\n\ttask_group_failed\n\ttask_invalid_state\n"
-        "model Error;\n\tErrorCode code\n\tstr message\n\tstr source\n\tint line\n\tint column\n\tstr domain\n\tError errors[]\n");
+        "model Error;\n\tErrorCode code\n\tstr message\n\tstr source\n\tint line\n\tint column\n\tstr domain\n\tError errors[]\n" QYNO_COLLECTIONS_SOURCE);
     standard_source("task",
         "enum State;\n\tpending\n\trunning\n\twaiting\n\tcancelling\n\tcompleted\n\tfailed\n\tcancelled\n"
         "enum ErrorCode;\n\tno_error\n\tcancelled\n\ttimed_out\n\tgroup_failed\n\tinvalid_state\n"

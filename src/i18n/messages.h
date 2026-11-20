@@ -1815,4 +1815,6 @@ extern char qyno_message_0905[67];
 #define QMSG_0905 qyno_message_0905
 extern char qyno_message_0906[49];
 #define QMSG_0906 qyno_message_0906
+extern char qyno_message_0907[53];
+#define QMSG_0907 qyno_message_0907
 #endif
