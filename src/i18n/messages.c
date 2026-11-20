@@ -897,6 +897,7 @@ char qyno_message_0892[37] = "The task timed out";
 char qyno_message_0893[18] = "Related error: ";
 char qyno_message_0894[47] = "Additional related errors omitted\n";
 char qyno_message_0895[64] = "Unable to initialize asynchronous file workers";
+char qyno_message_0896[77] = "io.file.%s requires a one-dimensional unsigned int_8 array";
 static const Message messages[] = {
     {qyno_message_0000, "\tInput | ", "\t入力 | "},
     {qyno_message_0001, "(Default is input name.exe for Windows, no extension for Linux) \n", "                       （既定は Windows 向けなら 入力名.exe、Linux 向けなら拡張子なし）\n"},
@@ -1794,6 +1795,7 @@ static const Message messages[] = {
     {qyno_message_0893, "Related error: ", "関連エラー: "},
     {qyno_message_0894, "Additional related errors omitted\n", "以降の関連エラーを省略しました\n"},
     {qyno_message_0895, "Unable to initialize asynchronous file workers", "非同期ファイルのワーカーを初期化できません"},
+    {qyno_message_0896, "io.file.%s requires a one-dimensional unsigned int_8 array", "io.file.%s の data は unsigned int_8 の1次元配列にしてください"},
 };
 void messages_select(int japanese)
 {

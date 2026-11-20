@@ -11,7 +11,7 @@
 #include <stdio.h>
 #include "../src/i18n/messages.h"
 
-#define QYC_VERSION "0.29.5"
+#define QYC_VERSION "0.29.6"
 
 typedef struct SourceFile SourceFile;
 typedef struct Module Module;
@@ -221,6 +221,7 @@ typedef enum {
     BI_TASK_YIELD, BI_TIME_SLEEP_ASYNC, BI_TASK_GROUP, BI_TASK_ALL, BI_TASK_TIMEOUT,
     BI_FILE_READ_TEXT_ASYNC, BI_FILE_WRITE_TEXT_ASYNC, BI_FILE_APPEND_TEXT_ASYNC,
     BI_FILE_READ_LINES_ASYNC, BI_FILE_WRITE_LINES_ASYNC,
+    BI_FILE_READ_BYTES_ASYNC, BI_FILE_WRITE_BYTES_ASYNC, BI_FILE_APPEND_BYTES_ASYNC,
     BI_FILE_OPEN,
     BI_FILE_CLOSE,
     BI_FILE_IS_OPEN,

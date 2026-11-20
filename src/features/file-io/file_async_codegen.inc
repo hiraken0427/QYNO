@@ -7,9 +7,10 @@ static void file_async_context(void)
     x64_load(RCX,RDX,(int)offsetof(AsyncTask,io_path));x64_store(R14,FILE_PATH,RCX);
     {int i;int offsets[]={FILE_CONTEXT,IO_SOURCE,IO_LINE,IO_COLUMN};
      for(i=0;i<4;i++){x64_load(RCX,RDX,(int)offsetof(AsyncTask,site)+i*8);x64_store(R14,offsets[i],RCX);}}
-    {const char *names[]={"read_text_async","write_text_async","append_text_async","read_lines_async","write_lines_async"};
+    {const char *names[]={"read_text_async","write_text_async","append_text_async","read_lines_async","write_lines_async",
+                          "read_bytes_async","write_bytes_async","append_bytes_async"};
      int i,ready=rt_label("async.file.operation.ready");
-     for(i=0;i<5;i++){int next=rt_label("async.file.operation.next");
+     for(i=0;i<(int)(sizeof(names)/sizeof(*names));i++){int next=rt_label("async.file.operation.next");
          x64_load(RCX,RDX,(int)offsetof(AsyncTask,io_mode));rt_cmp(RCX,i);x64_jcc(CC_NZ,next);
          x64_lea_data(RCX,prog_add_str(prog,names[i],strlen(names[i])));x64_jmp(ready);x64_bind(next);}
      x64_lea_data(RCX,empty_str_offset);x64_bind(ready);x64_store(R14,IO_OPERATION,RCX);}
